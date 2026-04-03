@@ -4,7 +4,12 @@ import { executeQuery } from '@/lib/db';
 import webpush from 'web-push';
 import { sendNotification } from '@/lib/notifications';
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authHeader = request.headers.get('authorization');
+  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+     return new Response('Unauthorized', { status: 401 });
+  }
+
   try {
     const response = await fetch('https://emasantam.id/', { cache: 'no-store' });
     const html = await response.text();

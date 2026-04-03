@@ -136,7 +136,7 @@ export default function GoldBuybackDashboard() {
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Perubahan Harga</p>
           <div className="flex items-center gap-4">
             <h3 className={cn("text-3xl font-black tracking-tighter", colorTheme)}>
-              {isUp ? "+" : isDown ? "-" : ""}{formatIDR(Number(latest.diff || 0))}
+              {isUp ? "+" : ""}{formatIDR(Math.abs(Number(latest.diff || 0)))}
             </h3>
             <div className={cn("h-10 w-10 rounded-2xl flex items-center justify-center", 
               isUp ? "bg-emerald-100 text-emerald-600" : isDown ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-500"
