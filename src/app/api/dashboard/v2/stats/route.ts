@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const getStats = async (start: string, end: string) => {
       const fullEnd = `${end} 23:59:59`;
       // 1. Omzet & Transactions
-      const mainStats = await executeQuery<any[]>(`
+      const [mainStats]: any = await pool.query(`
         SELECT SUM(revenue) as revenue, SUM(transactions) as transactions
         FROM (
           SELECT SUM(total_idr) as revenue, COUNT(*) as transactions
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       `, [start, fullEnd, start, fullEnd]);
 
       // 2. Units Sold
-      const unitsSold = await executeQuery<any[]>(`
+      const [unitsSold]: any = await pool.query(`
         SELECT SUM(total) as total
         FROM (
           SELECT SUM(d.jumlah) as total
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       `, [start, fullEnd, start, fullEnd]);
 
       // 3. Profit (calculated directly)
-      const profitStats = await executeQuery<any[]>(`
+      const [profitStats]: any = await pool.query(`
         SELECT SUM(profit) as total_profit
         FROM (
           SELECT SUM(d.jumlah * d.netto) - SUM(d.jumlah * b.harga_beli) as profit
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
       `, [start, fullEnd, start, fullEnd]);
 
       // 4. Branch Breakdown
-      const branchStats = await executeQuery<any[]>(`
+      const [branchStats]: any = await pool.query(`
         SELECT branch_name, SUM(revenue) as revenue, SUM(transactions) as transactions
         FROM (
           SELECT c.nama as branch_name, SUM(h.total_idr) as revenue, COUNT(*) as transactions

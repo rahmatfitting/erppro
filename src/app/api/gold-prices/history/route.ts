@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { executeQuery, pool } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +19,8 @@ export async function GET(request: Request) {
       ORDER BY id ASC
     `;
 
-    const prices = await executeQuery<any[]>(query, [parseInt(limit, 10)]);
+    // Use pool.query instead of pool.execute (executeQuery) for LIMIT stability on Vercel
+    const [prices] = await pool.query(query, [parseInt(limit, 10)]);
 
     return NextResponse.json({ success: true, data: prices });
   } catch (error: any) {
