@@ -26,6 +26,11 @@ export default function GoldBuybackDashboard() {
 
   useEffect(() => {
     fetchHistory();
+    // Real-time synchronization (every 30 seconds)
+    const interval = setInterval(() => {
+      fetchHistory();
+    }, 30000);
+    return () => clearInterval(interval);
   }, [fetchHistory]);
 
   const handleSync = async () => {

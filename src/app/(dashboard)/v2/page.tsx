@@ -48,6 +48,11 @@ export default function DashboardV2() {
 
   useEffect(() => {
     fetchData();
+    // Real-time synchronization (every 30 seconds)
+    const interval = setInterval(() => {
+      fetchData();
+    }, 30000);
+    return () => clearInterval(interval);
   }, [fetchData]);
 
   const formatIDR = (val: number) => {
@@ -75,10 +80,10 @@ export default function DashboardV2() {
     { label: "Custom Range", key: "custom" }
   ];
 
-  const currentRevenue = data?.custom?.revenue ?? data?.month?.revenue ?? 0;
-  const currentMargin = data?.custom?.margin ?? data?.month?.margin ?? 0;
-  const currentTransactions = data?.custom?.transactions ?? data?.month?.transactions ?? 0;
-  const currentAOV = data?.custom?.aov ?? data?.month?.aov ?? 0;
+  const currentRevenue = Number(data?.custom?.revenue ?? data?.month?.revenue ?? 0);
+  const currentMargin = Number(data?.custom?.margin ?? data?.month?.margin ?? 0);
+  const currentTransactions = Number(data?.custom?.transactions ?? data?.month?.transactions ?? 0);
+  const currentAOV = Number(data?.custom?.aov ?? data?.month?.aov ?? 0);
 
   const revScore = Math.min((currentRevenue / 100000000) * 100, 100) * 0.4;
   const margScore = Math.min((currentMargin / 30) * 100, 100) * 0.4;
