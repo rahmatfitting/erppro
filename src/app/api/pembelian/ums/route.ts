@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -21,7 +23,7 @@ export async function GET(request: Request) {
       }
       query += ` ORDER BY h.tanggal DESC LIMIT ? OFFSET ?`;
       params.push(limit, offset);
-      const data = await executeQuery(query, params);
+      const [data]: any = await pool.query(query, params);
       return NextResponse.json({ success: true, data });
     }
 
@@ -31,7 +33,16 @@ export async function GET(request: Request) {
     query += ` ORDER BY tanggal DESC, nomor DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    const [rows]: any = await pool.query(query, params);
+    const data = rows.map((h: any) => ({
+      ...h,
+      subtotal: Number(h.subtotal || 0),
+      ppn_nominal: Number(h.ppn_nominal || 0),
+      total: Number(h.total || 0),
+      total_idr: Number(h.total_idr || 0),
+      kurs: Number(h.kurs || 1)
+    }));
+
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

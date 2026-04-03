@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const session = await getSession();
@@ -12,6 +14,26 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const keyword = searchParams.get('keyword');
     const status = searchParams.get('status');
+    const id = searchParams.get('id');
+
+    if (id) {
+       const [rows]: any = await pool.query(
+         `SELECT p.*, i.nama as item_nama, i.kode as item_kode
+          FROM thprodplan p
+          JOIN mhbarang i ON p.item_id = i.nomor
+          WHERE p.nomor = ? AND p.nomormhcabang = ?`,
+         [id, session.active_cabang]
+       );
+       if (rows.length === 0) return NextResponse.json({ success: false, error: "Data tidak ditemukan" }, { status: 404 });
+       const h = rows[0];
+       return NextResponse.json({ 
+         success: true, 
+         data: {
+           ...h,
+           qty: Number(h.qty || 0)
+         } 
+       });
+    }
 
     let query = `
       SELECT p.*, i.nama as item_nama, i.kode as item_kode
@@ -33,7 +55,12 @@ export async function GET(request: Request) {
 
     query += ` ORDER BY p.tanggal DESC, p.nomor DESC`;
 
-    const data = await executeQuery(query, params);
+    const [rows]: any = await pool.query(query, params);
+    const data = rows.map((h: any) => ({
+      ...h,
+      qty: Number(h.qty || 0)
+    }));
+
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -57,17 +84,18 @@ export async function POST(request: Request) {
     let generatedKode = kode;
     if (!kode || kode === '[AUTO]') {
       const datePart = new Date(tanggal).toISOString().slice(2, 10).replace(/-/g, '');
-      const prev: any = await executeQuery(`SELECT kode FROM thprodplan WHERE kode LIKE ? ORDER BY nomor DESC LIMIT 1`, [`PLAN-${datePart}-%`]);
+      const [prev]: any = await pool.query(`SELECT kode FROM thprodplan WHERE kode LIKE ? ORDER BY nomor DESC LIMIT 1`, [`PLAN-${datePart}-%`]);
       let lastNum = 0;
       if (prev.length > 0) {
-        lastNum = parseInt(prev[0].kode.split('-').pop());
+        const parts = prev[0].kode.split('-');
+        lastNum = parseInt(parts[parts.length - 1]);
       }
       generatedKode = `PLAN-${datePart}-${(lastNum + 1).toString().padStart(3, '0')}`;
     }
 
-    const result: any = await executeQuery(
+    const [result]: any = await pool.query(
       `INSERT INTO thprodplan (nomormhperusahaan, nomormhcabang, kode, tanggal, item_id, qty, keterangan, dibuat_oleh) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [session.active_perusahaan, session.active_cabang, generatedKode, tanggal, item_id, qty, keterangan, session.nama || 'Admin']
+      [session.active_perusahaan, session.active_cabang, generatedKode, tanggal, item_id, parseFloat(qty || 0), keterangan, session.nama || 'Admin']
     );
 
     return NextResponse.json({ success: true, message: "Produksi Plan berhasil disimpan", id: result.insertId });
@@ -89,7 +117,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ success: false, error: "ID dan Status wajib diisi" }, { status: 400 });
     }
 
-    await executeQuery(`UPDATE thprodplan SET status = ? WHERE nomor = ? AND nomormhcabang = ?`, [status, id, session.active_cabang]);
+    await pool.query(`UPDATE thprodplan SET status = ? WHERE nomor = ? AND nomormhcabang = ?`, [status, id, session.active_cabang]);
 
     return NextResponse.json({ success: true, message: "Status pesanan berhasil diperbarui" });
   } catch (error: any) {

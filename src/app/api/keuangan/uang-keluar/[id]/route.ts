@@ -1,18 +1,42 @@
 import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, context: any) {
   try {
-    const { id } = await context.params;
-    const headerData: any = await executeQuery(`SELECT * FROM thuangkeluar WHERE nomor = ?`, [id]);
-    if (headerData.length === 0) return NextResponse.json({ success: false, error: 'Data tidak ditemukan' }, { status: 404 });
-    const header = headerData[0];
+    const params = await context.params;
+    const id = params.id;
+    const [headerRows]: any = await pool.query(`SELECT * FROM thuangkeluar WHERE nomor = ?`, [id]);
+    if (headerRows.length === 0) return NextResponse.json({ success: false, error: 'Data tidak ditemukan' }, { status: 404 });
+    const header = headerRows[0];
     if (header.jenis == 1 && header.status_aktif == 0) return NextResponse.json({ success: false, error: 'Data tidak ditemukan' }, { status: 404 });
 
-    const items: any = await executeQuery(`SELECT * FROM tduangkeluar WHERE nomorthuangkeluar = ? AND status_aktif = 1 ORDER BY nomor`, [header.nomor]);
-    const selisih: any = await executeQuery(`SELECT * FROM tduangkeluarselisih WHERE nomorthuangkeluar = ? AND status_aktif = 1 ORDER BY nomor`, [header.nomor]);
-    return NextResponse.json({ success: true, data: { ...header, items, selisih } });
+    const [itemsRows]: any = await pool.query(`SELECT * FROM tduangkeluar WHERE nomorthuangkeluar = ? AND status_aktif = 1 ORDER BY nomor`, [header.nomor]);
+    const [selisihRows]: any = await pool.query(`SELECT * FROM tduangkeluarselisih WHERE nomorthuangkeluar = ? AND status_aktif = 1 ORDER BY nomor`, [header.nomor]);
+    
+    return NextResponse.json({ 
+      success: true, 
+      data: { 
+        ...header, 
+        total: Number(header.total || 0),
+        total_idr: Number(header.total_idr || 0),
+        kurs: Number(header.kurs || 1),
+        items: itemsRows.map((d: any) => ({
+          ...d,
+          nominal: Number(d.nominal || 0),
+          nominal_transaksi: Number(d.nominal_transaksi || 0),
+          nominal_transaksi_idr: Number(d.nominal_transaksi_idr || 0),
+          total_bayar: Number(d.total_bayar || 0),
+          total_bayar_idr: Number(d.total_bayar_idr || 0)
+        })),
+        selisih: selisihRows.map((s: any) => ({
+          ...s,
+          nominal: Number(s.nominal || 0)
+        }))
+      } 
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -20,28 +44,29 @@ export async function GET(request: Request, context: any) {
 
 export async function PUT(request: Request, context: any) {
   try {
-    const { id } = await context.params;
+    const params = await context.params;
+    const id = params.id;
     const { action, user } = await request.json();
 
-    const header: any = await executeQuery(`SELECT nomor, kode, jenis FROM thuangkeluar WHERE nomor = ?`, [id]);
-    if (header.length === 0) return NextResponse.json({ success: false, error: 'Data tidak ditemukan' }, { status: 404 });
-    const { nomor, kode, jenis } = header[0];
+    const [headerRows]: any = await pool.query(`SELECT nomor, kode, jenis FROM thuangkeluar WHERE nomor = ?`, [id]);
+    if (headerRows.length === 0) return NextResponse.json({ success: false, error: 'Data tidak ditemukan' }, { status: 404 });
+    const { nomor, kode, jenis } = headerRows[0];
     const menuTitle = jenis == 1 ? "Uang Keluar Utama" : "Uang Keluar Lain";
 
     if (action === 'approve') {
-      await executeQuery(`UPDATE thuangkeluar SET status_disetujui = 1, disetujui_oleh = ?, disetujui_pada = NOW() WHERE nomor = ?`, [user || 'Admin', nomor]);
+      await pool.query(`UPDATE thuangkeluar SET status_disetujui = 1, disetujui_oleh = ?, disetujui_pada = NOW() WHERE nomor = ?`, [user || 'Admin', nomor]);
       await addLogHistory(menuTitle, nomor, "APPROVE", user || "Admin", `Menyetujui ${menuTitle} ${kode}`);
       return NextResponse.json({ success: true, message: 'Disetujui' });
     }
 
     if (action === 'disapprove') {
-      await executeQuery(`UPDATE thuangkeluar SET status_disetujui = 0, disetujui_oleh = NULL, disetujui_pada = NULL WHERE nomor = ?`, [nomor]);
+      await pool.query(`UPDATE thuangkeluar SET status_disetujui = 0, disetujui_oleh = NULL, disetujui_pada = NULL WHERE nomor = ?`, [nomor]);
       await addLogHistory(menuTitle, nomor, "DISAPPROVE", user || "Admin", `Membatalkan Persetujuan ${menuTitle} ${kode}`);
       return NextResponse.json({ success: true, message: 'Batal Setuju' });
     }
 
     if (action === 'delete') {
-      await executeQuery(`UPDATE thuangkeluar SET status_aktif = 0, dibatalkan_oleh = ?, dibatalkan_pada = NOW() WHERE nomor = ?`, [user || 'Admin', nomor]);
+      await pool.query(`UPDATE thuangkeluar SET status_aktif = 0, dibatalkan_oleh = ?, dibatalkan_pada = NOW() WHERE nomor = ?`, [user || 'Admin', nomor]);
       await addLogHistory(menuTitle, nomor, "DELETE", user || "Admin", `Membatalkan/Menghapus ${menuTitle} ${kode}`);
       return NextResponse.json({ success: true, message: 'Dibatalkan' });
     }

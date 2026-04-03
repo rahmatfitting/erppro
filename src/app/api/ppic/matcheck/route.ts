@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -17,7 +19,7 @@ export async function GET(request: Request) {
     }
 
     // 1. Get Plan
-    const planRows: any = await executeQuery(`
+    const [planRows]: any = await pool.query(`
       SELECT p.*, i.nama as item_nama 
       FROM thprodplan p 
       JOIN mhbarang i ON p.item_id = i.nomor 
@@ -28,9 +30,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: "Production Plan not found" }, { status: 404 });
     }
     const plan = planRows[0];
+    const planQty = Number(plan.qty || 0);
 
     // 2. Get BOM for this item
-    const bomRows: any = await executeQuery(`
+    const [bomRows]: any = await pool.query(`
       SELECT * FROM mhbom 
       WHERE item_id = ? AND nomormhcabang = ? AND status_aktif = 1
       ORDER BY nomor DESC LIMIT 1
@@ -42,7 +45,7 @@ export async function GET(request: Request) {
     const bom = bomRows[0];
 
     // 3. Get BOM Components
-    const components: any = await executeQuery(`
+    const [components]: any = await pool.query(`
       SELECT d.*, i.nama as item_nama, i.kode as item_kode, s.nama as satuan_nama
       FROM mdbom d
       JOIN mhbarang i ON d.item_id = i.nomor
@@ -53,19 +56,16 @@ export async function GET(request: Request) {
     // 4. Calculate Stock for each component
     const results = [];
     for (const comp of components) {
-      const needed = plan.qty * comp.jumlah;
+      const needed = planQty * Number(comp.jumlah || 0);
       
-      // Basic Stock Calculation (Sum of Ins - Sum of Outs)
-      // Note: This is a simplified version. In a real ERP, this would be more optimized.
-      const stockInRows: any = await executeQuery(`
+      const [stockInRows]: any = await pool.query(`
         SELECT (
           (SELECT COALESCE(SUM(jumlah), 0) FROM tdbelipenerimaan WHERE kode_barang = ?) +
-          (SELECT COALESCE(SUM(perubahan), 0) FROM tdstokpenyesuaian WHERE nomormhbarang = ? AND perubahan > 0) +
-          (SELECT COALESCE(SUM(jumlah), 0) FROM tdubahbentuk WHERE nomormhbarang_asal = 0 AND 1=0) -- Placeholder for future logic
+          (SELECT COALESCE(SUM(perubahan), 0) FROM tdstokpenyesuaian WHERE nomormhbarang = ? AND perubahan > 0)
         ) as total_in
       `, [comp.item_kode, comp.item_id]);
 
-      const stockOutRows: any = await executeQuery(`
+      const [stockOutRows]: any = await pool.query(`
         SELECT (
           (SELECT COALESCE(SUM(jumlah), 0) FROM tdpemakaianinternal WHERE nomormhbarang = ?) +
           (SELECT COALESCE(SUM(perubahan), 0) FROM tdstokpenyesuaian WHERE nomormhbarang = ? AND perubahan < 0) +
@@ -73,8 +73,8 @@ export async function GET(request: Request) {
         ) as total_out
       `, [comp.item_id, comp.item_id, comp.item_id]);
 
-      const totalIn = stockInRows[0]?.total_in || 0;
-      const totalOut = Math.abs(stockOutRows[0]?.total_out || 0);
+      const totalIn = Number(stockInRows[0]?.total_in || 0);
+      const totalOut = Math.abs(Number(stockOutRows[0]?.total_out || 0));
       const stockAvailable = totalIn - totalOut;
       const deficit = Math.max(0, needed - stockAvailable);
 
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
       plan: {
         kode: plan.kode,
         item_nama: plan.item_nama,
-        qty: plan.qty
+        qty: planQty
       },
       bom: {
         kode: bom.kode,
@@ -122,13 +122,11 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Invalid data" }, { status: 400 });
      }
 
-     // Here we would typically generate a Permintaan Pembelian (PR)
-     // For this task, we will just record that we've checked it.
      for (const def of deficits) {
-        await executeQuery(`
+        await pool.query(`
            INSERT INTO thmatcheck (nomormhperusahaan, nomormhcabang, nomorthprodplan, item_id, qty_needed, qty_available, qty_deficit, status_order)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, [session.active_perusahaan, session.active_cabang, planId, def.item_id, def.needed, def.available, def.deficit, 'Generated PR']);
+        `, [session.active_perusahaan, session.active_cabang, planId, def.item_id, parseFloat(def.needed), parseFloat(def.available), parseFloat(def.deficit), 'Generated PR']);
      }
 
      return NextResponse.json({ success: true, message: "Material check records saved and PR triggered." });

@@ -4,7 +4,8 @@ import { addLogHistory } from '@/lib/history';
 import { sendNotification } from '@/lib/notifications';
 import { getSession } from '@/lib/auth';
 
-// GET thuangmasuk — filtered by jenis (1=utama, 0=lain)
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -29,8 +30,14 @@ export async function GET(request: Request) {
     query += ` ORDER BY tanggal DESC, nomor DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
-    const countData: any = await executeQuery(`SELECT COUNT(*) as total FROM thuangmasuk WHERE status_aktif = 1 AND jenis = ? AND nomormhcabang = ? AND nomormhperusahaan = ?`, [jenis, active_cabang, active_perusahaan]);
+    const [rows]: any = await pool.query(query, params);
+    const data = rows.map((h: any) => ({
+      ...h,
+      total: Number(h.total || 0),
+      total_idr: Number(h.total_idr || 0),
+      kurs: Number(h.kurs || 1)
+    }));
+    const [countData]: any = await pool.query(`SELECT COUNT(*) as total FROM thuangmasuk WHERE status_aktif = 1 AND jenis = ? AND nomormhcabang = ? AND nomormhperusahaan = ?`, [jenis, active_cabang, active_perusahaan]);
     return NextResponse.json({ success: true, data, total: countData[0]?.total ?? 0 });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -45,8 +52,8 @@ export async function POST(request: Request) {
       jenis = 1, tanggal, metode, nomormhaccount, account_kode, account_nama,
       nomormhcustomer, nomormhsupplier,
       keterangan, valuta, kurs, total, total_idr,
-      items = [],       // detail transaksi (utama: ref transaksi + selisih; lain: account browse)
-      selisih = [],     // detail selisih (khusus utama)
+      items = [],
+      selisih = [],
     } = body;
 
     if (!tanggal || !metode) {
@@ -59,7 +66,6 @@ export async function POST(request: Request) {
 
     await connection.beginTransaction();
 
-    // AUTO COUNTER
     const dateObj = new Date(tanggal);
     const year = dateObj.getFullYear();
     const month = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -84,17 +90,14 @@ export async function POST(request: Request) {
     );
     const headerId = headerResult.insertId;
 
-    // Insert detail transaksi
     for (const item of items) {
       if (jenis == 1) {
-        // Utama: ref transaksi
         await connection.execute(
           `INSERT INTO tduangmasuk (nomorthuangmasuk, jenis_detail, ref_jenis, ref_kode, ref_nomor, customer_supplier, account_piutang, nominal_transaksi, nominal_transaksi_idr, total_terbayar, total_terbayar_idr, keterangan, dibuat_pada)
            VALUES (?, 'transaksi', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
           [headerId, item.ref_jenis || '', item.ref_kode || '', item.ref_nomor || 0, item.customer_supplier || '', item.account_piutang || 'Piutang Usaha', parseFloat(item.nominal_transaksi || 0), parseFloat(item.nominal_transaksi_idr || 0), parseFloat(item.total_bayar || 0), parseFloat(item.total_bayar_idr || 0), item.keterangan || '']
         );
       } else {
-        // Lain: browse account
         await connection.execute(
           `INSERT INTO tduangmasuk (nomorthuangmasuk, jenis_detail, nomormhaccount, account_kode, account_nama, nominal, total_terbayar, total_terbayar_idr, keterangan, dibuat_pada)
            VALUES (?, 'lain', ?, ?, ?, ?, ?, ?, ?, NOW())`,
@@ -103,7 +106,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Insert selisih (utama only)
     if (jenis == 1) {
       for (const s of selisih) {
         await connection.execute(
@@ -134,10 +136,9 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const { id, action, user } = await request.json();
-    
-    const header: any = await executeQuery(`SELECT nomor, kode, jenis FROM thuangmasuk WHERE nomor = ?`, [id]);
-    if (header.length === 0) return NextResponse.json({ success: false, error: 'Data tidak ditemukan' }, { status: 404 });
-    const { nomor, kode, jenis } = header[0];
+    const [headerRows]: any = await pool.query(`SELECT nomor, kode, jenis FROM thuangmasuk WHERE nomor = ?`, [id]);
+    if (headerRows.length === 0) return NextResponse.json({ success: false, error: 'Data tidak ditemukan' }, { status: 404 });
+    const { nomor, kode, jenis } = headerRows[0];
     const menuTitle = jenis == 1 ? "Uang Masuk Utama" : "Uang Masuk Lain";
 
     if (action === 'approve') {
@@ -149,11 +150,9 @@ export async function PATCH(request: Request) {
         
         await conn.execute(`UPDATE thuangmasuk SET status_disetujui = 1, disetujui_oleh = ?, disetujui_pada = NOW() WHERE nomor = ?`, [user || 'Admin', id]);
         
-        // Report synchronization: Uang Masuk Utama (jenis=1) typically reduces Piutang (Receivables)
         if (h.jenis == 1) {
           const [details]: any = await conn.execute(`SELECT * FROM tduangmasuk WHERE nomorthuangmasuk = ?`, [id]);
           for (const d of details) {
-             // For each payment receipt item, record a negative entry in rhlaporanpiutang
              if (d.jenis_detail === 'transaksi' && h.nomormhcustomer) {
                 await conn.execute(`
                   INSERT INTO rhlaporanpiutang (
@@ -162,7 +161,7 @@ export async function PATCH(request: Request) {
                     transaksi_tanggal, jatuh_tempo, kurs, total, total_idr, keterangan
                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `, [
-                  h.nomormhcabang, h.nomormhperusahaan, h.nomormhcustomer, 0, // valuta assumed base
+                  h.nomormhcabang, h.nomormhperusahaan, h.nomormhcustomer, 0,
                   h.nomor, 'UMU', h.tanggal, h.nomor, h.kode,
                   h.tanggal, h.tanggal, h.kurs, -parseFloat(d.total_bayar || 0), -parseFloat(d.total_bayar_idr || 0), 
                   `Pembayaran ${d.ref_kode} via ${h.kode}`
@@ -246,7 +245,6 @@ export async function PUT(request: Request) {
       [tanggal, metode, metode.toLowerCase() === 'kas' ? 1 : 0, metode.toLowerCase() === 'bank' ? 1 : 0, nomormhaccount || 0, account_kode || '', account_nama || '', nomormhcustomer || 0, nomormhsupplier || 0, keterangan || '', valuta || 'IDR', parseFloat(kurs || 1), parseFloat(total || 0), parseFloat(total_idr || (total || 0) * (kurs || 1)), active_cabang, active_perusahaan, id]
     );
 
-    // Refresh details: delete and re-insert
     await connection.execute(`DELETE FROM tduangmasuk WHERE nomorthuangmasuk = ?`, [id]);
     await connection.execute(`DELETE FROM tduangmasukselisih WHERE nomorthuangmasuk = ?`, [id]);
 

@@ -4,6 +4,8 @@ import { addLogHistory } from '@/lib/history';
 import { sendNotification } from '@/lib/notifications';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -63,7 +65,7 @@ export async function GET(request: Request) {
     query += ` ORDER BY h.tanggal DESC, h.nomor DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    const [data]: any = await pool.query(query, params);
     
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
@@ -166,7 +168,7 @@ export async function PATCH(request: Request) {
     let query = "";
     const params: any[] = [];
     
-    const header: any = await executeQuery(
+    const [header]: any = await pool.query(
       `SELECT nomor, kode, tanggal, supplier, nomormhsupplier, keterangan, nomorthbeliorder, kode_po, nomormhgudang 
        FROM thbelipenerimaan WHERE nomor = ?`, [id]
     );
@@ -181,7 +183,7 @@ export async function PATCH(request: Request) {
     if (action === 'approve') {
        // Requirement 6: Check PO constraints
        if (nomorthbeliorder) {
-         const po: any = await executeQuery(
+         const [po]: any = await pool.query(
            `SELECT status_aktif, status_disetujui, tanggal FROM thbeliorder WHERE nomor = ?`,
            [nomorthbeliorder]
          );
@@ -242,7 +244,7 @@ export async function PATCH(request: Request) {
 
     } else if (action === 'disapprove') {
        // Requirement 6: Check if already created Nota Beli
-       const existingNota: any = await executeQuery(
+       const [existingNota]: any = await pool.query(
          `SELECT nomor FROM tdbelinota WHERE nomorthbelipenerimaan = ? LIMIT 1`,
          [nomor]
        );
@@ -277,7 +279,7 @@ export async function PATCH(request: Request) {
     } else if (action === 'reject' || action === 'delete') {
        const query = `UPDATE thbelipenerimaan SET status_aktif = 0, dibatalkan_oleh = ?, dibatalkan_pada = NOW() WHERE nomor = ?`;
        const params = [user || 'Admin', nomor];
-       await executeQuery(query, params);
+       await pool.query(query, params);
        await addLogHistory("Penerimaan Barang", nomor, "DELETE", user || "Admin", `Membatalkan/Menghapus Penerimaan ${kode}`);
        return NextResponse.json({ success: true, message: "Penerimaan Barang berhasil dihapus" });
     } else {

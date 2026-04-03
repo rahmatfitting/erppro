@@ -3,13 +3,15 @@ import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 import { getChanges } from '@/lib/audit';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request, context: any) {
   try {
     const params = await context.params;
     const id = params.id;
     // Get Header
     const headerQuery = `SELECT * FROM thbelipenerimaan WHERE nomor = ?`;
-    const headerData: any = await executeQuery(headerQuery, [id]);
+    const [headerData]: any = await pool.query(headerQuery, [id]);
     
     if (headerData.length === 0) {
       return NextResponse.json({ success: false, error: "Penerimaan Barang tidak ditemukan" }, { status: 404 });
@@ -25,7 +27,7 @@ export async function GET(request: Request, context: any) {
       LEFT JOIN tdbeliorder po ON d.nomortdbeliorder = po.nomor
       WHERE d.nomorthbelipenerimaan = ?
     `;
-    const detailsData: any = await executeQuery(detailsQuery, [header.nomor]);
+    const [detailsData]: any = await pool.query(detailsQuery, [header.nomor]);
 
     return NextResponse.json({ 
         success: true, 
@@ -41,11 +43,11 @@ export async function GET(request: Request, context: any) {
                 kode_barang: d.kode_barang || d.master_kode || '',
                 barang: d.nama_barang,
                 satuan: d.satuan,
-                jumlahDiterima: d.jumlah,
-                jumlahDipesan: d.jumlah_po || d.jumlah,
-                harga: d.harga || 0,
-                diskon_prosentase: d.diskon_prosentase || 0,
-                diskon_nominal: d.diskon_nominal || 0,
+                jumlahDiterima: Number(d.jumlah || 0),
+                jumlahDipesan: Number(d.jumlah_po || d.jumlah || 0),
+                harga: Number(d.harga || 0),
+                diskon_prosentase: Number(d.diskon_prosentase || 0),
+                diskon_nominal: Number(d.diskon_nominal || 0),
                 keterangan: d.keterangan || ''
             }))
         } 

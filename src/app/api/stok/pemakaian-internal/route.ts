@@ -3,6 +3,8 @@ import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 import { sendNotification } from '@/lib/notifications';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -10,7 +12,6 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('startDate') || '';
     const endDate = searchParams.get('endDate') || '';
     
-    // Pagination
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
     const offset = (page - 1) * limit;
@@ -41,7 +42,11 @@ export async function GET(request: Request) {
     query += ` ORDER BY h.tanggal DESC, h.nomor DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    const [rows]: any = await pool.query(query, params);
+    const data = rows.map((h: any) => ({
+      ...h,
+      itemsCount: Number(h.itemsCount || 0)
+    }));
     
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
@@ -63,14 +68,12 @@ export async function POST(request: Request) {
       user 
     } = body;
 
-    // Validate
     if (!tanggal || !nomormhgudang || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ success: false, error: "Data tidak lengkap" }, { status: 400 });
     }
 
     await connection.beginTransaction();
 
-    // AUTO COUNTER
     const dateObj = new Date(tanggal);
     const year = dateObj.getFullYear();
     const month = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -92,7 +95,6 @@ export async function POST(request: Request) {
     }
     const generatedKode = `${prefix}${String(nextNum).padStart(3, '0')}`;
 
-    // 1. Insert Header
     const [headerResult]: any = await connection.execute(
       `INSERT INTO thpemakaianinternal (
         kode, tanggal, nomormhgudang, gudang_nama, keterangan, dibuat_oleh
@@ -102,7 +104,6 @@ export async function POST(request: Request) {
 
     const headerId = headerResult.insertId;
 
-    // 2. Insert Details
     for (const item of items) {
        await connection.execute(
          `INSERT INTO tdpemakaianinternal 
@@ -123,33 +124,18 @@ export async function POST(request: Request) {
        );
     }
 
-    // 3. Log History
     await addLogHistory("Pemakaian Internal", headerId, "CREATE", user || "Admin", `Membuat Pemakaian Internal ${generatedKode} di ${gudang_nama}`);
-
     await connection.commit();
-    
-    // Notification
-    await sendNotification(
-      'Pemakaian Internal', 
-      `Pemakaian Baru: ${generatedKode}`, 
-      `Ada pengeluaran barang untuk pemakaian internal. Gudang: ${gudang_nama}`, 
-      generatedKode
-    );
+    await sendNotification('Pemakaian Internal', `Pemakaian Baru: ${generatedKode}`, `Ada pengeluaran barang untuk pemakaian internal. Gudang: ${gudang_nama}`, generatedKode);
 
     return NextResponse.json({ 
       success: true, 
       message: "Pemakaian Internal berhasil disimpan", 
       data: { id: headerId, kode: generatedKode } 
     });
-
   } catch (error: any) {
     await connection.rollback();
-    console.error("POST Pemakaian Error:", error);
-    
-    if (error.code === 'ER_DUP_ENTRY') {
-      return NextResponse.json({ success: false, error: "Kode transaksi sudah digunakan" }, { status: 400 });
-    }
-    
+    if (error.code === 'ER_DUP_ENTRY') return NextResponse.json({ success: false, error: "Kode transaksi sudah digunakan" }, { status: 400 });
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   } finally {
     connection.release();

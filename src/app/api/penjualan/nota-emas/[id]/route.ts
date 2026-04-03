@@ -2,24 +2,43 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { addLogHistory } from '@/lib/history';
+import { sendNotification } from '@/lib/notifications';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     if (!id) return NextResponse.json({ success: false, error: "ID tidak valid" }, { status: 400 });
     
-    const headerRows = await executeQuery<any[]>(`SELECT * FROM thjualnota WHERE nomor = ? AND jenis = 'FJ_EMAS'`, [id]);
+    const [headerRows]: any = await pool.query(`SELECT * FROM thjualnota WHERE nomor = ? AND jenis = 'FJ_EMAS'`, [id]);
     if (!headerRows || headerRows.length === 0) {
       return NextResponse.json({ success: false, error: "Nota Jual Emas tidak ditemukan" }, { status: 404 });
     }
+    const h = headerRows[0];
 
-    const detailRows = await executeQuery<any[]>(`SELECT * FROM tdjualnota WHERE nomorthjualnota = ?`, [id]);
+    const [detailRows]: any = await pool.query(`SELECT * FROM tdjualnota WHERE nomorthjualnota = ?`, [id]);
 
     return NextResponse.json({ 
       success: true, 
       data: {
-        ...headerRows[0],
-        items: detailRows || []
+        ...h,
+        subtotal: Number(h.subtotal || 0),
+        diskon_nominal: Number(h.diskon_nominal || 0),
+        dpp: Number(h.dpp || 0),
+        ppn_nominal: Number(h.ppn_nominal || 0),
+        total: Number(h.total || 0),
+        total_idr: Number(h.total_idr || 0),
+        kurs: Number(h.kurs || 1),
+        items: (detailRows || []).map((d: any) => ({
+          ...d,
+          jumlah: Number(d.jumlah || 0),
+          harga: Number(d.harga || 0),
+          diskon_prosentase: Number(d.diskon_prosentase || 0),
+          diskon_nominal: Number(d.diskon_nominal || 0),
+          netto: Number(d.netto || 0),
+          subtotal: Number(d.subtotal || 0)
+        }))
       } 
     });
   } catch (error: any) {

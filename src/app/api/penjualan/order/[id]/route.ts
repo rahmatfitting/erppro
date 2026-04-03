@@ -3,40 +3,49 @@ import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 import { getChanges } from '@/lib/audit';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request, context: any) {
   try {
     const params = await context.params;
     const id = params.id;
     // Get Header
     const headerQuery = `SELECT * FROM thjualorder WHERE kode = ?`;
-    const headerData: any = await executeQuery(headerQuery, [id]);
+    const [headerRows]: any = await pool.query(headerQuery, [id]);
     
-    if (headerData.length === 0) {
+    if (headerRows.length === 0) {
       return NextResponse.json({ success: false, error: "Order Jual tidak ditemukan" }, { status: 404 });
     }
 
-    const header = headerData[0];
+    const header = headerRows[0];
 
     // Get Details
     const detailsQuery = `SELECT * FROM tdjualorder WHERE nomorthjualorder = ?`;
-    const detailsData: any = await executeQuery(detailsQuery, [header.nomor]);
+    const [detailsData]: any = await pool.query(detailsQuery, [header.nomor]);
 
     return NextResponse.json({ 
         success: true, 
         data: {
             ...header,
+            subtotal: Number(header.subtotal || 0),
+            diskon_nominal: Number(header.diskon_nominal || 0),
+            dpp: Number(header.dpp || 0),
+            ppn_nominal: Number(header.ppn_nominal || 0),
+            total: Number(header.total || 0),
+            total_idr: Number(header.total_idr || 0),
+            kurs: Number(header.kurs || 1),
             items: detailsData.map((d: any) => ({
                 id: d.nomor,
                 barang: d.nama_barang,
                 kode_barang: d.kode_barang,
                 satuan: d.satuan,
-                jumlah: d.jumlah,
-                harga: d.harga,
-                diskon_prosentase: d.diskon_prosentase,
-                diskon_nominal: d.diskon_nominal,
-                netto: d.netto,
-                subtotal: d.subtotal,
-                keterangan: d.keterangan
+                jumlah: Number(d.jumlah || 0),
+                harga: Number(d.harga || 0),
+                diskon_prosentase: Number(d.diskon_prosentase || 0),
+                diskon_nominal: Number(d.diskon_nominal || 0),
+                netto: Number(d.netto || 0),
+                subtotal: Number(d.subtotal || 0),
+                keterangan: d.keterangan || ''
             }))
         } 
     });

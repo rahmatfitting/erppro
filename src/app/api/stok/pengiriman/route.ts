@@ -3,6 +3,8 @@ import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 import { sendNotification } from '@/lib/notifications';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -41,7 +43,11 @@ export async function GET(request: Request) {
     query += ` ORDER BY h.tanggal DESC, h.nomor DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    const [rows]: any = await pool.query(query, params);
+    const data = rows.map((h: any) => ({
+      ...h,
+      itemsCount: Number(h.itemsCount || 0)
+    }));
     
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
@@ -135,14 +141,7 @@ export async function POST(request: Request) {
     await addLogHistory("Transfer Gudang", headerId, "CREATE", user || "Admin", `Membuat Transfer ${generatedKode} dari ${gudang_asal_nama} ke ${gudang_tujuan_nama}`);
 
     await connection.commit();
-    
-    // Notification
-    await sendNotification(
-      'Transfer Gudang', 
-      `Transfer Baru: ${generatedKode}`, 
-      `Ada pengiriman barang antar gudang. Dari: ${gudang_asal_nama} Ke: ${gudang_tujuan_nama}`, 
-      generatedKode
-    );
+    await sendNotification('Transfer Gudang', `Transfer Baru: ${generatedKode}`, `Ada pengiriman barang antar gudang. Dari: ${gudang_asal_nama} Ke: ${gudang_tujuan_nama}`, generatedKode);
 
     return NextResponse.json({ 
       success: true, 
@@ -152,12 +151,7 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     await connection.rollback();
-    console.error("POST Transfer Error:", error);
-    
-    if (error.code === 'ER_DUP_ENTRY') {
-      return NextResponse.json({ success: false, error: "Kode transaksi sudah digunakan" }, { status: 400 });
-    }
-    
+    if (error.code === 'ER_DUP_ENTRY') return NextResponse.json({ success: false, error: "Kode transaksi sudah digunakan" }, { status: 400 });
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   } finally {
     connection.release();

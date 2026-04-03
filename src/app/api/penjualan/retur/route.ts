@@ -4,6 +4,8 @@ import { sendNotification } from '@/lib/notifications';
 import { addLogHistory } from '@/lib/history';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -28,7 +30,19 @@ export async function GET(request: Request) {
     query += ` ORDER BY h.tanggal DESC, h.nomor DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    const [rows]: any = await pool.query(query, params);
+    const data = rows.map((h: any) => ({
+      ...h,
+      subtotal: Number(h.subtotal || 0),
+      diskon_nominal: Number(h.diskon_nominal || 0),
+      dpp: Number(h.dpp || 0),
+      ppn_nominal: Number(h.ppn_nominal || 0),
+      total: Number(h.total || 0),
+      total_idr: Number(h.total_idr || 0),
+      kurs: Number(h.kurs || 1),
+      itemsCount: Number(h.itemsCount || 0)
+    }));
+
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

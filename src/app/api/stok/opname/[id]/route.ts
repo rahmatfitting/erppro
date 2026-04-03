@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -10,24 +12,35 @@ export async function GET(
     const { id } = await params; // This is the 'kode' or 'nomor'
     
     // 1. Get Header
-    const headers: any = await executeQuery(
+    const [headerRows]: any = await pool.query(
       `SELECT * FROM thstokpenyesuaian WHERE kode = ? OR nomor = ?`,
       [id, id]
     );
 
-    if (headers.length === 0) {
+    if (headerRows.length === 0) {
       return NextResponse.json({ success: false, error: "Data tidak ditemukan" }, { status: 404 });
     }
 
-    const header = headers[0];
+    const header = headerRows[0];
 
     // 2. Get Details
-    const details = await executeQuery(
+    const [detailsRows]: any = await pool.query(
       `SELECT * FROM tdstokpenyesuaian WHERE nomorthstokpenyesuaian = ?`,
       [header.nomor]
     );
 
-    return NextResponse.json({ success: true, data: { ...header, items: details } });
+    return NextResponse.json({ 
+      success: true, 
+      data: { 
+        ...header, 
+        items: detailsRows.map((d: any) => ({
+          ...d,
+          stok_fisik: Number(d.stok_fisik || 0),
+          stok_system: Number(d.stok_system || 0),
+          selisih: Number(d.selisih || 0)
+        }))
+      } 
+    });
   } catch (error: any) {
     console.error("GET Stok Opname Detail Error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -46,12 +59,12 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "ID dan action diperlukan" }, { status: 400 });
     }
 
-    const headers: any = await executeQuery(`SELECT nomor, kode FROM thstokpenyesuaian WHERE kode = ?`, [id]);
-    if (headers.length === 0) {
+    const [headerRows]: any = await pool.query(`SELECT nomor, kode FROM thstokpenyesuaian WHERE kode = ?`, [id]);
+    if (headerRows.length === 0) {
       return NextResponse.json({ success: false, error: "Data tidak ditemukan" }, { status: 404 });
     }
-    const headerId = headers[0].nomor;
-    const kode = headers[0].kode;
+    const headerId = headerRows[0].nomor;
+    const kode = headerRows[0].kode;
 
     let query = "";
     const queryParams: any[] = [];
@@ -72,7 +85,7 @@ export async function PATCH(
        return NextResponse.json({ success: false, error: "Action tidak valid" }, { status: 400 });
     }
 
-    await executeQuery(query, queryParams);
+    await pool.query(query, queryParams);
 
     return NextResponse.json({ success: true, message: `Berhasil ${action} data` });
   } catch (error: any) {

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const session = await getSession();
@@ -11,6 +13,29 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const keyword = searchParams.get('keyword');
+    const id = searchParams.get('id');
+
+    if (id) {
+       // Single Record logic if exists (not clearly defined in original but standardizing)
+       const [rows]: any = await pool.query(
+         `SELECT h.*, w.kode as wo_kode, g.nama as gudang_nama
+          FROM thbonbahan h
+          LEFT JOIN thworkorder w ON h.nomorthworkorder = w.nomor
+          LEFT JOIN mhgudang g ON h.nomormhgudang = g.nomor
+          WHERE h.nomor = ? AND h.nomormhcabang = ?`,
+         [id, session.active_cabang]
+       );
+       if (rows.length === 0) return NextResponse.json({ success: false, error: "Data tidak ditemukan" }, { status: 404 });
+       const header = rows[0];
+       const [details]: any = await pool.query(`SELECT * FROM tdbonbahan WHERE nomorthbonbahan = ?`, [header.nomor]);
+       return NextResponse.json({ 
+         success: true, 
+         data: {
+           ...header,
+           items: details.map((d: any) => ({ ...d, qty: Number(d.qty || 0) }))
+         } 
+       });
+    }
 
     let query = `
       SELECT h.*, w.kode as wo_kode, g.nama as gudang_nama
@@ -28,7 +53,7 @@ export async function GET(request: Request) {
 
     query += ` ORDER BY h.tanggal DESC, h.nomor DESC`;
 
-    const data = await executeQuery(query, params);
+    const [data]: any = await pool.query(query, params);
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -52,7 +77,6 @@ export async function POST(request: Request) {
 
     await connection.beginTransaction();
 
-    // Generate Kode
     const datePart = new Date(tanggal).toISOString().slice(2, 10).replace(/-/g, '');
     const [rows]: any = await connection.execute(
       `SELECT kode FROM thbonbahan WHERE kode LIKE ? ORDER BY nomor DESC LIMIT 1 FOR UPDATE`,
@@ -60,22 +84,21 @@ export async function POST(request: Request) {
     );
     let lastNum = 0;
     if (rows.length > 0) {
-      lastNum = parseInt(rows[0].kode.split('-').pop());
+      const parts = rows[0].kode.split('-');
+      lastNum = parseInt(parts[parts.length - 1]);
     }
     const generatedKode = `BON-${datePart}-${(lastNum + 1).toString().padStart(3, '0')}`;
 
-    // 1. Insert Header
     const [headerResult]: any = await connection.execute(
       `INSERT INTO thbonbahan (nomormhperusahaan, nomormhcabang, nomormhgudang, kode, tanggal, nomorthworkorder, keterangan, dibuat_oleh) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [session.active_perusahaan, session.active_cabang, nomormhgudang || null, generatedKode, tanggal, nomorthworkorder || null, keterangan || '', session.nama || 'Admin']
     );
     const headerId = headerResult.insertId;
 
-    // 2. Insert Details
     for (const item of items) {
       await connection.execute(
         `INSERT INTO tdbonbahan (nomorthbonbahan, item_id, qty, satuan_id, keterangan) VALUES (?, ?, ?, ?, ?)`,
-        [headerId, item.item_id, item.qty, item.satuan_id || null, item.keterangan || '']
+        [headerId, item.item_id, parseFloat(item.qty || 0), item.satuan_id || null, item.keterangan || '']
       );
     }
 

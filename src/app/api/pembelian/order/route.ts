@@ -67,7 +67,18 @@ export async function GET(request: Request) {
     params.push(limit, offset);
 
     // Use pool.query for LIMIT/OFFSET stability
-    const [data] = await pool.query(query, params);
+    const [rows]: any = await pool.query(query, params);
+    
+    const data = rows.map((h: any) => ({
+      ...h,
+      subtotal: Number(h.subtotal || 0),
+      diskon_nominal: Number(h.diskon_nominal || 0),
+      dpp: Number(h.dpp || 0),
+      ppn_nominal: Number(h.ppn_nominal || 0),
+      total: Number(h.total || 0),
+      total_idr: Number(h.total_idr || 0),
+      kurs: Number(h.kurs || 1)
+    }));
     
     return NextResponse.json({ success: true, data });
   } catch (error: any) {

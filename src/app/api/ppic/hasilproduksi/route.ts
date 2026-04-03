@@ -13,6 +13,27 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const keyword = searchParams.get('keyword');
+    const id = searchParams.get('id');
+
+    if (id) {
+       const [rows]: any = await pool.query(
+         `SELECT h.*, w.kode as wo_kode, i.nama as fg_nama, g.nama as gudang_nama
+          FROM thhasilproduksi h
+          LEFT JOIN thworkorder w ON h.nomorthworkorder = w.nomor
+          LEFT JOIN mhbarang i ON h.item_id = i.nomor
+          LEFT JOIN mhgudang g ON h.nomormhgudang = g.nomor
+          WHERE h.nomor = ? AND h.nomormhcabang = ?`,
+         [id, session.active_cabang]
+       );
+       if (rows.length === 0) return NextResponse.json({ success: false, error: "Data tidak ditemukan" }, { status: 404 });
+       const h = rows[0];
+       const data = {
+         ...h,
+         qty_fg: Number(h.qty_fg || 0),
+         qty_afalan: Number(h.qty_afalan || 0)
+       };
+       return NextResponse.json({ success: true, data });
+    }
 
     let query = `
       SELECT h.*, w.kode as wo_kode, i.nama as fg_nama, g.nama as gudang_nama
@@ -31,8 +52,13 @@ export async function GET(request: Request) {
 
     query += ` ORDER BY h.tanggal DESC, h.nomor DESC`;
 
-    // Use pool.query instead of executeQuery for better stability on Vercel
-    const [data] = await pool.query(query, params);
+    const [rows]: any = await pool.query(query, params);
+    const data = rows.map((h: any) => ({
+      ...h,
+      qty_fg: Number(h.qty_fg || 0),
+      qty_afalan: Number(h.qty_afalan || 0)
+    }));
+
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -56,7 +82,6 @@ export async function POST(request: Request) {
 
     await connection.beginTransaction();
 
-    // Generate Kode
     const datePart = new Date(tanggal).toISOString().slice(2, 10).replace(/-/g, '');
     const [rows]: any = await connection.execute(
       `SELECT kode FROM thhasilproduksi WHERE kode LIKE ? ORDER BY nomor DESC LIMIT 1 FOR UPDATE`,
@@ -64,35 +89,31 @@ export async function POST(request: Request) {
     );
     let lastNum = 0;
     if (rows.length > 0) {
-      lastNum = parseInt(rows[0].kode.split('-').pop());
+       const parts = rows[0].kode.split('-');
+       lastNum = parseInt(parts[parts.length - 1]);
     }
     const generatedKode = `HPR-${datePart}-${(lastNum + 1).toString().padStart(3, '0')}`;
 
-    // 1. Insert Header
     const [headerResult]: any = await connection.execute(
       `INSERT INTO thhasilproduksi (nomormhperusahaan, nomormhcabang, nomormhgudang, kode, tanggal, nomorthworkorder, item_id, qty_fg, qty_afalan, keterangan, dibuat_oleh) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [session.active_perusahaan, session.active_cabang, nomormhgudang || null, generatedKode, tanggal, nomorthworkorder || null, item_id, qty_fg || 0, qty_afalan || 0, keterangan || '', session.nama || 'Admin']
+      [session.active_perusahaan, session.active_cabang, nomormhgudang || null, generatedKode, tanggal, nomorthworkorder || null, item_id, parseFloat(qty_fg || 0), parseFloat(qty_afalan || 0), keterangan || '', session.nama || 'Admin']
     );
     const headerId = headerResult.insertId;
 
-    // 2. Insert Details (For FG)
-    if (qty_fg > 0) {
+    if (parseFloat(qty_fg || 0) > 0) {
       await connection.execute(
         `INSERT INTO tdhasilproduksi (nomorthhasilproduksi, item_id, qty, jenis) VALUES (?, ?, ?, 'FG')`,
-        [headerId, item_id, qty_fg]
+        [headerId, item_id, parseFloat(qty_fg)]
       );
     }
 
-    // 3. Update Work Order Status if Complete
     if (nomorthworkorder) {
-        // Sum all Hasil Produksi for this WO
         const [hpSum]: any = await connection.execute(
           `SELECT SUM(qty_fg) as total_fg FROM thhasilproduksi WHERE nomorthworkorder = ? AND status_aktif = 1`,
           [nomorthworkorder]
         );
         const totalFG = hpSum[0].total_fg || 0;
 
-        // Get WO Target Qty
         const [woRows]: any = await connection.execute(
           `SELECT qty FROM thworkorder WHERE nomor = ?`,
           [nomorthworkorder]

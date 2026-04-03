@@ -1,14 +1,26 @@
 import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { getSession } from '@/lib/auth';
+import { executeQuery, pool } from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request, context: any) {
   try {
     const { id } = await context.params;
-    const data: any = await executeQuery(`SELECT * FROM thuangtitipan WHERE nomor = ? AND jenis = 'UMS' AND status_aktif = 1`, [id]);
-    if (data.length === 0) {
+    const [rows]: any = await pool.query(`SELECT * FROM thuangtitipan WHERE nomor = ? AND jenis = 'UMS' AND status_aktif = 1`, [id]);
+    if (rows.length === 0) {
       return NextResponse.json({ success: false, error: 'Uang Muka Supplier tidak ditemukan' }, { status: 404 });
     }
-    return NextResponse.json({ success: true, data: data[0] });
+    const h = rows[0];
+    const data = {
+      ...h,
+      subtotal: Number(h.subtotal || 0),
+      ppn_nominal: Number(h.ppn_nominal || 0),
+      total: Number(h.total || 0),
+      total_idr: Number(h.total_idr || 0),
+      kurs: Number(h.kurs || 1)
+    };
+    return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

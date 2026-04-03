@@ -2,27 +2,50 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request, context: any) {
   try {
-    const { id } = await context.params;
-    const headerData: any = await executeQuery(
+    const params = await context.params;
+    const id = params.id;
+    const [headerRows]: any = await pool.query(
       `SELECT h.*, c.nama as customer 
        FROM thjualretur h 
        LEFT JOIN mhcustomer c ON h.nomormhrelasi = c.nomor
        WHERE h.kode = ? AND h.status_aktif = 1`, [id]
     );
-    if (headerData.length === 0) {
+    if (headerRows.length === 0) {
       return NextResponse.json({ success: false, error: 'Data tidak ditemukan' }, { status: 404 });
     }
-    const header = headerData[0];
-    if (!header.tanggal || !header.nomormhrelasi) {
-      return NextResponse.json({ success: false, error: 'Data tidak lengkap' }, { status: 400 });
-    }
-    const items: any = await executeQuery(
+    const header = headerRows[0];
+    
+    const [itemsRows]: any = await pool.query(
       `SELECT * FROM tdjualretur WHERE nomorthjualretur = ? AND status_aktif = 1 ORDER BY nomor`,
       [header.nomor]
     );
-    return NextResponse.json({ success: true, data: { ...header, items } });
+
+    return NextResponse.json({ 
+      success: true, 
+      data: { 
+        ...header,
+        subtotal: Number(header.subtotal || 0),
+        diskon_nominal: Number(header.diskon_nominal || 0),
+        dpp: Number(header.dpp || 0),
+        ppn_nominal: Number(header.ppn_nominal || 0),
+        total: Number(header.total || 0),
+        total_idr: Number(header.total_idr || 0),
+        kurs: Number(header.kurs || 1),
+        items: itemsRows.map((d: any) => ({
+          ...d,
+          jumlah: Number(d.jumlah || 0),
+          harga: Number(d.harga || 0),
+          diskon_prosentase: Number(d.diskon_prosentase || 0),
+          diskon_nominal: Number(d.diskon_nominal || 0),
+          netto: Number(d.netto || 0),
+          subtotal: Number(d.subtotal || 0)
+        }))
+      } 
+    });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -31,7 +54,8 @@ export async function GET(request: Request, context: any) {
 export async function PUT(request: Request, context: any) {
   const connection = await pool.getConnection();
   try {
-    const { id } = await context.params;
+    const params = await context.params;
+    const id = params.id;
     const body = await request.json();
     const { action, user } = body;
     await connection.beginTransaction();

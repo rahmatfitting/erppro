@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession();
@@ -11,7 +13,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     const { id } = await params;
 
-    const headerRows: any = await executeQuery(`
+    const [headerRows]: any = await pool.query(`
       SELECT b.*, i.nama as item_nama
       FROM mhbom b
       JOIN mhbarang i ON b.item_id = i.nomor
@@ -22,7 +24,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ success: false, error: "BOM tidak ditemukan" }, { status: 404 });
     }
 
-    const detailRows = await executeQuery(`
+    const [detailRows]: any = await pool.query(`
       SELECT d.*, i.nama as item_nama, s.nama as satuan_nama
       FROM mdbom d
       JOIN mhbarang i ON d.item_id = i.nomor
@@ -34,7 +36,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       success: true, 
       data: {
         ...headerRows[0],
-        items: detailRows
+        items: detailRows.map((d: any) => ({
+          ...d,
+          jumlah: Number(d.jumlah || 0)
+        }))
       } 
     });
   } catch (error: any) {
@@ -65,7 +70,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     for (const item of items) {
       await connection.execute(
         `INSERT INTO mdbom (nomormhbom, item_id, jumlah, satuan_id) VALUES (?, ?, ?, ?)`,
-        [id, item.item_id, item.jumlah, item.satuan_id]
+        [id, item.item_id, parseFloat(item.jumlah || 0), item.satuan_id]
       );
     }
 
@@ -87,7 +92,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }
 
     const { id } = await params;
-    await executeQuery(`UPDATE mhbom SET status_aktif = 0 WHERE nomor = ? AND nomormhcabang = ?`, [id, session.active_cabang]);
+    await pool.query(`UPDATE mhbom SET status_aktif = 0 WHERE nomor = ? AND nomormhcabang = ?`, [id, session.active_cabang]);
 
     return NextResponse.json({ success: true, message: "BOM berhasil dihapus" });
   } catch (error: any) {

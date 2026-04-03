@@ -1,17 +1,20 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request, context: any) {
   try {
-    const { id } = await context.params;
-    const headerData: any = await executeQuery(
+    const params = await context.params;
+    const id = params.id;
+    const [headerRows]: any = await pool.query(
       `SELECT * FROM thbeliretur WHERE nomor = ?`, [id]
     );
-    if (headerData.length === 0) {
+    if (headerRows.length === 0) {
       return NextResponse.json({ success: false, error: 'Retur Beli tidak ditemukan' }, { status: 404 });
     }
-    const header = headerData[0];
-    const detailsData: any = await executeQuery(
+    const header = headerRows[0];
+    const [detailsData]: any = await pool.query(
       `SELECT d.*, n.kode as kode_nota 
        FROM tdbeliretur d
        LEFT JOIN thbelinota n ON d.nomorthbelinota = n.nomor
@@ -22,6 +25,13 @@ export async function GET(request: Request, context: any) {
         success: true, 
         data: { 
             ...header, 
+            subtotal: Number(header.subtotal || 0),
+            diskon_nominal: Number(header.diskon_nominal || 0),
+            dpp: Number(header.dpp || 0),
+            ppn_nominal: Number(header.ppn_nominal || 0),
+            total: Number(header.total || 0),
+            total_idr: Number(header.total_idr || 0),
+            kurs: Number(header.kurs || 1),
             items: detailsData.map((d: any) => ({
                 id: d.nomor,
                 nomorthbelinota: d.nomorthbelinota,
@@ -32,12 +42,12 @@ export async function GET(request: Request, context: any) {
                 kode_barang: d.kode_barang || '',
                 barang: d.nama_barang,
                 satuan: d.satuan,
-                jumlah: d.jumlah,
-                harga: d.harga,
-                diskon_prosentase: d.diskon_prosentase,
-                diskon_nominal: d.diskon_nominal,
-                netto: d.netto,
-                subtotal: d.subtotal,
+                jumlah: Number(d.jumlah || 0),
+                harga: Number(d.harga || 0),
+                diskon_prosentase: Number(d.diskon_prosentase || 0),
+                diskon_nominal: Number(d.diskon_nominal || 0),
+                netto: Number(d.netto || 0),
+                subtotal: Number(d.subtotal || 0),
                 keterangan: d.keterangan
             }))
         } 
@@ -50,7 +60,8 @@ export async function GET(request: Request, context: any) {
 export async function PUT(request: Request, context: any) {
   const connection = await pool.getConnection();
   try {
-    const { id } = await context.params;
+    const params = await context.params;
+    const id = params.id;
     const body = await request.json();
     const { 
       tanggal, supplier, nomormhsupplier, gudang, nomormhgudang, keterangan, 

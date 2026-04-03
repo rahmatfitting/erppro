@@ -3,6 +3,8 @@ import { executeQuery, pool } from "@/lib/db";
 import { addLogHistory } from '@/lib/history';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: Request,
   context: any
@@ -12,7 +14,7 @@ export async function GET(
     const id = params.id;
 
     // 1. Fetch Header
-    const headers: any = await executeQuery(
+    const [headers]: any = await pool.query(
       `SELECT h.*, v.nama as valuta_nama 
        FROM thbelinota h 
        LEFT JOIN mhvaluta v ON h.nomormhvaluta = v.nomor 
@@ -27,7 +29,7 @@ export async function GET(
     const header = headers[0];
 
     // 2. Fetch Details
-    const items = await executeQuery(
+    const [details]: any = await pool.query(
       `SELECT d.*, b.nama as barang_nama, b.kode as master_kode, s.nama as satuan_nama 
        FROM tdbelinota d 
        LEFT JOIN mhbarang b ON d.nomormhbarang = b.nomor 
@@ -40,7 +42,22 @@ export async function GET(
       success: true,
       data: {
         ...header,
-        items
+        subtotal: Number(header.subtotal || 0),
+        diskon_nominal: Number(header.diskon_nominal || 0),
+        dpp: Number(header.dpp || 0),
+        ppn_nominal: Number(header.ppn_nominal || 0),
+        total: Number(header.total || 0),
+        total_idr: Number(header.total_idr || 0),
+        kurs: Number(header.kurs || 1),
+        items: details.map((d: any) => ({
+          ...d,
+          jumlah: Number(d.jumlah || 0),
+          harga: Number(d.harga || 0),
+          diskon_prosentase: Number(d.diskon_prosentase || 0),
+          diskon_nominal: Number(d.diskon_nominal || 0),
+          netto: Number(d.netto || 0),
+          subtotal: Number(d.subtotal || 0)
+        }))
       }
     });
 

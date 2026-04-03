@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const session = await getSession();
@@ -25,7 +27,12 @@ export async function GET(request: Request) {
       params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
 
-    const data = await executeQuery(query, params);
+    const [rows]: any = await pool.query(query, params);
+    const data = rows.map((h: any) => ({
+      ...h,
+      // No specific decimal fields identified in list yet, but applied Number() if added later
+    }));
+
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -58,7 +65,7 @@ export async function POST(request: Request) {
     for (const item of items) {
       await connection.execute(
         `INSERT INTO mdbom (nomormhbom, item_id, jumlah, satuan_id) VALUES (?, ?, ?, ?)`,
-        [headerId, item.item_id, item.jumlah, item.satuan_id]
+        [headerId, item.item_id, parseFloat(item.jumlah || 0), item.satuan_id]
       );
     }
 

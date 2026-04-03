@@ -3,19 +3,21 @@ import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 import { getChanges } from '@/lib/audit';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request, context: any) {
   try {
     const params = await context.params;
     const id = params.id;
     // Get Header
     const headerQuery = `SELECT * FROM thbelipermintaan WHERE nomor = ?`;
-    const headerData: any = await executeQuery(headerQuery, [id]);
-
-    if (headerData.length === 0) {
+    const [headerRows]: any = await pool.query(headerQuery, [id]);
+    
+    if (headerRows.length === 0) {
       return NextResponse.json({ success: false, error: "Permintaan Pembelian tidak ditemukan" }, { status: 404 });
     }
 
-    const header = headerData[0];
+    const header = headerRows[0];
 
     // Extract Divisi from keterangan if necessary based on existing logic
     let divisi = '';
@@ -40,7 +42,7 @@ export async function GET(request: Request, context: any) {
       ) ord ON td.nomor = ord.nomortdbelipermintaan
       WHERE td.nomorthbelipermintaan = ?
     `;
-    const detailsData: any = await executeQuery(detailsQuery, [header.nomor]);
+    const [detailsData]: any = await pool.query(detailsQuery, [header.nomor]);
 
     return NextResponse.json({
       success: true,
@@ -55,8 +57,8 @@ export async function GET(request: Request, context: any) {
           barang: d.nama_barang,
           kode_barang: d.kode_barang,
           satuan: d.satuan,
-          jumlah: d.jumlah,
-          jumlah_sisa: d.jumlah_sisa,
+          jumlah: Number(d.jumlah || 0),
+          jumlah_sisa: Number(d.jumlah_sisa || 0),
           keterangan: d.keterangan
         }))
       }
@@ -139,7 +141,7 @@ export async function PATCH(request: Request, context: any) {
     const { action, user } = body; // "approve" or "disapprove"
 
     if (action === 'approve') {
-      const result: any = await executeQuery(
+      const [result]: any = await pool.query(
         `UPDATE thbelipermintaan SET status_disetujui = 1, disetujui_oleh = ?, disetujui_pada = NOW() WHERE nomor = ?`,
         [user || 'Admin', id]
       );
@@ -148,7 +150,7 @@ export async function PATCH(request: Request, context: any) {
       return NextResponse.json({ success: true, message: "Permintaan Pembelian disetujui" });
     } else if (action === 'disapprove') {
        // Requirement 4: Check if already created Order Beli
-       const existingPO: any = await executeQuery(
+       const [existingPO]: any = await pool.query(
          `SELECT nomor FROM thbeliorder WHERE nomorthbelipermintaan = ? AND status_aktif = 1 LIMIT 1`,
          [id]
        );
@@ -156,7 +158,7 @@ export async function PATCH(request: Request, context: any) {
          return NextResponse.json({ success: false, error: "Tidak bisa batal approve, PR sudah ditarik ke Order Beli" }, { status: 400 });
        }
 
-      const result: any = await executeQuery(
+      const [result]: any = await pool.query(
         `UPDATE thbelipermintaan SET status_disetujui = 0, disetujui_oleh = NULL, disetujui_pada = NULL WHERE nomor = ?`,
         [id]
       );
@@ -179,7 +181,7 @@ export async function DELETE(request: Request, context: any) {
     const body = await request.json().catch(() => ({}));
     const user = body.user || 'Admin';
 
-    const result: any = await executeQuery(
+    const [result]: any = await pool.query(
       `UPDATE thbelipermintaan SET status_aktif = 0, dibatalkan_oleh = ?, dibatalkan_pada = NOW() WHERE nomor = ?`,
       [user, id]
     );
