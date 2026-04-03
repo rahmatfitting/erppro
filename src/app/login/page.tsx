@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Lock, User, KeyRound, Building2 } from "lucide-react";
+import { Loader2, Lock, User, KeyRound, Building2, ArrowRight } from "lucide-react";
 
 export default function Login() {
   const router = useRouter();
@@ -53,119 +53,105 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center sm:px-6 lg:px-8 bg-[url('https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2629&auto=format&fit=crop')] bg-cover bg-center">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"></div>
-      
-      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <div className="flex justify-center mb-6 drop-shadow-lg">
-           <div className="h-16 w-16 bg-white rounded-2xl flex items-center justify-center rotate-3 shadow-xl">
-              <Building2 className="h-8 w-8 text-indigo-600 -rotate-3" />
-           </div>
-        </div>
-        <h2 className="mt-2 text-center text-3xl font-extrabold text-white tracking-tight drop-shadow-md">
-          Portal ERP System
-        </h2>
-        <p className="mt-2 text-center text-sm text-indigo-100">
-          Masuk ke akun Anda untuk melanjutkan
-        </p>
+    <div className="min-h-screen w-full relative flex items-center justify-center p-4 overflow-y-auto bg-slate-900">
+      {/* Dynamic Background Elements */}
+      <div className="absolute inset-0 z-0">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-600/20 blur-[120px] animate-pulse"></div>
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-violet-600/20 blur-[120px] animate-pulse delay-700"></div>
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=2629&auto=format&fit=crop')] bg-cover bg-center opacity-30 mix-blend-overlay"></div>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
-        <div className="bg-white/95 backdrop-blur-xl py-10 px-6 sm:px-10 shadow-2xl rounded-2xl border border-white/20">
+      <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in duration-700">
+        {/* Logo / Header Section */}
+        <div className="text-center mb-8">
+          <div className="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-white/10 backdrop-blur-2xl border border-white/20 shadow-2xl mb-6 relative group overflow-hidden">
+             <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+             <Building2 className="h-10 w-10 text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" />
+          </div>
+          <h1 className="text-4xl font-black text-white tracking-tight sm:text-5xl">
+            ERP<span className="text-indigo-400">PRO</span>
+          </h1>
+          <p className="mt-3 text-slate-400 font-medium uppercase tracking-[0.2em] text-[10px]">
+             Secure Enterprise Access
+          </p>
+        </div>
+
+        {/* Login Card */}
+        <div className="bg-white/10 backdrop-blur-2xl rounded-[2.5rem] p-8 sm:p-10 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.3)] relative overflow-hidden group">
+          {/* Subtle inner glow */}
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
           
           <form className="space-y-6" onSubmit={handleLogin}>
-            {error && (
-              <div className="bg-red-50/80 backdrop-blur-md border-l-4 border-red-500 p-4 rounded-md">
-                <div className="flex">
-                  <div className="flex-shrink-0">
-                    <Lock className="h-5 w-5 text-red-500" aria-hidden="true" />
-                  </div>
-                  <div className="ml-3 text-sm font-medium text-red-700">
-                    {error}
-                  </div>
-                </div>
-              </div>
-            )}
-
             <div>
-              <label className="block text-sm font-semibold text-slate-700">
-                Username
+              <label className="block text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-2 pl-1">
+                Identity Profile
               </label>
-              <div className="mt-2 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-slate-400" />
+              <div className="relative group/input">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within/input:text-indigo-400 text-slate-500">
+                  <User className="h-5 w-5" />
                 </div>
                 <input
                   type="text"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="appearance-none block w-full pl-10 px-3 py-3 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm bg-slate-50/50 transition-all font-medium text-slate-900"
-                  placeholder="admin"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all font-medium"
+                  placeholder="Username"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-700">
-                Password
+              <label className="block text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-2 pl-1">
+                Access Token
               </label>
-              <div className="mt-2 relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <KeyRound className="h-5 w-5 text-slate-400" />
+              <div className="relative group/input">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within/input:text-indigo-400 text-slate-500">
+                  <KeyRound className="h-5 w-5" />
                 </div>
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full pl-10 px-3 py-3 border border-slate-200 rounded-xl shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm bg-slate-50/50 transition-all font-medium text-slate-900"
-                  placeholder="••••••••"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 pl-12 pr-4 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all font-medium"
+                  placeholder="Password"
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <input
-                  id="remember-me"
-                  name="remember-me"
-                  type="checkbox"
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded cursor-pointer"
-                />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-600 cursor-pointer">
-                  Ingat Saya
-                </label>
+            {error && (
+              <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                <Lock className="h-5 w-5 text-rose-500 shrink-0" />
+                <p className="text-xs font-bold text-rose-200 leading-tight">{error}</p>
               </div>
+            )}
 
-              <div className="text-sm">
-                <a href="#" className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors">
-                  Lupa password?
-                </a>
-              </div>
-            </div>
-
-            <div>
+            <div className="pt-2">
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all disabled:opacity-70 disabled:cursor-not-allowed hover:-translate-y-0.5"
+                className="w-full relative group overflow-hidden py-4 px-6 rounded-2xl bg-indigo-600 text-white font-black uppercase tracking-widest text-xs transition-all hover:bg-indigo-500 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_10px_30px_rgba(79,70,229,0.3)]"
               >
                 {loading ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Sedang Memproses...
-                  </span>
+                   <Loader2 className="h-5 w-5 animate-spin mx-auto" />
                 ) : (
-                  "Masuk ke Sistem"
+                  <span className="flex items-center justify-center gap-2">
+                    Establish Session <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </span>
                 )}
               </button>
             </div>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-100">
-             <p className="text-center text-xs text-slate-500 font-medium">
-               Gunakan <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">admin</code> / <code className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">admin</code> untuk login default.
-             </p>
+          <div className="mt-8 pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
+             <div className="flex items-center gap-2">
+                <input id="rem" type="checkbox" className="rounded border-white/10 bg-white/5 text-indigo-600 focus:ring-indigo-500/50" />
+                <label htmlFor="rem" className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter cursor-pointer">Remember Access</label>
+             </div>
+             <a href="#" className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 uppercase tracking-tighter transition-colors">
+                Recover Credentials?
+             </a>
           </div>
         </div>
       </div>

@@ -21,7 +21,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className="h-full bg-slate-50 dark:bg-slate-950">
-      <body className={`${inter.className} h-full overflow-hidden text-slate-900 dark:text-slate-50 antialiased`}>
+      <body className={`${inter.className} h-full ${session ? 'overflow-hidden' : 'overflow-y-auto'} text-slate-900 dark:text-slate-50 antialiased`}>
         {session && (
            <script dangerouslySetInnerHTML={{
              __html: `window.__USER__ = ${JSON.stringify(session)};`
