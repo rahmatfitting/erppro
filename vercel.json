@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/gold-prices/sync",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/buyback-prices/sync",
-      "schedule": "0 * * * *"
+      "path": "/api/cron/sync",
+      "schedule": "0 0 * * *"
     }
   ]
 }
