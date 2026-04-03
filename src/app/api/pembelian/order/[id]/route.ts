@@ -3,13 +3,15 @@ import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 import { getChanges } from '@/lib/audit';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request, context: any) {
   try {
     const params = await context.params;
     const id = params.id;
     // Get Header
     const headerQuery = `SELECT * FROM thbeliorder WHERE nomor = ?`;
-    const headerData: any = await executeQuery(headerQuery, [id]);
+    const [headerData]: any = await pool.query(headerQuery, [id]);
 
     if (headerData.length === 0) {
       return NextResponse.json({ success: false, error: "Order Beli tidak ditemukan" }, { status: 404 });
@@ -30,7 +32,7 @@ export async function GET(request: Request, context: any) {
       ) t ON d.nomor = t.nomortdbeliorder
       WHERE d.nomorthbeliorder = ?
     `;
-    const detailsData: any = await executeQuery(detailsQuery, [header.nomor]);
+    const [detailsData]: any = await pool.query(detailsQuery, [header.nomor]);
 
     return NextResponse.json({
       success: true,
@@ -46,14 +48,14 @@ export async function GET(request: Request, context: any) {
           kode_barang: d.kode_barang || '',
           barang: d.nama_barang,
           satuan: d.satuan,
-          jumlah: d.jumlah,
-          harga: d.harga,
-          diskonPersen: d.diskon_prosentase,
-          nominalDiskon: d.diskon_nominal,
-          subtotal: d.subtotal,
+          jumlah: Number(d.jumlah || 0),
+          harga: Number(d.harga || 0),
+          diskonPersen: Number(d.diskon_prosentase || 0),
+          nominalDiskon: Number(d.diskon_nominal || 0),
+          subtotal: Number(d.subtotal || 0),
           keterangan: d.keterangan,
-          jumlah_terima: d.jumlah_terima,
-          jumlah_sisa: d.jumlah - d.jumlah_terima
+          jumlah_terima: Number(d.jumlah_terima || 0),
+          jumlah_sisa: Number(d.jumlah || 0) - Number(d.jumlah_terima || 0)
         }))
       }
     });
