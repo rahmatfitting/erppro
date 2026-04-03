@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { BOMForm } from "../components/BOMForm";
 import { Loader2 } from "lucide-react";
 
-export default function EditBOMPage({ params }: { params: { id: string } }) {
+export default function EditBOMPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
+  const id = resolvedParams.id;
   const [initialData, setInitialData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const res = await fetch(`/api/ppic/bom/${params.id}`);
+        const res = await fetch(`/api/ppic/bom/${id}`);
         const json = await res.json();
         if (json.success) {
           setInitialData(json.data);
@@ -24,7 +26,7 @@ export default function EditBOMPage({ params }: { params: { id: string } }) {
     };
 
     fetchInitialData();
-  }, [params.id]);
+  }, [id]);
 
   if (loading) {
     return (
@@ -44,5 +46,5 @@ export default function EditBOMPage({ params }: { params: { id: string } }) {
     );
   }
 
-  return <BOMForm id={params.id} initialData={initialData} />;
+  return <BOMForm id={id} initialData={initialData} />;
 }

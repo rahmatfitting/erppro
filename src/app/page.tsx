@@ -207,7 +207,7 @@ export default function Dashboard() {
                     <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(val) => `Rp${val/1000000}M`} />
                     <Tooltip 
                       contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                      formatter={(val: number) => [formatIDR(val), 'Sales']}
+                      formatter={(val: any) => [formatIDR(val), 'Sales']}
                     />
                     <Area type="monotone" dataKey="sales" stroke="#4f46e5" fillOpacity={1} fill="url(#colorSales)" strokeWidth={3} />
                   </AreaChart>
@@ -222,7 +222,7 @@ export default function Dashboard() {
                     <YAxis fontSize={10} axisLine={false} tickLine={false} tickFormatter={(val) => `Rp${val/1000}rb`} />
                     <Tooltip 
                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                       formatter={(val: number) => formatIDR(val)}
+                       formatter={(val: any) => formatIDR(val)}
                     />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '20px' }} />
                     <Bar dataKey="inflow" name="Uang Masuk" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
@@ -262,7 +262,7 @@ export default function Dashboard() {
                       <Tooltip 
                          cursor={{ fill: 'transparent' }}
                          contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                         formatter={(val: number) => formatIDR(val)}
+                         formatter={(val: any) => formatIDR(val)}
                       />
                       <Bar dataKey="value" fill="#f59e0b" radius={[0, 10, 10, 0]} barSize={15} />
                    </BarChart>

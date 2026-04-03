@@ -2,14 +2,14 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession();
     if (!session || !session.active_cabang) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     const headerRows: any = await executeQuery(`
       SELECT b.*, i.nama as item_nama
@@ -42,7 +42,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const connection = await pool.getConnection();
   try {
     const session = await getSession();
@@ -50,7 +50,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     const { kode, nama, item_id, keterangan, items } = await request.json();
 
     await connection.beginTransaction();
@@ -79,14 +79,14 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession();
     if (!session || !session.active_cabang) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     await executeQuery(`UPDATE mhbom SET status_aktif = 0 WHERE nomor = ? AND nomormhcabang = ?`, [id, session.active_cabang]);
 
     return NextResponse.json({ success: true, message: "BOM berhasil dihapus" });

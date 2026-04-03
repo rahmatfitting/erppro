@@ -2,14 +2,14 @@ import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await getSession();
     if (!session || !session.active_cabang) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     // 1. Get WO Detail
     const woRows: any = await executeQuery(`

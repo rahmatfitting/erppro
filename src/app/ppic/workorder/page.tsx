@@ -5,7 +5,7 @@ import Link from "next/link";
 import { 
   Plus, Search, Filter, Edit, Eye, 
   ClipboardList, Calendar, CheckCircle, 
-  Clock, AlertCircle, XCircle 
+  Clock, AlertCircle, XCircle, FileText 
 } from "lucide-react";
 
 export default function WorkOrderListPage() {

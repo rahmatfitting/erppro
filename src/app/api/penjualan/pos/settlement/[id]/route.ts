@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { addLogHistory } from '@/lib/history';
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const connection = await pool.getConnection();
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const user = body.user || 'Admin';
 
