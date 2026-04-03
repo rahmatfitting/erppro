@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { executeQuery, pool } from '@/lib/db';
 import { getSession } from "@/lib/auth";
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -25,19 +27,19 @@ export async function GET(request: Request) {
     }
     query += ` WHERE a.status_aktif = 1`;
 
-    if (detail !== null) {
+    if (detail !== null && detail !== undefined && detail !== '') {
       query += ` AND detail = ?`;
       params.push(parseInt(detail));
     }
-    if (kas !== null) {
+    if (kas !== null && kas !== undefined && kas !== '') {
       query += ` AND kas = ?`;
       params.push(parseInt(kas));
     }
-    if (bank !== null) {
+    if (bank !== null && bank !== undefined && bank !== '') {
       query += ` AND bank = ?`;
       params.push(parseInt(bank));
     }
-    if (isBrowseUms !== null) {
+    if (isBrowseUms !== null && isBrowseUms !== undefined && isBrowseUms !== '') {
       query += ` AND is_browse_ums = ?`;
       params.push(parseInt(isBrowseUms));
     }
@@ -50,7 +52,8 @@ export async function GET(request: Request) {
     query += ` ORDER BY kode ASC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    // Use pool.query for LIMIT/OFFSET stability
+    const [data] = await pool.query(query, params);
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

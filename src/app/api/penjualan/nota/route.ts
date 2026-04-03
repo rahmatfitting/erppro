@@ -3,6 +3,8 @@ import { executeQuery, pool } from '@/lib/db';
 import { sendNotification } from '@/lib/notifications';
 import { addLogHistory } from '@/lib/history';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -52,7 +54,8 @@ export async function GET(request: Request) {
     query += ` ORDER BY h.tanggal DESC, h.nomor DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    // Use pool.query for LIMIT/OFFSET stability
+    const [data] = await pool.query(query, params);
     
     return NextResponse.json({ success: true, data });
   } catch (error: any) {

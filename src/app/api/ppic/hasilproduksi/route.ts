@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const session = await getSession();
@@ -29,7 +31,8 @@ export async function GET(request: Request) {
 
     query += ` ORDER BY h.tanggal DESC, h.nomor DESC`;
 
-    const data = await executeQuery(query, params);
+    // Use pool.query instead of executeQuery for better stability on Vercel
+    const [data] = await pool.query(query, params);
     return NextResponse.json({ success: true, data });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

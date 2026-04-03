@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -38,7 +40,8 @@ export async function GET(request: Request) {
     query += ` ORDER BY kode ASC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    // Use pool.query for LIMIT/OFFSET stability
+    const [data] = await pool.query(query, params);
     
     return NextResponse.json({ success: true, data });
   } catch (error: any) {

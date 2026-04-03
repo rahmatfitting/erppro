@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from "@/lib/auth";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: Request) {
   try {
     const session = await getSession();
@@ -40,7 +42,8 @@ export async function GET(request: Request) {
     query += ` ORDER BY nomor DESC LIMIT ? OFFSET ?`;
     params.push(limit, offset);
 
-    const data = await executeQuery(query, params);
+    // Use pool.query for LIMIT/OFFSET stability
+    const [data] = await pool.query(query, params);
     
     let countQuery = `SELECT COUNT(*) as total FROM mhgudang g`;
     const countParams: any[] = [];

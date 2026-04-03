@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { executeQuery, pool } from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -80,10 +82,10 @@ export async function GET(request: Request) {
         ORDER BY revenue DESC
       `, [start, fullEnd, start, fullEnd]);
 
-      const revenue = parseFloat(mainStats[0]?.revenue || 0);
-      const transactions = parseInt(mainStats[0]?.transactions || 0);
-      const units = parseFloat(unitsSold[0]?.total || 0);
-      const profit = parseFloat(profitStats[0]?.total_profit || 0);
+      const revenue = Number(mainStats[0]?.revenue || 0);
+      const transactions = Number(mainStats[0]?.transactions || 0);
+      const units = Number(unitsSold[0]?.total || 0);
+      const profit = Number(profitStats[0]?.total_profit || 0);
       const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
       const aov = transactions > 0 ? revenue / transactions : 0;
 
