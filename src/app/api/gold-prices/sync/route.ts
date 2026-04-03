@@ -25,7 +25,7 @@ export async function GET() {
       const plainText = $('body').text();
       const matchHarga = plainText.match(/Harga Emas 1 gram[\s\S]*?Rp\.\s*([\d\.]+)/);
       const matchPrevHarga = plainText.match(/Harga Sebelumnya[\s\S]*?Rp\.\s*([\d\.]+)/);
-      const matchDiff = plainText.match(/Perubahan[\s\S]*?Rp\.\s*([\d\.]+)/);
+      const matchDiff = plainText.match(/Perubahan[\s\S]*?Rp\.\s*(-?[\d\.]+)/);
       
       if (matchHarga) priceText = matchHarga[1];
       if (matchPrevHarga) prevPriceText = matchPrevHarga[1];
@@ -34,7 +34,8 @@ export async function GET() {
 
     // Clean data
     const parsePrice = (str: string) => {
-        const cleaned = str.replace(/[^\d]/g, '');
+        // Keep digits and minus sign
+        const cleaned = str.replace(/[^\d-]/g, '');
         return cleaned ? parseFloat(cleaned) : 0;
     };
 

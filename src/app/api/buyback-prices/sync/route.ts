@@ -22,14 +22,19 @@ export async function GET() {
     }
 
     // Extract official "Perubahan" directly from logammulia chart widget
+    // Extract official "Perubahan" directly from logammulia chart widget
     const diffText = $('span.title:contains("Perubahan:")').next('.value').find('.text').text();
     let scrapedDiff = 0;
     if (diffText) {
+       // Keep digits
        const cleaned = diffText.replace(/[^\d]/g, '');
        scrapedDiff = cleaned ? parseFloat(cleaned) : 0;
     }
     const isUp = $('span.title:contains("Perubahan:")').next('.value').find('.fa-wrapper .fa-caret-up').length > 0;
     const isDown = $('span.title:contains("Perubahan:")').next('.value').find('.fa-wrapper .fa-caret-down').length > 0;
+
+    // Apply sign to diff
+    const finalDiff = isDown ? -scrapedDiff : scrapedDiff;
 
     let computedPrevPrice = price1g;
     if (isUp) computedPrevPrice = price1g - scrapedDiff;
@@ -62,7 +67,7 @@ export async function GET() {
       if (last.price_1g !== price1g) {
           didChangePrice = true;
           prevPrice = computedPrevPrice;
-          diff = scrapedDiff;
+          diff = finalDiff;
 
           // Check if same date
           const dateStr = new Date(last.fetch_date).toISOString().split('T')[0];
@@ -80,7 +85,7 @@ export async function GET() {
           }
       } else {
           prevPrice = computedPrevPrice;
-          diff = scrapedDiff;
+          diff = finalDiff;
           // Check if date changed but price is same
           const dateStr = new Date(last.fetch_date).toISOString().split('T')[0];
           if (dateStr !== fetchDate) {
