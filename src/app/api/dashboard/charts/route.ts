@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     // 1. Sales Trend (Last 30 Days)

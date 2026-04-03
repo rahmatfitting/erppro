@@ -67,8 +67,8 @@ export default function GoldBuybackDashboard() {
 
   const chartData = data.map(item => ({
     date: item.time_label || item.fetch_date,
-    price: parseFloat(item.price_1g),
-    diff: parseFloat(item.diff)
+    price: Number(item.price_1g || 0),
+    diff: Number(item.diff || 0)
   }));
 
   return (
@@ -114,12 +114,12 @@ export default function GoldBuybackDashboard() {
           <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white opacity-10 blur-2xl"></div>
           
           <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80 mb-2">Harga Buyback 1 Gram</p>
-          <h3 className="text-3xl font-black tracking-tighter mb-4">{formatIDR(latest.price_1g)}</h3>
+          <h3 className="text-3xl font-black tracking-tighter mb-4">{formatIDR(Number(latest.price_1g || 0))}</h3>
           
           <div className="pt-4 mt-2 border-t border-white/20 flex justify-between items-end">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80 mb-1">Harga Sebelumnya</p>
-              <p className="text-lg font-bold tracking-tight opacity-90">{formatIDR(latest.prev_price)}</p>
+              <p className="text-lg font-bold tracking-tight opacity-90">{formatIDR(Number(latest.prev_price || 0))}</p>
             </div>
             <div className="text-[9px] font-bold uppercase tracking-widest bg-black/20 w-max px-2 py-1 rounded-full">
               {latest.fetch_date}
@@ -131,7 +131,7 @@ export default function GoldBuybackDashboard() {
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 mb-2">Perubahan Harga</p>
           <div className="flex items-center gap-4">
             <h3 className={cn("text-3xl font-black tracking-tighter", colorTheme)}>
-              {isUp ? "+" : isDown ? "-" : ""}{formatIDR(latest.diff)}
+              {isUp ? "+" : isDown ? "-" : ""}{formatIDR(Number(latest.diff || 0))}
             </h3>
             <div className={cn("h-10 w-10 rounded-2xl flex items-center justify-center", 
               isUp ? "bg-emerald-100 text-emerald-600" : isDown ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-500"
@@ -140,7 +140,7 @@ export default function GoldBuybackDashboard() {
             </div>
           </div>
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400 mt-4">
-            Berubah dari <span className="text-slate-600 dark:text-slate-200">{formatIDR(latest.prev_price)}</span>
+            Berubah dari <span className="text-slate-600 dark:text-slate-200">{formatIDR(Number(latest.prev_price || 0))}</span>
           </p>
         </div>
 
