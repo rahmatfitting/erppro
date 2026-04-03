@@ -125,6 +125,7 @@ export async function POST(request: Request) {
     await connection.commit();
     const moduleName = jenis === 'NKC' ? 'Nota Kredit Customer' : 'Retur Jual';
     await addLogHistory(moduleName, headerId, "CREATE", user || "Admin", `Membuat ${moduleName} baru ${generatedKode}`);
+    await sendNotification(moduleName, `${moduleName} Baru: ${generatedKode}`, `Ada ${moduleName} baru yang perlu disetujui.`, generatedKode, headerId);
     return NextResponse.json({ success: true, message: `${jenis} berhasil disimpan`, data: { id: headerId, kode: generatedKode } });
   } catch (error: any) {
     await connection.rollback();

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { executeQuery } from '@/lib/db';
 import webpush from 'web-push';
+import { sendNotification } from '@/lib/notifications';
 
 export async function GET() {
   try {
@@ -106,8 +107,10 @@ export async function GET() {
        );
     }
 
+
     // Send Push Notification if price changed
     if (didChangePrice) {
+      await sendNotification('Gold Prices', 'Update Harga Emas!', `Harga Emas Antam baru: Rp. ${price1g.toLocaleString('id-ID')}/gram`, 'GOLD', 0);
       if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
         webpush.setVapidDetails(
           'mailto:admin@example.com',

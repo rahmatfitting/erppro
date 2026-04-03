@@ -174,7 +174,7 @@ export async function POST(request: Request) {
 
     await connection.commit();
     await addLogHistory("Nota Pembelian", headerId, "CREATE", body.user || "Admin", `Membuat Nota Pembelian ${generatedKode}`);
-    await sendNotification('Nota Pembelian', `Nota Beli Baru: ${generatedKode}`, `Ada nota pembelian baru yang perlu disetujui.`, generatedKode);
+    await sendNotification('Nota Pembelian', `Nota Beli Baru: ${generatedKode}`, `Ada nota pembelian baru yang perlu disetujui.`, generatedKode, headerId);
     return NextResponse.json({ success: true, message: "Nota Beli berhasil disimpan", data: { nomor: headerId, kode: generatedKode } });
 
   } catch (error: any) {

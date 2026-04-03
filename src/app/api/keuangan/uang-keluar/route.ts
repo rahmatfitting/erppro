@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     const modulName = jenis == 1 ? 'Uang Keluar Utama' : 'Uang Keluar Lain';
     await addLogHistory(modulName, headerId, "CREATE", body.user || "Admin", `Membuat ${modulName} ${generatedKode}`);
     
-    await sendNotification(modulName, `${modulName} Baru: ${generatedKode}`, `Ada pengeluaran ${metode} baru yang perlu diverifikasi.`, generatedKode);
+    await sendNotification(modulName, `${modulName} Baru: ${generatedKode}`, `Ada pengeluaran ${metode} baru yang perlu diverifikasi.`, generatedKode, headerId);
 
     return NextResponse.json({ success: true, message: `${modulName} berhasil disimpan`, data: { id: headerId, kode: generatedKode } });
   } catch (error: any) {

@@ -13,6 +13,7 @@ interface Notif {
   judul: string;
   isi: string;
   ref_kode: string;
+  ref_id: number;
   dibaca: number;
   dibuat_pada: string;
 }
@@ -31,9 +32,20 @@ const MODULE_HREF: Record<string, string> = {
   "Surat Jalan": "/penjualan/surat-jalan",
   "Nota Penjualan": "/penjualan/nota",
   "Retur Jual": "/penjualan/retur",
-  "Nota Kredit Customer": "/penjualan/nkc",
+  "Nota Kredit Customer": "/penjualan/retur",
   "Nota Debet Customer": "/penjualan/ndc",
   "Uang Muka Customer": "/penjualan/umc",
+  "Stok Opname": "/stok/opname",
+  "Pemakaian Internal": "/stok/pemakaian-internal",
+  "Transfer Gudang": "/stok/pengiriman",
+  "Transformasi Barang": "/stok/ubah-bentuk",
+  "Uang Masuk Utama": "/keuangan/uang-masuk",
+  "Uang Masuk Lain": "/keuangan/uang-masuk",
+  "Uang Keluar Utama": "/keuangan/uang-keluar",
+  "Uang Keluar Lain": "/keuangan/uang-keluar",
+  "Nota Beli Langsung": "/pembelian/nota-beli-langsung",
+  "Gold Prices": "/gold-prices",
+  "Buyback Prices": "/gold-buyback",
 };
 
 function timeAgo(dateStr: string) {
@@ -668,8 +680,9 @@ export function Header() {
                     <p className="text-sm text-slate-400">Tidak ada notifikasi</p>
                   </div>
                 ) : notifs.map(n => {
-                  const href = n.ref_kode && MODULE_HREF[n.modul]
-                    ? `${MODULE_HREF[n.modul]}/${n.ref_kode}`
+                  const targetId = n.ref_id || n.ref_kode;
+                  const href = targetId && MODULE_HREF[n.modul]
+                    ? `${MODULE_HREF[n.modul]}/${targetId}`
                     : MODULE_HREF[n.modul];
                   return (
                     <button

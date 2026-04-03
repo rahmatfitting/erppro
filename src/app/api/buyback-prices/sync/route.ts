@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { executeQuery } from '@/lib/db';
 import webpush from 'web-push';
+import { sendNotification } from '@/lib/notifications';
 
 export async function GET() {
   try {

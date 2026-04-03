@@ -3,7 +3,7 @@ import { executeQuery } from '@/lib/db';
 
 // Helper function to send notifications to configured users for a module
 // Call this from any transaction API after successful save
-export async function sendNotification(modul: string, judul: string, isi: string, ref_kode: string) {
+export async function sendNotification(modul: string, judul: string, isi: string, ref_kode: string, ref_id: number = 0) {
   try {
     const recipients: any = await executeQuery(
       `SELECT nomor_user FROM mhnotifikasi_setting WHERE modul = ? AND status_aktif = 1`,
@@ -16,8 +16,8 @@ export async function sendNotification(modul: string, judul: string, isi: string
     for (const r of recipients as any[]) {
       // 1. Insert into database
       await executeQuery(
-        `INSERT INTO mhnotifikasi (nomor_user, modul, judul, isi, ref_kode, dibaca, dibuat_pada) VALUES (?, ?, ?, ?, ?, 0, NOW())`,
-        [r.nomor_user, modul, judul, isi, ref_kode]
+        `INSERT INTO mhnotifikasi (nomor_user, modul, judul, isi, ref_kode, ref_id, dibaca, dibuat_pada) VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
+        [r.nomor_user, modul, judul, isi, ref_kode, ref_id]
       );
 
       // 2. Fetch push subscriptions for this user
@@ -64,10 +64,10 @@ export async function sendNotification(modul: string, judul: string, isi: string
 // API to create a notification (called internally)
 export async function POST(request: Request) {
   try {
-    const { nomor_user, modul, judul, isi, ref_kode } = await request.json();
+    const { nomor_user, modul, judul, isi, ref_kode, ref_id } = await request.json();
     const result: any = await executeQuery(
-      `INSERT INTO mhnotifikasi (nomor_user, modul, judul, isi, ref_kode, dibaca, dibuat_pada) VALUES (?, ?, ?, ?, ?, 0, NOW())`,
-      [nomor_user, modul, judul, isi, ref_kode]
+      `INSERT INTO mhnotifikasi (nomor_user, modul, judul, isi, ref_kode, ref_id, dibaca, dibuat_pada) VALUES (?, ?, ?, ?, ?, ?, 0, NOW())`,
+      [nomor_user, modul, judul, isi, ref_kode, ref_id || 0]
     );
     return NextResponse.json({ success: true, data: { id: (result as any).insertId } });
   } catch (error: any) {

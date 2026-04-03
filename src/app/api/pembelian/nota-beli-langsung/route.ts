@@ -150,6 +150,7 @@ export async function POST(request: Request) {
 
     await connection.commit();
     await addLogHistory("Nota Beli Langsung", headerId, "CREATE", body.user || "Admin", `Membuat Nota Beli Langsung ${generatedKode}`);
+    await sendNotification('Nota Beli Langsung', `Nota Baru: ${generatedKode}`, `Ada nota pembelian langsung baru.`, generatedKode, headerId);
     return NextResponse.json({ success: true, message: "Nota Beli Langsung berhasil disimpan", data: { nomor: headerId, kode: generatedKode } });
 
   } catch (error: any) {

@@ -92,7 +92,7 @@ export async function POST(request: Request) {
 
     await connection.commit();
     await addLogHistory("Nota Debet Customer", result.insertId, "CREATE", user || "Admin", `Membuat NDC baru ${generatedKode}`);
-    await sendNotification('Nota Debet Customer', `NDC Baru: ${generatedKode}`, `Ada nota debet customer baru yang perlu diapprove. Customer: ${customer}`, generatedKode);
+    await sendNotification('Nota Debet Customer', `NDC Baru: ${generatedKode}`, `Ada nota debet customer baru yang perlu diapprove. Customer: ${customer}`, generatedKode, result.insertId);
     return NextResponse.json({ success: true, message: 'NDC berhasil disimpan', data: { id: result.insertId, kode: generatedKode } });
   } catch (error: any) {
     await connection.rollback();

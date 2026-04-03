@@ -137,7 +137,7 @@ export async function POST(request: Request) {
 
     await connection.commit();
     await addLogHistory("Permintaan Pembelian", headerId, "CREATE", body.user || "Admin", `Membuat Permintaan Pembelian ${generatedKode}`);
-    await sendNotification('Permintaan Pembelian', `PR Baru: ${generatedKode}`, `Ada permintaan pembelian baru yang perlu disetujui. Divisi: ${divisi || '-'}`, generatedKode);
+    await sendNotification('Permintaan Pembelian', `PR Baru: ${generatedKode}`, `Ada permintaan pembelian baru yang perlu disetujui. Divisi: ${divisi || '-'}`, generatedKode, headerId);
     return NextResponse.json({ success: true, message: "Permintaan Pembelian berhasil disimpan", data: { nomor: headerId, kode: generatedKode } });
 
   } catch (error: any) {

@@ -87,7 +87,7 @@ export async function POST(request: Request) {
 
     await connection.commit();
     await addLogHistory("Uang Muka Customer", result.insertId, "CREATE", user || "Admin", `Membuat Uang Muka Customer ${generatedKode}`);
-    await sendNotification('Uang Muka Customer', `UMC Baru: ${generatedKode}`, `Ada uang muka customer baru yang perlu diapprove.`, generatedKode);
+    await sendNotification('Uang Muka Customer', `UMC Baru: ${generatedKode}`, `Ada uang muka customer baru yang perlu diapprove.`, generatedKode, result.insertId);
     return NextResponse.json({ success: true, message: 'UMC berhasil disimpan', data: { id: result.insertId, kode: generatedKode } });
   } catch (error: any) {
     await connection.rollback();

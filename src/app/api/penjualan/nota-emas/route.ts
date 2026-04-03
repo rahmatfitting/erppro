@@ -149,7 +149,7 @@ export async function POST(request: Request) {
 
     await connection.commit();
     await addLogHistory("Nota Jual Emas", headerId, "CREATE", user || "Admin", `Membuat Nota Jual Emas baru ${generatedKode}`);
-    await sendNotification('Nota Penjualan', `Invoice (Emas) Baru: ${generatedKode}`, `Ada nota penjualan emas baru dari ${customer} yang perlu disetujui.`, generatedKode);
+    await sendNotification('Nota Penjualan', `Invoice (Emas) Baru: ${generatedKode}`, `Ada nota penjualan emas baru from ${customer} yang perlu disetujui.`, generatedKode, headerId);
     return NextResponse.json({ success: true, message: "Nota Jual Emas berhasil disimpan", data: { id: headerId, kode: generatedKode } });
 
   } catch (error: any) {

@@ -126,7 +126,7 @@ export async function POST(request: Request) {
 
     await addLogHistory("Pemakaian Internal", headerId, "CREATE", user || "Admin", `Membuat Pemakaian Internal ${generatedKode} di ${gudang_nama}`);
     await connection.commit();
-    await sendNotification('Pemakaian Internal', `Pemakaian Baru: ${generatedKode}`, `Ada pengeluaran barang untuk pemakaian internal. Gudang: ${gudang_nama}`, generatedKode);
+    await sendNotification('Pemakaian Internal', `Pemakaian Baru: ${generatedKode}`, `Ada pengeluaran barang untuk pemakaian internal. Gudang: ${gudang_nama}`, generatedKode, headerId);
 
     return NextResponse.json({ 
       success: true, 

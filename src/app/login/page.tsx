@@ -29,18 +29,18 @@ export default function Login() {
 
       if (res.ok && data.success) {
         if (data.hasMultiBranch) {
-           router.push("/login/select");
+          router.push("/login/select");
         } else if (data.singleBranch) {
-           // Auto select if only one branch
-           await fetch("/api/auth/select", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ branchId: data.singleBranch.nomor })
-           });
-           window.location.href = "/";
+          // Auto select if only one branch
+          await fetch("/api/auth/select", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ branchId: data.singleBranch.nomor })
+          });
+          window.location.href = "/";
         } else {
-           // No branches assigned
-           window.location.href = "/";
+          // No branches assigned
+          window.location.href = "/";
         }
       } else {
         setError(data.error || "Gagal masuk. Periksa kembali username dan password Anda.");
@@ -65,14 +65,14 @@ export default function Login() {
         {/* Logo / Header Section */}
         <div className="text-center mb-8">
           <div className="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-white/10 backdrop-blur-2xl border border-white/20 shadow-2xl mb-6 relative group overflow-hidden">
-             <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-             <Building2 className="h-10 w-10 text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" />
+            <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <Building2 className="h-10 w-10 text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" />
           </div>
           <h1 className="text-4xl font-black text-white tracking-tight sm:text-5xl">
             ERP<span className="text-indigo-400">PRO</span>
           </h1>
           <p className="mt-3 text-slate-400 font-medium uppercase tracking-[0.2em] text-[10px]">
-             Secure Enterprise Access
+            Secure Enterprise Access
           </p>
         </div>
 
@@ -80,7 +80,7 @@ export default function Login() {
         <div className="bg-white/10 backdrop-blur-2xl rounded-[2.5rem] p-8 sm:p-10 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.3)] relative overflow-hidden group">
           {/* Subtle inner glow */}
           <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
-          
+
           <form className="space-y-6" onSubmit={handleLogin}>
             <div>
               <label className="block text-[10px] font-black text-indigo-300 uppercase tracking-widest mb-2 pl-1">
@@ -134,10 +134,10 @@ export default function Login() {
                 className="w-full relative group overflow-hidden py-4 px-6 rounded-2xl bg-indigo-600 text-white font-black uppercase tracking-widest text-xs transition-all hover:bg-indigo-500 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_10px_30px_rgba(79,70,229,0.3)]"
               >
                 {loading ? (
-                   <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                  <Loader2 className="h-5 w-5 animate-spin mx-auto" />
                 ) : (
                   <span className="flex items-center justify-center gap-2">
-                    Establish Session <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    Login <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </span>
                 )}
               </button>
@@ -145,13 +145,13 @@ export default function Login() {
           </form>
 
           <div className="mt-8 pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-             <div className="flex items-center gap-2">
-                <input id="rem" type="checkbox" className="rounded border-white/10 bg-white/5 text-indigo-600 focus:ring-indigo-500/50" />
-                <label htmlFor="rem" className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter cursor-pointer">Remember Access</label>
-             </div>
-             <a href="#" className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 uppercase tracking-tighter transition-colors">
-                Recover Credentials?
-             </a>
+            <div className="flex items-center gap-2">
+              <input id="rem" type="checkbox" className="rounded border-white/10 bg-white/5 text-indigo-600 focus:ring-indigo-500/50" />
+              <label htmlFor="rem" className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter cursor-pointer">Remember Access</label>
+            </div>
+            <a href="#" className="text-[10px] font-black text-indigo-400 hover:text-indigo-300 uppercase tracking-tighter transition-colors">
+              Recover Credentials?
+            </a>
           </div>
         </div>
       </div>

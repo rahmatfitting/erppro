@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, pool } from '@/lib/db';
 import { getSession } from '@/lib/auth';
+import { addLogHistory } from '@/lib/history';
+import { sendNotification } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -102,6 +104,9 @@ export async function POST(request: Request) {
 
     const headerId = headerResult.insertId;
     await connection.commit();
+    const moduleName = jenis === 'NKS' ? 'Nota Kredit Supplier' : 'Nota Debet Supplier';
+    await addLogHistory(moduleName, headerId, "CREATE", user || "Admin", `Membuat ${moduleName} ${generatedKode}`);
+    await sendNotification(moduleName, `${jenis} Baru: ${generatedKode}`, `Ada nota ${jenis === 'NKS' ? 'kredit' : 'debet'} supplier baru yang perlu diapprove.`, generatedKode, headerId);
     return NextResponse.json({ success: true, message: `${jenis} berhasil disimpan`, data: { nomor: headerId, kode: generatedKode } });
   } catch (error: any) {
     await connection.rollback();

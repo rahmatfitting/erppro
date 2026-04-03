@@ -151,7 +151,8 @@ export async function POST(request: Request) {
       'Stok Opname', 
       `Stok Opname Baru: ${generatedKode}`, 
       `Ada transaksi stok opname baru yang perlu dikroscek. Gudang: ${gudang_nama}`, 
-      generatedKode
+      generatedKode,
+      headerId
     );
 
     return NextResponse.json({ 

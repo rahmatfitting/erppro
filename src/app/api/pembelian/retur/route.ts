@@ -138,7 +138,7 @@ export async function POST(request: Request) {
 
     await connection.commit();
     await addLogHistory("Retur Pembelian", headerId, "CREATE", body.user || "Admin", `Membuat Retur Pembelian ${generatedKode}`);
-    await sendNotification('Retur Pembelian', `Retur Beli Baru: ${generatedKode}`, `Ada retur pembelian baru yang perlu disetujui.`, generatedKode);
+    await sendNotification('Retur Pembelian', `Retur Beli Baru: ${generatedKode}`, `Ada retur pembelian baru yang perlu disetujui.`, generatedKode, headerId);
     return NextResponse.json({ success: true, message: 'Retur Beli berhasil disimpan', data: { nomor: headerId, kode: generatedKode } });
   } catch (error: any) {
     await connection.rollback();

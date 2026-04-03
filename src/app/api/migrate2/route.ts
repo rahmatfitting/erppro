@@ -123,6 +123,7 @@ export async function GET() {
     { name: 'thuangtitipan: add pph', sql: `ALTER TABLE thuangtitipan ADD COLUMN IF NOT EXISTS pph DECIMAL(10,2) DEFAULT 0` },
     { name: 'thuangtitipan: add pphnominal', sql: `ALTER TABLE thuangtitipan ADD COLUMN IF NOT EXISTS pphnominal DECIMAL(30,2) DEFAULT 0` },
     { name: 'thuangtitipan: add nomorthjualorder', sql: `ALTER TABLE thuangtitipan ADD COLUMN IF NOT EXISTS nomorthjualorder INT(11) DEFAULT 0` },
+    { name: 'mhnotifikasi: add ref_id', sql: `ALTER TABLE mhnotifikasi ADD COLUMN IF NOT EXISTS ref_id INT(11) DEFAULT 0` },
   ];
 
   for (const alt of alterations) {

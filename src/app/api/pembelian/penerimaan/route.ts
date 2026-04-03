@@ -141,7 +141,7 @@ export async function POST(request: Request) {
 
     await connection.commit();
     await addLogHistory("Penerimaan Barang", headerId, "CREATE", body.user || "Admin", `Membuat Penerimaan Barang ${generatedKode}`);
-    await sendNotification('Penerimaan Barang', `GR Baru: ${generatedKode}`, `Ada penerimaan barang baru yang perlu diverifikasi.`, generatedKode);
+    await sendNotification('Penerimaan Barang', `GR Baru: ${generatedKode}`, `Ada penerimaan barang baru yang perlu diverifikasi.`, generatedKode, headerId);
     return NextResponse.json({ success: true, message: "Penerimaan Barang berhasil disimpan", data: { nomor: headerId, kode: generatedKode } });
 
   } catch (error: any) {

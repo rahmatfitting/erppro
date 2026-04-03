@@ -141,7 +141,7 @@ export async function POST(request: Request) {
     await addLogHistory("Transfer Gudang", headerId, "CREATE", user || "Admin", `Membuat Transfer ${generatedKode} dari ${gudang_asal_nama} ke ${gudang_tujuan_nama}`);
 
     await connection.commit();
-    await sendNotification('Transfer Gudang', `Transfer Baru: ${generatedKode}`, `Ada pengiriman barang antar gudang. Dari: ${gudang_asal_nama} Ke: ${gudang_tujuan_nama}`, generatedKode);
+    await sendNotification('Transfer Gudang', `Transfer Baru: ${generatedKode}`, `Ada pengiriman barang antar gudang. Dari: ${gudang_asal_nama} Ke: ${gudang_tujuan_nama}`, generatedKode, headerId);
 
     return NextResponse.json({ 
       success: true, 
