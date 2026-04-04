@@ -3,18 +3,36 @@ import { executeQuery } from './db';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-export async function fetchBinancePairs() {
-  const res = await fetch('https://api.binance.com/api/v3/exchangeInfo');
-  const data = await res.json();
-  return data.symbols
-    .filter((s: any) => s.status === 'TRADING' && s.quoteAsset === 'USDT')
-    .map((s: any) => s.symbol);
+export async function fetchBinancePairs(): Promise<string[]> {
+  try {
+    const res = await fetch('https://api.binance.com/api/v3/exchangeInfo', {
+      headers: { 'Accept': 'application/json' },
+      next: { revalidate: 0 },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data || !Array.isArray(data.symbols)) {
+      console.error('fetchBinancePairs: unexpected response', data);
+      return [];
+    }
+    return data.symbols
+      .filter((s: any) => s.status === 'TRADING' && s.quoteAsset === 'USDT')
+      .map((s: any) => s.symbol);
+  } catch (err) {
+    console.error('fetchBinancePairs error:', err);
+    return [];
+  }
 }
 
 export async function fetchKlines(symbol: string, interval: string = '1w', limit: number = 100) {
   try {
-    const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+    const res = await fetch(
+      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
+      { headers: { 'Accept': 'application/json' }, next: { revalidate: 0 } }
+    );
+    if (!res.ok) return [];
     const data = await res.json();
+    if (!Array.isArray(data)) return [];
     return data.map((d: any) => ({
       time: d[0],
       open: parseFloat(d[1]),
@@ -24,7 +42,7 @@ export async function fetchKlines(symbol: string, interval: string = '1w', limit
       volume: parseFloat(d[5]),
     }));
   } catch (err) {
-    console.error(`Error fetching klines for ${symbol}:`, err);
+    console.error(`fetchKlines error [${symbol}/${interval}]:`, err);
     return [];
   }
 }

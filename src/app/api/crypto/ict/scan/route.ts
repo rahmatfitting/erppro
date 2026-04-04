@@ -37,6 +37,9 @@ export async function GET(request: Request) {
 
     await ensureTable();
     const symbols = await fetchBinancePairs();
+    if (symbols.length === 0) {
+      return NextResponse.json({ success: false, error: 'Binance API tidak merespons. Coba lagi nanti.' }, { status: 503 });
+    }
     const active  = symbols.slice(0, 50);
 
     let saved = 0;

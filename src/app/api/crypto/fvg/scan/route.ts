@@ -38,9 +38,13 @@ export async function GET(request: Request) {
     
     await ensureTable();
     const symbols = await fetchBinancePairs();
-    
+    if (symbols.length === 0) {
+      return NextResponse.json({ success: false, error: 'Binance API tidak merespons. Coba lagi nanti.' }, { status: 503 });
+    }
+
     // Limits the scan to top symbols
     const activeSymbols = symbols.slice(0, 50); 
+
     
     let detectedCount = 0;
     for (const symbol of activeSymbols) {

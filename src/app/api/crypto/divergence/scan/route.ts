@@ -33,7 +33,11 @@ export async function GET() {
     await executeQuery(`DELETE FROM crypto_divergence_signals`);
 
     const symbols = await fetchBinancePairs();
+    if (symbols.length === 0) {
+      return NextResponse.json({ success: false, error: 'Binance API tidak merespons. Coba lagi nanti.' }, { status: 503 });
+    }
     const topSymbols = symbols.slice(0, 50); // Top 50 by listing order
+
 
     let saved = 0;
 

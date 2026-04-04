@@ -3,17 +3,31 @@ import { executeQuery } from './db';
 const FAPI_BASE = 'https://fapi.binance.com';
 
 export async function fetchTopFuturesPairs(limit: number = 50) {
-  const res = await fetch(`${FAPI_BASE}/fapi/v1/ticker/24hr`);
-  const data = await res.json();
-  return data
-    .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
-    .slice(0, limit)
-    .map((d: any) => ({
-      symbol: d.symbol,
-      priceChangePercent: parseFloat(d.priceChangePercent),
-      lastPrice: parseFloat(d.lastPrice),
-      quoteVolume: parseFloat(d.quoteVolume)
-    }));
+  try {
+    const res = await fetch(`${FAPI_BASE}/fapi/v1/ticker/24hr`, {
+      headers: { 'Accept': 'application/json' },
+      next: { revalidate: 0 },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      console.error('fetchTopFuturesPairs: unexpected response', data);
+      return [];
+    }
+    return data
+      .filter((d: any) => d.symbol && d.symbol.endsWith('USDT'))
+      .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+      .slice(0, limit)
+      .map((d: any) => ({
+        symbol: d.symbol,
+        priceChangePercent: parseFloat(d.priceChangePercent),
+        lastPrice: parseFloat(d.lastPrice),
+        quoteVolume: parseFloat(d.quoteVolume)
+      }));
+  } catch (err) {
+    console.error('fetchTopFuturesPairs error:', err);
+    return [];
+  }
 }
 
 export async function fetchOIChange(symbol: string) {
