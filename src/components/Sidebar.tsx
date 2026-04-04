@@ -42,7 +42,7 @@ import {
   PackageMinus,
   BarChart3,
   Calendar,
-  Coins
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -195,37 +195,37 @@ export const menuData: MenuSection[] = [
     title: "Laporan",
     items: [
       {
-        title: "Laporan Stok",
+        title: "Stok",
         href: "/report/stok",
         icon: Archive,
       },
       {
-        title: "Laporan Pembelian",
+        title: "Pembelian",
         href: "/report/pembelian",
         icon: BarChart3,
       },
       {
-        title: "Laporan Penjualan",
+        title: "Penjualan",
         href: "/report/penjualan",
         icon: BarChart3,
       },
       {
-        title: "Laporan Hutang",
+        title: "Hutang",
         href: "/report/hutang",
         icon: CreditCard,
       },
       {
-        title: "Laporan Piutang",
+        title: "Piutang",
         href: "/report/piutang",
         icon: Receipt,
       },
       {
-        title: "Laporan Laba Rugi",
+        title: "Laba Rugi",
         href: "/report/laba-rugi",
         icon: BarChart3,
       },
       {
-        title: "Laporan Kas Bank",
+        title: "Kas Bank",
         href: "/keuangan/laporan-kas-bank",
         icon: Banknote,
       },
