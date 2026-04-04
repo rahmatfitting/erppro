@@ -1,4 +1,4 @@
-const FAPI = 'https://fapi.binance.com';
+import { fetchFapiWithFallback } from './futures';
 
 export interface TraderFlowData {
   symbol: string;
@@ -27,12 +27,11 @@ export interface TraderSignal {
 // ------------------------------------------------------
 export async function fetchLongShortRatio(symbol: string): Promise<number | null> {
   try {
-    const res = await fetch(
-      `${FAPI}/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=2`
+    const data = await fetchFapiWithFallback(
+      `/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=2`
     );
-    const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) return null;
-    return parseFloat(data[data.length - 1].longaccount);
+    return parseFloat(data[data.length - 1].longAccount);
   } catch {
     return null;
   }
@@ -43,10 +42,9 @@ export async function fetchLongShortRatio(symbol: string): Promise<number | null
 // ------------------------------------------------------
 export async function fetchTopTraderRatio(symbol: string): Promise<number | null> {
   try {
-    const res = await fetch(
-      `${FAPI}/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=1h&limit=2`
+    const data = await fetchFapiWithFallback(
+      `/futures/data/topLongShortPositionRatio?symbol=${symbol}&period=1h&limit=2`
     );
-    const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) return null;
     return parseFloat(data[data.length - 1].longAccount);
   } catch {
@@ -62,14 +60,13 @@ export async function fetchOITrend(symbol: string): Promise<{
   trend: 'up' | 'down' | 'flat';
 }> {
   try {
-    const res = await fetch(
-      `${FAPI}/fapi/v1/openInterestHist?symbol=${symbol}&period=1h&limit=25`
+    const data = await fetchFapiWithFallback(
+      `/fapi/v1/openInterestHist?symbol=${symbol}&period=1h&limit=25`
     );
-    const data = await res.json();
     if (!Array.isArray(data) || data.length < 2) return { oiChange: 0, trend: 'flat' };
 
     const latest = parseFloat(data[data.length - 1].sumOpenInterest);
-    const prev24h = parseFloat(data[0].sumOpenInterest); // 24 periods of 1h = 24h
+    const prev24h = parseFloat(data[0].sumOpenInterest);
     const change = ((latest - prev24h) / prev24h) * 100;
 
     return {

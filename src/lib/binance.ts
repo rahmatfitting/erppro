@@ -3,49 +3,77 @@ import { executeQuery } from './db';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
-export async function fetchBinancePairs(): Promise<string[]> {
-  try {
-    const res = await fetch('https://api.binance.com/api/v3/exchangeInfo', {
-      headers: { 'Accept': 'application/json' },
-      next: { revalidate: 0 },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data || !Array.isArray(data.symbols)) {
-      console.error('fetchBinancePairs: unexpected response', data);
-      return [];
+// Binance hosts (try in order — some are blocked on Vercel, others aren't)
+const SPOT_HOSTS = [
+  'https://api.binance.com',
+  'https://api1.binance.com',
+  'https://api2.binance.com',
+  'https://api3.binance.com',
+  'https://api4.binance.com',
+];
+
+const HEADERS = {
+  'Accept': 'application/json',
+  'User-Agent': 'Mozilla/5.0 (compatible; CryptoScreener/1.0)',
+};
+
+/** Try a URL on multiple hosts until one succeeds */
+async function fetchWithFallback(path: string, hosts: string[]): Promise<any | null> {
+  for (const host of hosts) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000); // 8s timeout per host
+      const res = await fetch(`${host}${path}`, {
+        headers: HEADERS,
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data && !data.code) return data; // Binance error responses have a .code field
+    } catch (err) {
+      // This host failed — try next
+      console.warn(`fetchWithFallback: ${host}${path} failed, trying next...`);
     }
-    return data.symbols
-      .filter((s: any) => s.status === 'TRADING' && s.quoteAsset === 'USDT')
-      .map((s: any) => s.symbol);
-  } catch (err) {
-    console.error('fetchBinancePairs error:', err);
-    return [];
   }
+  return null; // All hosts failed
 }
 
-export async function fetchKlines(symbol: string, interval: string = '1w', limit: number = 100) {
-  try {
-    const res = await fetch(
-      `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`,
-      { headers: { 'Accept': 'application/json' }, next: { revalidate: 0 } }
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!Array.isArray(data)) return [];
-    return data.map((d: any) => ({
-      time: d[0],
-      open: parseFloat(d[1]),
-      high: parseFloat(d[2]),
-      low: parseFloat(d[3]),
-      close: parseFloat(d[4]),
-      volume: parseFloat(d[5]),
-    }));
-  } catch (err) {
-    console.error(`fetchKlines error [${symbol}/${interval}]:`, err);
+export async function fetchBinancePairs(): Promise<string[]> {
+  const data = await fetchWithFallback('/api/v3/exchangeInfo', SPOT_HOSTS);
+  if (!data || !Array.isArray(data.symbols)) {
+    console.error('fetchBinancePairs: all hosts failed or bad response');
     return [];
   }
+  return data.symbols
+    .filter((s: any) => s.status === 'TRADING' && s.quoteAsset === 'USDT')
+    .map((s: any) => s.symbol);
 }
+
+
+export async function fetchKlines(symbol: string, interval: string = '1w', limit: number = 100) {
+  const path = `/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+  
+  // Try spot hosts first, then fall back to Binance data CDN (rarely blocked)
+  const allHosts = [
+    ...SPOT_HOSTS,
+    'https://data.binance.com', // Binance CDN — usually not blocked
+  ];
+
+  const data = await fetchWithFallback(path, allHosts);
+  if (!Array.isArray(data)) return [];
+
+  return data.map((d: any) => ({
+    time: d[0],
+    open: parseFloat(d[1]),
+    high: parseFloat(d[2]),
+    low: parseFloat(d[3]),
+    close: parseFloat(d[4]),
+    volume: parseFloat(d[5]),
+  }));
+}
+
 
 export interface FVGSignal {
   symbol: string;
