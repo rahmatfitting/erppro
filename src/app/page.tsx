@@ -38,12 +38,11 @@ export default function Dashboard() {
   const [refreshing, setRefreshing] = useState(false);
   
   // Drill-down State
-  const [view, setView] = useState<'summary' | 'revenue_branch' | 'revenue_daily' | 'revenue_transactions'>('summary');
+  const [view, setView] = useState<'summary' | 'revenue_branch' | 'revenue_daily' | 'revenue_transactions' | 'margin_branch' | 'margin_daily' | 'margin_transactions'>('summary');
   const [drillData, setDrillData] = useState<any[]>([]);
   const [drillLoading, setDrillLoading] = useState(false);
   const [drillTitle, setDrillTitle] = useState("");
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -86,10 +85,19 @@ export default function Dashboard() {
   const handleDrillDown = async (type: string, id?: string, label?: string) => {
      setDrillLoading(true);
      setDrillTitle(label || type);
+     if (id) setSelectedBranch(id);
      
      let url = `/api/dashboard/stats?view=${type}`;
-     if (id) url += `&cabangId=${id}`;
-     if (type === 'revenue_transactions' && label) url += `&date=${label}`;
+     if (id || (selectedBranch && type.includes('daily'))) {
+        url += `&cabangId=${id || selectedBranch}`;
+     }
+     
+     // For transaction views, 'label' usually contains the date
+     if (type.includes('transactions') && label) {
+        url += `&date=${label}`;
+        // If we are at daily view, we might need to pass the branch along
+        if (selectedBranch) url += `&cabangId=${selectedBranch}`;
+     }
 
      try {
        const res = await fetch(url);
@@ -103,7 +111,7 @@ export default function Dashboard() {
   };
 
   const formatIDR = (val: number) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
   };
 
   if (loading) {
@@ -152,14 +160,21 @@ export default function Dashboard() {
               icon={<TrendingUp />} 
               trend="+12%" 
               color="blue"
-              onClick={() => handleDrillDown('revenue_branch', undefined, 'Revenue per Cabang')}
+              onClick={() => {
+                setSelectedBranch(null);
+                handleDrillDown('revenue_branch', undefined, 'Revenue per Cabang');
+              }}
             />
             <KPICard 
-              title="Profit / Margin" 
+              title="Avg Margin / Invoice" 
               value={formatIDR(stats?.profit)} 
               icon={<Wallet />} 
               trend="+8.4%" 
               color="emerald"
+              onClick={() => {
+                setSelectedBranch(null);
+                handleDrillDown('margin_branch', undefined, 'Margin per Cabang');
+              }}
             />
             <KPICard 
               title="Total Order" 
@@ -275,14 +290,18 @@ export default function Dashboard() {
         <div className="space-y-6">
            <div className="flex items-center gap-4">
               <button 
-                 onClick={() => setView('summary')}
+                 onClick={() => {
+                   if (view.includes('transactions')) handleDrillDown(view.replace('transactions', 'daily'), undefined, 'Kembali ke Harian');
+                   else if (view.includes('daily')) handleDrillDown(view.replace('daily', 'branch'), undefined, 'Kembali ke Cabang');
+                   else setView('summary');
+                 }}
                  className="p-2 rounded-full hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 transition-all"
               >
                  <ArrowLeft className="h-5 w-5" />
               </button>
               <div>
                  <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-tight">{drillTitle}</h2>
-                 <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-widest italic">{view === 'revenue_transactions' ? `Detail transaksi tanggal ${drillTitle}` : `Analisis pendapatan berdasarkan ${view.split('_').pop()}`}</p>
+                 <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-widest italic">{view.includes('transactions') ? `Detail transaksi tanggal ${drillTitle}` : `Analisis data berdasarkan ${view.split('_').pop()}`}</p>
               </div>
            </div>
 
@@ -308,12 +327,18 @@ export default function Dashboard() {
                      <div 
                         key={idx} 
                         onClick={() => {
-                          if (view === 'revenue_branch') handleDrillDown('revenue_daily', item.id, item.label);
-                          if (view === 'revenue_daily') handleDrillDown('revenue_transactions', undefined, item.label);
+                          if (view.includes('branch')) handleDrillDown(view.replace('branch', 'daily'), item.id, item.label);
+                          else if (view.includes('daily')) handleDrillDown(view.replace('daily', 'transactions'), undefined, item.label);
+                          else if (view.includes('transactions')) {
+                            if (item.jenis === 'FJ_EMAS' || item.kode?.startsWith('FJ_EMAS')) {
+                              window.location.href = `/penjualan/nota-emas/${item.id}`;
+                            } else {
+                              window.location.href = `/penjualan/nota/${item.id}`;
+                            }
+                          }
                         }}
                         className={cn(
-                          "group p-5 flex items-center justify-between transition-all hover:bg-slate-50/80 dark:hover:bg-slate-800/50",
-                          (view === 'revenue_branch' || view === 'revenue_daily') && "cursor-pointer"
+                          "group p-5 flex items-center justify-between transition-all hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer"
                         )}
                       >
                         <div className="flex items-center gap-4">
