@@ -43,6 +43,11 @@ import {
   BarChart3,
   Calendar,
   Coins,
+  TrendingUp,
+  Crown,
+  Waves,
+  GitMerge,
+  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -228,6 +233,56 @@ export const menuData: MenuSection[] = [
         title: "Kas Bank",
         href: "/keuangan/laporan-kas-bank",
         icon: Banknote,
+      },
+    ],
+  },
+  {
+    title: "Market Intelligence",
+    items: [
+      {
+        title: "Crypto FVG Screener",
+        href: "/crypto/fvg",
+        icon: TrendingUp,
+      },
+      {
+        title: "Crypto SMC Screener",
+        href: "/crypto/smc",
+        icon: Zap,
+      },
+      {
+        title: "Visual Market Screener",
+        href: "/crypto/visual-screener",
+        icon: Layers,
+      },
+      {
+        title: "RSI Heatmap",
+        href: "/crypto/rsi",
+        icon: BarChart3,
+      },
+      {
+        title: "Hedge Fund Screener",
+        href: "/crypto/hedge",
+        icon: Crown,
+      },
+      {
+        title: "Liquidity Sweep",
+        href: "/crypto/sweep",
+        icon: Waves,
+      },
+      {
+        title: "Top Trader Flow",
+        href: "/crypto/trader",
+        icon: Users,
+      },
+      {
+        title: "Divergence Screener",
+        href: "/crypto/divergence",
+        icon: GitMerge,
+      },
+      {
+        title: "ICT Kill Zone",
+        href: "/crypto/ict",
+        icon: Clock,
       },
     ],
   },
