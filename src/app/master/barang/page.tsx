@@ -9,6 +9,7 @@ import { exportToPDF, exportToExcel } from "@/lib/exportUtils";
 import { BarcodeQtyModal } from "@/components/BarcodeQtyModal";
 import { QRCodePrintModal } from "@/components/QRCodePrintModal";
 import { ImagePreviewModal } from "@/components/ImagePreviewModal";
+import * as XLSX from "xlsx";
 
 export default function BarangList() {
   const [data, setData] = useState<any[]>([]);
@@ -23,6 +24,7 @@ export default function BarangList() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [previewIndex, setPreviewIndex] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const ITEMS_PER_PAGE = 20;
 
   // Master data state for Filters
@@ -131,8 +133,6 @@ export default function BarangList() {
   const handleExport = async (startDate: string, endDate: string, exportType: 'view' | 'pdf' | 'excel' | 'pivot') => {
     try {
       if (exportType === 'view') {
-        // Master data usually doesn't filter main list by date by default, 
-        // but we can add it to filters if we want. For now, just close.
         setIsReportModalOpen(false);
         return;
       }
@@ -205,6 +205,61 @@ export default function BarangList() {
     } catch (e) {}
   };
 
+  const handleDownloadTemplate = () => {
+    window.open('/api/master/barang/template', '_blank');
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstream = evt.target?.result;
+        const wb = XLSX.read(bstream, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const rawData: any[] = XLSX.utils.sheet_to_json(ws);
+
+        const items = rawData.map(row => ({
+          nama: row['Nama Barang'],
+          satuan: row['Satuan'],
+          kategori: row['Kategori'],
+          harga_beli: row['Harga Beli'],
+          harga_jual: row['Harga Jual']
+        })).filter(it => it.nama);
+
+        if (items.length === 0) {
+          alert("Tidak ada data barang yang valid untuk diimport.");
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch('/api/master/barang/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items })
+        });
+        const result = await res.json();
+
+        if (result.success) {
+          alert(result.message);
+          fetchData(1, false);
+        } else {
+          alert(result.error || "Gagal melakukan import data.");
+        }
+      } catch (err: any) {
+        alert("Terjadi kesalahan saat membaca file: " + err.message);
+      } finally {
+        setLoading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header Area */}
@@ -219,6 +274,26 @@ export default function BarangList() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImport} 
+              accept=".xlsx,.xls" 
+              className="hidden" 
+            />
+            <button
+                onClick={handleDownloadTemplate}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shadow-sm hover:bg-slate-50 transition-all active:scale-95"
+            >
+                Template
+            </button>
+            <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-colors disabled:opacity-50"
+            >
+                Import Excel
+            </button>
             <button
                 onClick={() => setIsReportModalOpen(true)}
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white dark:bg-slate-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 shadow-sm hover:bg-slate-50 transition-all active:scale-95"

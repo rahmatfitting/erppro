@@ -265,14 +265,14 @@ function SidebarContent({ user, onClose }: { user?: any; onClose?: () => void })
   useEffect(() => {
     // Jalankan sync pertama kali setelah 5 detik apps diload
     const initialSync = setTimeout(() => {
-      fetch('/api/gold-prices/sync').catch(() => {});
-      fetch('/api/buyback-prices/sync').catch(() => {});
+      fetch('/api/gold-prices/sync').catch(() => { });
+      fetch('/api/buyback-prices/sync').catch(() => { });
     }, 5000);
 
     // Kemudian sinkronisasikan setiap 1 jam (3600000 ms)
     const interval = setInterval(() => {
-      fetch('/api/gold-prices/sync').catch(() => {});
-      fetch('/api/buyback-prices/sync').catch(() => {});
+      fetch('/api/gold-prices/sync').catch(() => { });
+      fetch('/api/buyback-prices/sync').catch(() => { });
     }, 3600000);
 
     return () => {
@@ -361,9 +361,9 @@ function SidebarContent({ user, onClose }: { user?: any; onClose?: () => void })
       {/* Header */}
       <div className="flex h-16 items-center justify-between px-6 border-b border-slate-200 dark:border-slate-800 shrink-0">
         <div className="flex items-center gap-2 font-bold text-xl text-slate-800 dark:text-white">
-          <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-md">
+          {/* <div className="h-8 w-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-md">
             <Building2 className="h-5 w-5 text-white" />
-          </div>
+          </div> */}
           <span>ERP Pro</span>
         </div>
         {/* Close button — only visible on mobile */}

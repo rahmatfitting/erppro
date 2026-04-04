@@ -64,10 +64,10 @@ export default function Login() {
       <div className="w-full max-w-[440px] relative z-10 animate-in fade-in zoom-in duration-700">
         {/* Logo / Header Section */}
         <div className="text-center mb-8">
-          <div className="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-white/10 backdrop-blur-2xl border border-white/20 shadow-2xl mb-6 relative group overflow-hidden">
+          {/* <div className="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-white/10 backdrop-blur-2xl border border-white/20 shadow-2xl mb-6 relative group overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <Building2 className="h-10 w-10 text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" />
-          </div>
+          </div> */}
           <h1 className="text-4xl font-black text-white tracking-tight sm:text-5xl">
             ERP<span className="text-indigo-400">PRO</span>
           </h1>

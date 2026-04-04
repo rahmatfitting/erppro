@@ -44,6 +44,9 @@ export async function GET(request: Request) {
       params.push(endDate + ' 23:59:59');
     }
 
+    query += ` ORDER BY b.nomor DESC LIMIT ? OFFSET ?`;
+    params.push(limit, offset);
+
     // Use pool.query instead of executeQuery (pool.execute) 
     // because some MySQL versions/drivers have issues with LIMIT ? in prepared statements
     const [data] = await pool.query(query, params);
