@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
+import { ChatAssistant } from "@/components/ChatAssistant";
 import { getSession } from "@/lib/auth";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -41,6 +42,7 @@ export default async function RootLayout({
                    {children}
                  </div>
                </main>
+               <ChatAssistant />
              </div>
            </div>
         ) : (
