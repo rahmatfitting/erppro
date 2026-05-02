@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     const signals: any = await executeQuery(`
       SELECT * FROM crypto_fvg_signals 
       WHERE status = 'FRESH' AND timeframe = ?
-      ORDER BY distance ASC
+      ORDER BY score DESC, distance ASC
     `, [interval]);
     return NextResponse.json({ success: true, data: signals });
   } catch (error: any) {

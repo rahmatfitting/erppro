@@ -12,9 +12,14 @@ import {
   ShieldCheck,
   Info,
   Filter,
+  FileDown
 } from "lucide-react";
+import { exportToExcel } from "@/lib/exportUtils";
 
 const TIMEFRAMES = [
+  { label: "5 Menit", value: "5m" },
+  { label: "15 Menit", value: "15m" },
+  { label: "30 Menit", value: "30m" },
   { label: "1 Jam", value: "1h" },
   { label: "4 Jam", value: "4h" },
   { label: "1 Hari", value: "1d" },
@@ -58,6 +63,26 @@ export default function SweepPage() {
     } finally {
       setScanning(false);
     }
+  };
+
+  const handleExport = () => {
+    if (filtered.length === 0) return;
+    exportToExcel({
+      title: "Liquidity Sweep Report",
+      subtitle: `Timeframe: ${TIMEFRAMES.find(t => t.value === timeframe)?.label} | Generated: ${new Date().toLocaleString()}`,
+      fileName: `Liquidity_Sweep_${timeframe}_${new Date().toISOString().split('T')[0]}`,
+      columns: [
+        { header: "Symbol", key: "symbol" },
+        { header: "Strength", key: "strength" },
+        { header: "Timeframe", key: "timeframe" },
+        { header: "Wick Ratio", key: "wick_ratio", format: (v) => parseFloat(v).toFixed(1) + "x" },
+        { header: "Volume Ratio", key: "volume_ratio", format: (v) => parseFloat(v).toFixed(1) + "x" },
+        { header: "Swing Low", key: "swing_low", format: (v) => parseFloat(v).toFixed(4) },
+        { header: "Sweep Low", key: "sweep_low", format: (v) => parseFloat(v).toFixed(4) },
+        { header: "Close Price", key: "close_price", format: (v) => parseFloat(v).toFixed(4) },
+      ],
+      data: filtered,
+    });
   };
 
   const filtered = signals
@@ -107,6 +132,14 @@ export default function SweepPage() {
               className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-200 transition-all"
             >
               <RefreshCcw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+            <button 
+              onClick={handleExport}
+              disabled={filtered.length === 0}
+              className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-200 transition-all font-bold"
+              title="Export Excel"
+            >
+              <FileDown className="h-5 w-5" />
             </button>
             <button
               onClick={handleScan}

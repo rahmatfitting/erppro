@@ -170,6 +170,11 @@ export interface AMDSignal {
   score: number;
   bias: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
   confidence: 'SNIPER' | 'STRONG' | 'MODERATE' | 'NOISE';
+  entry: number;
+  stopLoss: number;
+  tp1: number;
+  tp2: number;
+  tp3: number;
 }
 
 export function runAMDAnalysis(symbol: string, candles: any[], timeframe: string): AMDSignal | null {
@@ -212,6 +217,35 @@ export function runAMDAnalysis(symbol: string, candles: any[], timeframe: string
   const confidence: AMDSignal['confidence'] =
     score >= 10 ? 'SNIPER' : score >= 7 ? 'STRONG' : score >= 4 ? 'MODERATE' : 'NOISE';
 
+  // ── 7. Trade Levels (Recommended)
+  const currentPrice = candles[candles.length - 1].close;
+  const atr = calcATR(candles, 14);
+  let entry = currentPrice;
+  let sl = 0;
+  let tp1 = 0, tp2 = 0, tp3 = 0;
+
+  if (bias === 'BULLISH') {
+    // SL below manipulation low - 0.2 ATR buffer
+    const reference = candles.slice(-20);
+    const manipLow = Math.min(...reference.map((c: any) => c.low));
+    sl = manipLow - (atr * 0.2);
+    
+    const risk = entry - sl;
+    tp1 = entry + (risk * 1.5); // 1.5R
+    tp2 = Math.max(...candles.slice(-50).map((c: any) => c.high)); // Recent High
+    tp3 = entry + (risk * 3);   // 3R
+  } else {
+    // SL above manipulation high + 0.2 ATR buffer
+    const reference = candles.slice(-20);
+    const manipHigh = Math.max(...reference.map((c: any) => c.high));
+    sl = manipHigh + (atr * 0.2);
+
+    const risk = sl - entry;
+    tp1 = entry - (risk * 1.5); // 1.5R
+    tp2 = Math.min(...candles.slice(-50).map((c: any) => c.low)); // Recent Low
+    tp3 = entry - (risk * 3);   // 3R
+  }
+
   return {
     symbol,
     timeframe,
@@ -224,5 +258,10 @@ export function runAMDAnalysis(symbol: string, candles: any[], timeframe: string
     score,
     bias,
     confidence,
+    entry,
+    stopLoss: sl,
+    tp1,
+    tp2,
+    tp3,
   };
 }

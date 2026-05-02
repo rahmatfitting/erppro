@@ -11,8 +11,10 @@ import {
   Info,
   ExternalLink,
   ChevronRight,
-  Database
+  Database,
+  FileDown
 } from "lucide-react";
+import { exportToExcel } from "@/lib/exportUtils";
 
 const TIMEFRAMES = [
   { label: "1 Jam", value: "1h" },
@@ -61,6 +63,26 @@ export default function CryptoFvgPage() {
     }
   };
 
+  const handleExport = () => {
+    if (filteredSignals.length === 0) return;
+    exportToExcel({
+      title: "FVG Screener Report",
+      subtitle: `Timeframe: ${TIMEFRAMES.find(t => t.value === timeframe)?.label} | Generated: ${new Date().toLocaleString()}`,
+      fileName: `FVG_Scan_${timeframe}_${new Date().toISOString().split('T')[0]}`,
+      columns: [
+        { header: "Symbol", key: "symbol" },
+        { header: "Grade", key: "grade" },
+        { header: "Score", key: "score" },
+        { header: "FVG Low", key: "fvg_low", format: (v) => parseFloat(v).toLocaleString() },
+        { header: "FVG High", key: "fvg_high", format: (v) => parseFloat(v).toLocaleString() },
+        { header: "Entry Price", key: "entry", format: (v) => parseFloat(v).toLocaleString() },
+        { header: "Stop Loss", key: "stop_loss", format: (v) => parseFloat(v).toLocaleString() },
+        { header: "Distance from Price (%)", key: "distance", format: (v) => v + "%" },
+      ],
+      data: filteredSignals,
+    });
+  };
+
   const filteredSignals = signals
     .filter(s => s.symbol.toLowerCase().includes(search.toLowerCase()))
     .filter(s => Math.abs(parseFloat(s.distance)) <= filterDistance);
@@ -101,6 +123,14 @@ export default function CryptoFvgPage() {
             <RefreshCcw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <button 
+            onClick={handleExport}
+            disabled={filteredSignals.length === 0}
+            className="p-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-200 transition-all border border-slate-200 dark:border-slate-700"
+            title="Export Excel"
+          >
+            <FileDown className="h-5 w-5" />
+          </button>
+          <button 
             onClick={handleScan}
             disabled={scanning}
             className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-500/30 disabled:opacity-50 h-[44px]"
@@ -135,11 +165,13 @@ export default function CryptoFvgPage() {
 
         <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-4">
           <div className="p-2.5 bg-green-50 dark:bg-green-900/20 rounded-xl pr-2">
-             <CheckCircle2 className="h-5 w-5 text-green-600" />
+             <TrendingUp className="h-5 w-5 text-green-600" />
           </div>
           <div>
-            <div className="text-[10px] font-bold text-slate-400 uppercase">Signals Found</div>
-            <div className="text-xl font-black text-slate-900 dark:text-white leading-none mt-0.5">{filteredSignals.length}</div>
+            <div className="text-[10px] font-bold text-slate-400 uppercase">AI Confirmed</div>
+            <div className="text-xl font-black text-slate-900 dark:text-white leading-none mt-0.5">
+              {filteredSignals.filter(s => s.score >= 70).length} <span className="text-xs text-slate-400 font-bold">Signals</span>
+            </div>
           </div>
         </div>
 
@@ -175,10 +207,10 @@ export default function CryptoFvgPage() {
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-950/50 text-slate-400 font-bold text-[11px] uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                 <th className="px-6 py-4">Trading Pair</th>
-                <th className="px-6 py-4 text-center">FVG Zone (Low - High)</th>
-                <th className="px-6 py-4 text-center">Entry Price</th>
-                <th className="px-6 py-4 text-center">Stop Loss</th>
-                <th className="px-6 py-4 text-center">Take Profit</th>
+                <th className="px-6 py-4 text-center">AI Ranking</th>
+                <th className="px-6 py-4 text-center">FVG Zone</th>
+                <th className="px-6 py-4 text-center">AI Insight</th>
+                <th className="px-6 py-4 text-center">Entry</th>
                 <th className="px-6 py-4 text-right">Distance</th>
                 <th className="px-6 py-4 text-center">Action</th>
               </tr>
@@ -203,23 +235,47 @@ export default function CryptoFvgPage() {
                       </div>
                     </td>
                     <td className="px-6 py-5 text-center">
+                      <div className="flex flex-col items-center">
+                        <div className={`px-2 py-0.5 rounded text-[10px] font-black mb-1 ${
+                          signal.grade === 'A+' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                          signal.grade === 'A' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                          'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                        }`}>
+                          {signal.grade}
+                        </div>
+                        <div className="text-xl font-black text-slate-900 dark:text-white leading-none group-hover:text-indigo-600 transition-colors">
+                          {signal.score}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-5 text-center">
                       <div className="inline-flex items-center gap-2 px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300">
                         {parseFloat(signal.fvg_low).toLocaleString()} - {parseFloat(signal.fvg_high).toLocaleString()}
                       </div>
                     </td>
                     <td className="px-6 py-5 text-center">
-                       <span className="font-bold text-green-600 dark:text-green-400">{parseFloat(signal.entry).toLocaleString()}</span>
+                      <div className="flex flex-wrap justify-center gap-1">
+                        {parseFloat(signal.volume_spike) > 1.5 && (
+                          <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded text-[9px] font-bold">VOL SPIKE</span>
+                        )}
+                        {parseFloat(signal.impulse_size) > 1.8 && (
+                          <span className="px-1.5 py-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 rounded text-[9px] font-bold">IMPULSE</span>
+                        )}
+                        {parseFloat(signal.trend_strength) > 1.02 && (
+                          <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 rounded text-[9px] font-bold">STR TND</span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-6 py-5 text-center text-red-500 font-bold">
-                       {parseFloat(signal.stop_loss).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-5 text-center text-indigo-600 dark:text-indigo-400 font-bold">
-                       {parseFloat(signal.take_profit).toLocaleString()}
-                    </td>
-                    <td className="px-6 py-5 text-right">
-                       <div className={`text-sm font-black ${Math.abs(signal.distance) < 5 ? 'text-green-500' : 'text-slate-600 dark:text-slate-400'}`}>
-                         {signal.distance}%
+                    <td className="px-6 py-5 text-center">
+                       <div className="flex flex-col">
+                         <span className="font-bold text-green-600 dark:text-green-400">{parseFloat(signal.entry).toLocaleString()}</span>
+                         <span className="text-[10px] text-red-500 font-bold">SL: {parseFloat(signal.stop_loss).toLocaleString()}</span>
                        </div>
+                    </td>
+                    <td className="px-6 py-5 text-right font-black">
+                       <span className={Math.abs(signal.distance) < 5 ? 'text-green-500' : 'text-slate-400'}>
+                         {signal.distance}%
+                       </span>
                     </td>
                     <td className="px-6 py-5 text-center">
                        <a 

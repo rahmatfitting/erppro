@@ -10,8 +10,12 @@ import {
   Layers,
   Activity,
   BarChart3,
-  Info
+  Info,
+  FileDown,
+  ShieldAlert,
+  ArrowUpRight as ArrowUpRightIcon
 } from "lucide-react";
+import { exportToExcel } from "@/lib/exportUtils";
 
 export default function VisualScreenerPage() {
   const [signals, setSignals] = useState<any[]>([]);
@@ -49,6 +53,26 @@ export default function VisualScreenerPage() {
     }
   };
 
+  const handleExport = () => {
+    if (signals.length === 0) return;
+    exportToExcel({
+      title: "Visual Market Screener Report",
+      subtitle: `Generated: ${new Date().toLocaleString()}`,
+      fileName: `Visual_Screener_${new Date().toISOString().split('T')[0]}`,
+      columns: [
+        { header: "Symbol", key: "symbol" },
+        { header: "Sentiment", key: "sentiment" },
+        { header: "Price Change (24h%)", key: "price_change", format: (v) => parseFloat(v).toFixed(2) + "%" },
+        { header: "OI Change (%)", key: "oi_change", format: (v) => parseFloat(v).toFixed(2) + "%" },
+        { header: "Potential (%)", key: "potential", format: (v) => parseFloat(v).toFixed(1) + "%" },
+        { header: "Entry", key: "entry", format: (v) => v ? parseFloat(v).toLocaleString() : "-" },
+        { header: "Stop Loss", key: "stop_loss", format: (v) => v ? parseFloat(v).toLocaleString() : "-" },
+        { header: "Take Profit", key: "tp1", format: (v) => v ? parseFloat(v).toLocaleString() : "-" },
+      ],
+      data: signals,
+    });
+  };
+
   const longEntering = signals.filter(s => s.sentiment === 'LONG_ENTERING' && s.symbol.toLowerCase().includes(search.toLowerCase()));
   const shortEntering = signals.filter(s => s.sentiment === 'SHORT_ENTERING' && s.symbol.toLowerCase().includes(search.toLowerCase()));
 
@@ -80,8 +104,17 @@ export default function VisualScreenerPage() {
           <button 
             onClick={fetchSignals}
             className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-200 transition-all border border-slate-200 dark:border-slate-700"
+            title="Refresh Data"
           >
             <RefreshCcw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button 
+            onClick={handleExport}
+            disabled={signals.length === 0}
+            className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-200 transition-all border border-slate-200 dark:border-slate-700"
+            title="Export Excel"
+          >
+            <FileDown className="h-5 w-5" />
           </button>
           <button 
             onClick={handleScan}
@@ -157,9 +190,36 @@ export default function VisualScreenerPage() {
                      href={`https://www.tradingview.com/chart/?symbol=BINANCE:${s.symbol}`} target="_blank"
                      className="text-[11px] font-black text-slate-400 hover:text-cyan-500 transition-colors flex items-center gap-1"
                    >
-                     OPEN CHART <ArrowUpRight className="h-3 w-3" />
+                     OPEN CHART <ArrowUpRightIcon className="h-3 w-3" />
                    </a>
                 </div>
+
+                 {/* Professional Recommendations */}
+                 {s.entry > 0 && (
+                   <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                         <Target className="h-3 w-3 text-cyan-500" /> ATR Setups (1h)
+                      </div>
+                      <div className="flex flex-col gap-2">
+                         <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Entry</span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white">{parseFloat(s.entry).toLocaleString()}</span>
+                         </div>
+                         <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                               <ShieldAlert className="h-2.5 w-2.5 text-red-500" /> SL
+                            </span>
+                            <span className="text-xs font-black text-red-500">{parseFloat(s.stop_loss).toLocaleString()}</span>
+                         </div>
+                         <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                               <TrendingUp className="h-2.5 w-2.5 text-green-500" /> TP
+                            </span>
+                            <span className="text-xs font-black text-green-500">{parseFloat(s.tp1).toLocaleString()}</span>
+                         </div>
+                      </div>
+                   </div>
+                 )}
               </div>
             ))}
           </div>
@@ -225,9 +285,36 @@ export default function VisualScreenerPage() {
                      href={`https://www.tradingview.com/chart/?symbol=BINANCE:${s.symbol}`} target="_blank"
                      className="text-[11px] font-black text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1"
                    >
-                     OPEN CHART <ArrowUpRight className="h-3 w-3" />
+                     OPEN CHART <ArrowUpRightIcon className="h-3 w-3" />
                    </a>
                 </div>
+
+                 {/* Professional Recommendations */}
+                 {s.entry > 0 && (
+                   <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                         <Target className="h-3 w-3 text-rose-500" /> ATR Setups (1h)
+                      </div>
+                      <div className="flex flex-col gap-2">
+                         <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Entry</span>
+                            <span className="text-xs font-black text-slate-900 dark:text-white">{parseFloat(s.entry).toLocaleString()}</span>
+                         </div>
+                         <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                               <ShieldAlert className="h-2.5 w-2.5 text-indigo-500" /> SL
+                            </span>
+                            <span className="text-xs font-black text-indigo-500">{parseFloat(s.stop_loss).toLocaleString()}</span>
+                         </div>
+                         <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-1">
+                               <TrendingDown className="h-2.5 w-2.5 text-rose-500" /> TP
+                            </span>
+                            <span className="text-xs font-black text-rose-500">{parseFloat(s.tp1).toLocaleString()}</span>
+                         </div>
+                      </div>
+                   </div>
+                 )}
               </div>
             ))}
           </div>

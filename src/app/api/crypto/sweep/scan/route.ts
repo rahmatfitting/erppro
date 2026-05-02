@@ -82,6 +82,11 @@ export async function GET(request: Request) {
       }
     }
 
+    // Reset data if no signals detected
+    if (count === 0) {
+      await executeQuery(`DELETE FROM crypto_sweep_signals WHERE timeframe = ?`, [interval]);
+    }
+
     return NextResponse.json({ success: true, message: `Sweep Scan [${interval}] selesai. Ditemukan ${count} sinyal.` });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

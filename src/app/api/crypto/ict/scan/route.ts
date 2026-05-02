@@ -28,6 +28,18 @@ async function ensureTable() {
       UNIQUE (symbol, timeframe)
     )
   `);
+
+  // Migration: Add new columns if they don't exist
+  const columns = await executeQuery(`SHOW COLUMNS FROM crypto_ict_signals`);
+  const columnNames = (columns as any[]).map(c => c.Field);
+  
+  if (!columnNames.includes('entry')) {
+    await executeQuery(`ALTER TABLE crypto_ict_signals ADD COLUMN entry DECIMAL(20, 8)`);
+    await executeQuery(`ALTER TABLE crypto_ict_signals ADD COLUMN stop_loss DECIMAL(20, 8)`);
+    await executeQuery(`ALTER TABLE crypto_ict_signals ADD COLUMN tp1 DECIMAL(20, 8)`);
+    await executeQuery(`ALTER TABLE crypto_ict_signals ADD COLUMN tp2 DECIMAL(20, 8)`);
+    await executeQuery(`ALTER TABLE crypto_ict_signals ADD COLUMN tp3 DECIMAL(20, 8)`);
+  }
 }
 
 export async function GET(request: Request) {
@@ -55,8 +67,9 @@ export async function GET(request: Request) {
             (symbol, timeframe, phase, bias, score, confidence,
              killzone_active, killzone_session,
              accumulation, equal_highs, equal_lows,
-             manipulation, bos, distribution, volume_spike)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             manipulation, bos, distribution, volume_spike,
+             entry, stop_loss, tp1, tp2, tp3)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
           ON DUPLICATE KEY UPDATE
             phase = VALUES(phase), bias = VALUES(bias), score = VALUES(score),
             confidence = VALUES(confidence), killzone_active = VALUES(killzone_active),
@@ -64,7 +77,10 @@ export async function GET(request: Request) {
             accumulation = VALUES(accumulation), equal_highs = VALUES(equal_highs),
             equal_lows = VALUES(equal_lows), manipulation = VALUES(manipulation),
             bos = VALUES(bos), distribution = VALUES(distribution),
-            volume_spike = VALUES(volume_spike), created_at = CURRENT_TIMESTAMP
+            volume_spike = VALUES(volume_spike), 
+            entry = VALUES(entry), stop_loss = VALUES(stop_loss),
+            tp1 = VALUES(tp1), tp2 = VALUES(tp2), tp3 = VALUES(tp3),
+            created_at = CURRENT_TIMESTAMP
         `, [
           symbol, interval, signal.phase, signal.bias, signal.score, signal.confidence,
           signal.killzone.active ? 1 : 0, signal.killzone.session,
@@ -75,16 +91,30 @@ export async function GET(request: Request) {
           signal.distribution.bos ? 1 : 0,
           signal.distribution.detected ? 1 : 0,
           signal.volumeSpike ? 1 : 0,
+          signal.entry, signal.stopLoss, signal.tp1, signal.tp2, signal.tp3
         ]);
         saved++;
 
         if (signal.confidence === 'SNIPER') {
           const icon = signal.bias === 'BULLISH' ? '💣🟢' : '💣🔴';
           await sendTelegramNotification(
-            `${icon} *ICT SNIPER ENTRY (${interval})*\nSymbol: ${signal.symbol}\nPhase: ${signal.phase}\nBias: ${signal.bias}\nScore: ${signal.score}/12\nKill Zone: ${signal.killzone.session}`
+            `${icon} *ICT SNIPER ENTRY (${interval})*\n` +
+            `Symbol: ${signal.symbol}\n` +
+            `Bias: ${signal.bias}\n` +
+            `Score: ${signal.score}/12\n\n` +
+            `🎯 *Entry:* ${signal.entry.toFixed(4)}\n` +
+            `🛑 *SL:* ${signal.stopLoss.toFixed(4)}\n` +
+            `✅ *TP1:* ${signal.tp1.toFixed(4)}\n` +
+            `✅ *TP2:* ${signal.tp2.toFixed(4)}\n` +
+            `🔥 *Kill Zone:* ${signal.killzone.session}`
           );
         }
       } catch (_) {}
+    }
+
+    // Reset data if no signals detected
+    if (saved === 0) {
+      await executeQuery(`DELETE FROM crypto_ict_signals WHERE timeframe = ?`, [interval]);
     }
 
     return NextResponse.json({ success: true, message: `ICT Scan [${interval}] selesai. ${saved} sinyal ditemukan.` });

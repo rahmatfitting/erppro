@@ -13,8 +13,11 @@ import {
   Award,
   Crown,
   Activity,
-  DollarSign
+  DollarSign,
+  Filter,
+  FileDown
 } from "lucide-react";
+import { exportToExcel } from "@/lib/exportUtils";
 
 export default function HedgeFundPage() {
   const [signals, setSignals] = useState<any[]>([]);
@@ -51,6 +54,24 @@ export default function HedgeFundPage() {
     }
   };
 
+  const handleExport = () => {
+    if (signals.length === 0) return;
+    exportToExcel({
+      title: "Hedge Fund Screener Report",
+      subtitle: `Generated: ${new Date().toLocaleString()}`,
+      fileName: `Hedge_Fund_${new Date().toISOString().split('T')[0]}`,
+      columns: [
+        { header: "Symbol", key: "symbol" },
+        { header: "Status", key: "status" },
+        { header: "Setup", key: "setup" },
+        { header: "Master Score", key: "score" },
+        { header: "Volume (24h)", key: "volume_24h", format: (v) => "$" + (parseFloat(v) / 1000000).toFixed(1) + "M" },
+        { header: "Volatility (%)", key: "volatility", format: (v) => parseFloat(v).toFixed(1) + "%" },
+      ],
+      data: signals,
+    });
+  };
+
   return (
     <div className="space-y-8 pb-20">
       
@@ -80,6 +101,14 @@ export default function HedgeFundPage() {
                className="p-4 bg-slate-700/50 text-white rounded-2xl border border-slate-600 hover:bg-slate-700 transition-all shadow-xl"
              >
                <RefreshCcw className={`h-6 w-6 ${loading ? 'animate-spin' : ''}`} />
+             </button>
+             <button 
+               onClick={handleExport}
+               disabled={signals.length === 0}
+               className="p-4 bg-slate-700/50 text-white rounded-2xl border border-slate-600 hover:bg-slate-700 transition-all shadow-xl"
+               title="Export Excel"
+             >
+               <FileDown className="h-6 w-6" />
              </button>
           </div>
         </div>

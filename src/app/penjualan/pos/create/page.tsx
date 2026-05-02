@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { Save, ArrowLeft, Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, Banknote, User, AlertCircle, RefreshCw, Loader2, Store } from "lucide-react";
+import { Save, ArrowLeft, Search, Plus, Minus, Trash2, ShoppingCart, CreditCard, Banknote, User, AlertCircle, RefreshCw, Loader2, Store, Tags, Ticket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,9 @@ export default function POSCreate() {
   
   // Payment State
   const [diskonGlobalNominal, setDiskonGlobalNominal] = useState(0);
+  const [appliedPromos, setAppliedPromos] = useState<any[]>([]);
+  const [totalPromoDiscount, setTotalPromoDiscount] = useState(0);
+  const [voucherCode, setVoucherCode] = useState("");
   const [splitPayments, setSplitPayments] = useState<{method: string, amount: number}[]>([{ method: "Cash", amount: 0 }]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
@@ -162,14 +165,54 @@ export default function POSCreate() {
       if (confirm("Kosongkan keranjang belanja?")) {
          setCart([]);
          setDiskonGlobalNominal(0);
+         setAppliedPromos([]);
+         setTotalPromoDiscount(0);
+         setVoucherCode("");
          setSplitPayments([{ method: "Cash", amount: 0 }]);
          setSelectedCustomer(defaultCustomer);
       }
   };
 
+  // Promo Calculation Logic
+  useEffect(() => {
+    const handlePromo = async () => {
+       if (cart.length === 0) {
+          setAppliedPromos([]);
+          setTotalPromoDiscount(0);
+          return;
+       }
+
+       try {
+          const res = await fetch("/api/penjualan/promo/apply", {
+             method: "POST",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({
+                cart,
+                context: {
+                   branchId: selectedCabang?.nomor,
+                   memberLevel: selectedCustomer?.level || "Silver",
+                   customerNomor: selectedCustomer?.nomor,
+                   voucherCode: voucherCode
+                }
+             })
+          });
+          const result = await res.json();
+          if (result.success) {
+             setAppliedPromos(result.data.impacts);
+             setTotalPromoDiscount(result.data.totalDiscount);
+          }
+       } catch (err) {
+          console.error("Promo calculation error", err);
+       }
+    };
+
+    const timer = setTimeout(handlePromo, 500); // Debounce
+    return () => clearTimeout(timer);
+  }, [cart, selectedCustomer, selectedCabang, voucherCode]);
+
   // Calculations
   const subtotalItems = cart.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-  const dpp = subtotalItems - diskonGlobalNominal;
+  const dpp = subtotalItems - diskonGlobalNominal - totalPromoDiscount;
   const ppnNominal = 0; // Assuming POS prices are PPN Inclusive for retail, or set logic here if needed.
   const grandTotal = dpp + ppnNominal;
   const jumlahBayar = splitPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -449,9 +492,27 @@ export default function POSCreate() {
 
            {/* Summary Footer (Sticky Bottom) */}
            <div className="bg-white border-t border-slate-200 p-4 shrink-0 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)]">
+              {/* Promo Info */}
+              {appliedPromos.length > 0 && (
+                 <div className="mb-3 space-y-1">
+                    {appliedPromos.map(p => (
+                       <div key={p.promoId} className="flex justify-between items-center text-[10px] bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md border border-indigo-100">
+                          <span className="font-bold flex items-center gap-1"><Tags className="h-3 w-3" /> {p.promoNama}</span>
+                          <span className="font-black">-Rp {new Intl.NumberFormat('id-ID').format(p.totalDiscount)}</span>
+                       </div>
+                    ))}
+                 </div>
+              )}
+              
               <div className="flex justify-between items-center mb-4">
-                 <span className="text-slate-500 font-medium">Total Tagihan</span>
-                 <span className="text-xl font-bold text-slate-800">Rp {new Intl.NumberFormat('id-ID').format(grandTotal)}</span>
+                 <div className="flex flex-col">
+                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Total Tagihan</span>
+                    <span className="text-xl font-black text-slate-800">Rp {new Intl.NumberFormat('id-ID').format(grandTotal)}</span>
+                 </div>
+                 <div className="flex flex-col items-end">
+                    <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Hemat</span>
+                    <span className="text-sm font-bold text-emerald-600">Rp {new Intl.NumberFormat('id-ID').format(totalPromoDiscount + diskonGlobalNominal)}</span>
+                 </div>
               </div>
               <button
                 onClick={() => setShowPaymentModal(true)}
@@ -495,9 +556,27 @@ export default function POSCreate() {
                     <span className="font-semibold text-slate-800">Rp {new Intl.NumberFormat('id-ID').format(subtotalItems)}</span>
                  </div>
                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-500 font-medium pt-1">Diskon Global (-)</span>
+                    <span className="text-slate-500 font-medium pt-1">Diskon Promo (-)</span>
+                    <span className="font-bold text-emerald-600">Rp {new Intl.NumberFormat('id-ID').format(totalPromoDiscount)}</span>
+                 </div>
+                 <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-500 font-medium pt-1">Diskon Manual (-)</span>
                     <div className="flex items-center">
                        Rp <input type="number" min="0" value={diskonGlobalNominal === 0 ? '' : diskonGlobalNominal} onChange={(e) => setDiskonGlobalNominal(e.target.value === '' ? 0 : parseFloat(e.target.value))} className="w-24 ml-2 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 text-right text-sm font-semibold transition-all"/>
+                    </div>
+                 </div>
+                  
+                 {/* Voucher Input */}
+                 <div className="pt-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Punya Kode Voucher?</label>
+                    <div className="flex gap-2">
+                       <input 
+                          type="text" 
+                          placeholder="Masukkan kode..." 
+                          value={voucherCode}
+                          onChange={e => setVoucherCode(e.target.value.toUpperCase())}
+                          className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:bg-white focus:border-indigo-500 text-sm font-bold tracking-widest uppercase"
+                       />
                     </div>
                  </div>
               </div>
@@ -667,8 +746,14 @@ export default function POSCreate() {
                  </div>
                  {receiptData.diskonNominal > 0 && (
                     <div className="flex justify-between">
-                       <span>Diskon Global</span>
+                       <span>Diskon Manual</span>
                        <span>-{new Intl.NumberFormat('id-ID').format(receiptData.diskonNominal)}</span>
+                    </div>
+                 )}
+                 {totalPromoDiscount > 0 && (
+                    <div className="flex justify-between">
+                       <span>Hemat Promo</span>
+                       <span>-{new Intl.NumberFormat('id-ID').format(totalPromoDiscount)}</span>
                     </div>
                  )}
                  <div className="flex justify-between font-bold text-sm mt-2 border-t border-slate-400 pt-2">

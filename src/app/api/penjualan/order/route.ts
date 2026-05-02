@@ -52,6 +52,7 @@ export async function GET(request: Request) {
       diskon_nominal: Number(h.diskon_nominal || 0),
       dpp: Number(h.dpp || 0),
       ppn_nominal: Number(h.ppn_nominal || 0),
+      ppn_prosentase: Number(h.ppn_prosentase || 0),
       total: Number(h.total || 0),
       total_idr: Number(h.total_idr || 0),
       kurs: Number(h.kurs || 1)
@@ -70,7 +71,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const {
       tanggal, customer, sales, nomor_po_customer, valuta, kurs, keterangan,
-      subtotal, diskonNominal, dpp, ppnNominal, grandTotal, items, user
+      subtotal, diskonNominal, dpp, ppnNominal, ppnProsentase, grandTotal, items, user,
+      nomormhcabang, nomormhperusahaan
     } = body;
 
     if (!tanggal || !customer || !items || !Array.isArray(items) || items.length === 0) {
@@ -105,11 +107,13 @@ export async function POST(request: Request) {
     const [headerResult]: any = await connection.execute(
       `INSERT INTO thjualorder 
         (kode, tanggal, customer, sales, nomor_po_customer, valuta, kurs, keterangan, 
-         subtotal, diskon_nominal, dpp, ppn_nominal, total, total_idr, dibuat_oleh) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         subtotal, diskon_nominal, dpp, ppn_nominal, ppn_prosentase, total, total_idr, dibuat_oleh,
+         nomormhcabang, nomormhperusahaan) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         generatedKode, tanggal, customer, sales || '', nomor_po_customer || '', valuta || 'IDR', kurs || 1, keterangan || '',
-        subtotal || 0, diskonNominal || 0, dpp || 0, ppnNominal || 0, grandTotal || 0, (grandTotal || 0) * (kurs || 1), 'Admin'
+        subtotal || 0, diskonNominal || 0, dpp || 0, ppnNominal || 0, ppnProsentase || 0, grandTotal || 0, (grandTotal || 0) * (kurs || 1), user || 'Admin',
+        nomormhcabang || 0, nomormhperusahaan || 0
       ]
     );
 
@@ -154,10 +158,10 @@ export async function PATCH(request: Request) {
     const params: any[] = [];
 
     if (action === 'approve') {
-      query = `UPDATE thjualorder SET status_disetujui = 1, disetujui_oleh = 'Admin', disetujui_pada = NOW() WHERE kode = ?`;
+      query = `UPDATE thjualorder SET status_disetujui = 1, disetujui_oleh = 'Admin', disetujui_pada = NOW() WHERE nomor = ?`;
       params.push(id);
     } else if (action === 'reject' || action === 'delete') {
-      query = `UPDATE thjualorder SET status_aktif = 0, dibatalkan_oleh = 'Admin', dibatalkan_pada = NOW() WHERE kode = ?`;
+      query = `UPDATE thjualorder SET status_aktif = 0, dibatalkan_oleh = 'Admin', dibatalkan_pada = NOW() WHERE nomor = ?`;
       params.push(id);
     } else {
       return NextResponse.json({ success: false, error: "Action tidak valid" }, { status: 400 });
@@ -170,12 +174,12 @@ export async function PATCH(request: Request) {
     }
 
     // Get Header metadata for logging (nomor)
-    const headerData: any = await executeQuery(`SELECT nomor FROM thjualorder WHERE kode = ?`, [id]);
+    const headerData: any = await executeQuery(`SELECT kode FROM thjualorder WHERE nomor = ?`, [id]);
     if (headerData.length > 0) {
-      const headerId = headerData[0].nomor;
+      const headerKode = headerData[0].kode;
       const logAction = action === 'approve' ? 'APPROVE' : 'DELETE';
-      const logDesc = action === 'approve' ? `Menyetujui Order Jual ${id}` : `Membatalkan Order Jual ${id}`;
-      await addLogHistory("Order Penjualan", headerId, logAction, user || "Admin", logDesc);
+      const logDesc = action === 'approve' ? `Menyetujui Order Jual ${headerKode}` : `Membatalkan Order Jual ${headerKode}`;
+      await addLogHistory("Order Penjualan", id, logAction, user || "Admin", logDesc);
     }
 
     return NextResponse.json({ success: true, message: `Berhasil ${action} data` });

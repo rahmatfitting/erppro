@@ -13,7 +13,9 @@ import {
   CircleDot,
   Shield,
   BarChart3,
+  FileDown
 } from "lucide-react";
+import { exportToExcel } from "@/lib/exportUtils";
 
 const TIMEFRAMES = [
   { label: "15 Menit", value: "15m" },
@@ -124,6 +126,28 @@ export default function ICTPage() {
     }
   };
 
+  const handleExport = () => {
+    if (signals.length === 0) return;
+    exportToExcel({
+      title: "ICT Kill Zone & AMD Report",
+      subtitle: `Timeframe: ${TIMEFRAMES.find(t => t.value === timeframe)?.label} | Generated: ${new Date().toLocaleString()}`,
+      fileName: `ICT_Scan_${timeframe}_${new Date().toISOString().split('T')[0]}`,
+      columns: [
+        { header: "Symbol", key: "symbol" },
+        { header: "Bias", key: "bias" },
+        { header: "Confidence", key: "confidence" },
+        { header: "Score", key: "score" },
+        { header: "Killzone Active", key: "killzone_active", format: (v) => v ? "YES" : "NO" },
+        { header: "Killzone Session", key: "killzone_session" },
+        { header: "Entry", key: "entry", format: (v) => parseFloat(v).toLocaleString() },
+        { header: "Stop Loss", key: "stop_loss", format: (v) => parseFloat(v).toLocaleString() },
+        { header: "TP1", key: "tp1", format: (v) => parseFloat(v).toLocaleString() },
+        { header: "TP2", key: "tp2", format: (v) => parseFloat(v).toLocaleString() },
+      ],
+      data: signals,
+    });
+  };
+
   return (
     <div className="space-y-6 pb-16">
 
@@ -170,6 +194,14 @@ export default function ICTPage() {
           <div className="flex items-center gap-3">
             <button onClick={() => fetchSignals()} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-200 transition-all">
               <RefreshCcw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+            <button 
+              onClick={handleExport}
+              disabled={signals.length === 0}
+              className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-200 transition-all shadow-sm"
+              title="Export Excel"
+            >
+              <FileDown className="h-5 w-5" />
             </button>
             <button onClick={handleScan} disabled={scanning}
               className="inline-flex items-center gap-2 px-8 py-3 bg-amber-500 hover:bg-amber-400 text-slate-900 rounded-2xl font-black text-sm shadow-lg shadow-amber-500/30 disabled:opacity-50"
@@ -237,10 +269,39 @@ export default function ICTPage() {
                 {/* Score */}
                 <div className="mb-5"><ScoreMeter score={s.score} /></div>
 
-                {/* Phase Flow */}
-                <div className="mb-5">
-                  <PhaseFlow accu={!!s.accumulation} manip={s.manipulation} dist={!!s.distribution} />
-                </div>
+                {/* Trade Setup */}
+                {(s.entry || s.stop_loss) && (
+                  <div className="mb-5 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 space-y-3">
+                    <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-400">
+                       <span>Setup Recommendation</span>
+                       <span className={isBull ? "text-emerald-500" : "text-rose-500"}>{isBull ? "LONG ENTRY" : "SHORT ENTRY"}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                       <div className="space-y-1">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">Entry</span>
+                          <div className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-1">
+                             <CircleDot className="h-3 w-3 text-indigo-500" /> {parseFloat(s.entry).toLocaleString()}
+                          </div>
+                       </div>
+                       <div className="space-y-1">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">Stop Loss</span>
+                          <div className="text-sm font-black text-rose-500 flex items-center gap-1">
+                             <Shield className="h-3 w-3" /> {parseFloat(s.stop_loss).toLocaleString()}
+                          </div>
+                       </div>
+                    </div>
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between">
+                       <div className="space-y-1">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">TP 1 (1.5R)</span>
+                          <div className="text-xs font-black text-emerald-500">{parseFloat(s.tp1).toLocaleString()}</div>
+                       </div>
+                       <div className="space-y-1 text-right">
+                          <span className="text-[8px] font-bold text-slate-400 uppercase">TP 2 (Swing)</span>
+                          <div className="text-xs font-black text-emerald-500 text-right">{parseFloat(s.tp2).toLocaleString()}</div>
+                       </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Badges Row */}
                 <div className="flex flex-wrap gap-2 mb-5">

@@ -57,6 +57,11 @@ OB Level: ${signal.ob_price}
       }
     }
 
+    // Reset data if no signals detected
+    if (detectedCount === 0) {
+      await executeQuery(`DELETE FROM crypto_smc_signals WHERE timeframe = ?`, [interval]);
+    }
+
     return NextResponse.json({ success: true, message: `SMC Scan [${interval}] complete. Detected ${detectedCount} signals.` });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

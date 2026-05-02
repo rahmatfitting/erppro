@@ -13,7 +13,9 @@ import {
   CheckCircle2,
   XCircle,
   MinusCircle,
+  FileDown
 } from "lucide-react";
+import { exportToExcel } from "@/lib/exportUtils";
 
 const TYPE_FILTERS = [
   { label: "All Signals", value: "ALL" },
@@ -101,6 +103,28 @@ export default function DivergencePage() {
     }
   };
 
+  const handleExport = () => {
+    if (signals.length === 0) return;
+    exportToExcel({
+      title: "Divergence Screener Report",
+      subtitle: `Generated: ${new Date().toLocaleString()}`,
+      fileName: `Divergence_Scan_${new Date().toISOString().split('T')[0]}`,
+      columns: [
+        { header: "Symbol", key: "symbol" },
+        { header: "Dominant Type", key: "dominant_type" },
+        { header: "Score", key: "score" },
+        { header: "Confidence", key: "confidence" },
+        { header: "15m", key: "tf_15m" },
+        { header: "1h", key: "tf_1h" },
+        { header: "4h", key: "tf_4h" },
+        { header: "1d", key: "tf_1d" },
+        { header: "MACD Confirm", key: "macd_confirms", format: (v) => v ? "YES" : "NO" },
+        { header: "Volume Spike", key: "volume_spike", format: (v) => v ? "YES" : "NO" },
+      ],
+      data: signals,
+    });
+  };
+
   const bullish = signals.filter(s => s.dominant_type === 'BULLISH');
   const bearish  = signals.filter(s => s.dominant_type === 'BEARISH');
 
@@ -125,6 +149,14 @@ export default function DivergencePage() {
           <div className="flex items-center gap-3">
             <button onClick={() => fetchSignals()} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-200 transition-all">
               <RefreshCcw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+            <button 
+              onClick={handleExport}
+              disabled={signals.length === 0}
+              className="p-3 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-200 transition-all"
+              title="Export Excel"
+            >
+              <FileDown className="h-5 w-5" />
             </button>
             <button
               onClick={handleScan}

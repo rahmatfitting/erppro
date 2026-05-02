@@ -1,14 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Save, ArrowLeft, FileText, AlertCircle, Plus, Trash2 } from "lucide-react";
+import { Save, ArrowLeft, FileText, AlertCircle, Plus, Trash2, Search, Target, ShieldAlert, ShoppingCart, Users, Wallet, PackageOpen, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { BrowseCustomerModal } from "@/components/BrowseCustomerModal";
+import { BrowseSalesModal } from "@/components/BrowseSalesModal";
+import { BrowseValutaModal } from "@/components/BrowseValutaModal";
+import { BrowseBarangModal } from "@/components/BrowseBarangModal";
+import { ScanPOModal } from "@/components/ScanPOModal";
 
 export default function CreateOrderJual() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [session, setSession] = useState<any>(null);
+
+  // Modal States
+  const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
+  const [isSalesModalOpen, setSalesModalOpen] = useState(false);
+  const [isValutaModalOpen, setValutaModalOpen] = useState(false);
+  const [isBarangModalOpen, setBarangModalOpen] = useState(false);
+  const [isOCRModalOpen, setOCRModalOpen] = useState(false);
+  const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
 
   // Master data lists for dropdowns
   const [customers, setCustomers] = useState<any[]>([]);
@@ -16,26 +30,29 @@ export default function CreateOrderJual() {
   const [barangs, setBarangs] = useState<any[]>([]);
 
   useEffect(() => {
-    // Fetch master data
-    const fetchMasters = async () => {
+    // Fetch master data & session
+    const fetchData = async () => {
       try {
-        const [resCust, resSales, resBarang] = await Promise.all([
+        const [resCust, resSales, resBarang, resSession] = await Promise.all([
           fetch('/api/master/customer'),
           fetch('/api/master/sales'),
-          fetch('/api/master/barang')
+          fetch('/api/master/barang'),
+          fetch('/api/auth/session')
         ]);
         const custData = await resCust.json();
         const salesData = await resSales.json();
         const brgData = await resBarang.json();
+        const sessData = await resSession.json();
 
         if (custData.success) setCustomers(custData.data.filter((c:any) => c.status_aktif === 1));
         if (salesData.success) setSalesList(salesData.data.filter((s:any) => s.status_aktif === 1));
         if (brgData.success) setBarangs(brgData.data.filter((b:any) => b.status_aktif === 1));
+        if (sessData.success) setSession(sessData.data);
       } catch (err) {
-        console.error("Failed to fetch master data", err);
+        console.error("Failed to fetch page data", err);
       }
     };
-    fetchMasters();
+    fetchData();
   }, []);
 
   const [header, setHeader] = useState({
@@ -48,6 +65,7 @@ export default function CreateOrderJual() {
     keterangan: "",
     diskonNominal: 0,
     ppnNominal: 0,
+    ppnPct: 12, // Default to standard 12%
   });
 
   const [items, setItems] = useState<any[]>([
@@ -56,7 +74,16 @@ export default function CreateOrderJual() {
 
   const handleHeaderChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setHeader((prev) => ({ ...prev, [name]: name === 'kurs' || name === 'diskonNominal' || name === 'ppnNominal' ? parseFloat(value) || 0 : value }));
+    setHeader((prev) => {
+      const next = { ...prev, [name]: ['kurs', 'diskonNominal', 'ppnNominal', 'ppnPct'].includes(name) ? parseFloat(value) || 0 : value };
+      
+      // Auto-calculate PPN Nominal if PPN % changes
+      if (name === 'ppnPct') {
+        const dppVal = totalSubtotalItems - next.diskonNominal;
+        next.ppnNominal = dppVal * (next.ppnPct / 100);
+      }
+      return next;
+    });
   };
 
   const calculateItem = (item: any) => {
@@ -112,10 +139,56 @@ export default function CreateOrderJual() {
     }
   };
 
+  const handleSelectBarang = (barang: any) => {
+    if (activeItemIndex === null) return;
+    const newItems = [...items];
+    newItems[activeItemIndex] = { 
+      ...newItems[activeItemIndex], 
+      kode_barang: barang.kode, 
+      nama_barang: barang.nama, 
+      satuan: barang.satuan_nama || barang.satuan,
+      harga: barang.harga_jual || 0 
+    };
+    newItems[activeItemIndex] = calculateItem(newItems[activeItemIndex]);
+    setItems(newItems);
+    setBarangModalOpen(false);
+  };
+
+  const handleOCRSuccess = (ocrData: any) => {
+    // Populate header
+    setHeader(prev => ({
+      ...prev,
+      nomor_po_customer: ocrData.po_number || "",
+      tanggal: ocrData.date || prev.tanggal,
+      // We don't auto-set customer name because it needs MH Customer match, 
+      // but we can add it to keterangan if not matched.
+      keterangan: ocrData.customer_name ? `Customer PO: ${ocrData.customer_name}\n${prev.keterangan}` : prev.keterangan
+    }));
+
+    // Populate items
+    if (ocrData.items && ocrData.items.length > 0) {
+      setItems(ocrData.items);
+    }
+  };
+
   // Subtotal and Totals
   const totalSubtotalItems = items.reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0);
   const dpp = totalSubtotalItems - header.diskonNominal;
   const grandTotal = dpp + header.ppnNominal;
+
+  // Sync PPN Nominal when items/diskon change if ppnPct > 0
+  useEffect(() => {
+    setHeader(prev => {
+      if (prev.ppnPct > 0) {
+        const dppVal = totalSubtotalItems - prev.diskonNominal;
+        const newPpnNominal = dppVal * (prev.ppnPct / 100);
+        if (Math.abs(newPpnNominal - prev.ppnNominal) > 0.01) {
+          return { ...prev, ppnNominal: newPpnNominal };
+        }
+      }
+      return prev;
+    });
+  }, [totalSubtotalItems, header.diskonNominal, header.ppnPct]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,7 +205,10 @@ export default function CreateOrderJual() {
         subtotal: totalSubtotalItems,
         dpp,
         grandTotal,
-        items
+        items,
+        user: session?.nama || "Admin",
+        nomormhcabang: session?.nomormhcabang || 0,
+        nomormhperusahaan: session?.nomormhperusahaan || 0
       };
 
       const res = await fetch("/api/penjualan/order", {
@@ -171,13 +247,24 @@ export default function CreateOrderJual() {
             Buat Order Jual
           </h1>
         </div>
-        <Link 
-          href="/penjualan/order"
-          className="inline-flex items-center gap-2 rounded-md bg-white border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Kembali
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link 
+            href="/penjualan/order"
+            className="inline-flex items-center gap-2 rounded-md bg-white border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Kembali
+          </Link>
+          <button
+            type="submit"
+            form="order-form"
+            disabled={loading}
+            className="inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save className="h-4 w-4" />
+            {loading ? "Menyimpan..." : "Simpan Order"}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -188,12 +275,17 @@ export default function CreateOrderJual() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form id="order-form" onSubmit={handleSubmit}>
           {/* Header Info */}
           <div className="p-6 md:p-8 space-y-6 border-b border-slate-200 dark:border-slate-800">
              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Informasi Dokumen</h3>
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">No. Order Jual</label>
+                  <input type="text" readOnly value="[AUTOMATIC]" className="w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 font-bold outline-none cursor-not-allowed"/>
+                </div>
+
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Tanggal Order <span className="text-red-500">*</span></label>
                   <input type="date" name="tanggal" required value={header.tanggal} onChange={handleHeaderChange} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:bg-slate-950 dark:border-slate-700 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none"/>
@@ -201,19 +293,22 @@ export default function CreateOrderJual() {
 
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Customer <span className="text-red-500">*</span></label>
-                  <select name="customer" required value={header.customer} onChange={handleHeaderChange} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:bg-slate-950 dark:border-slate-700 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none">
-                     <option value="">-- Pilih Customer --</option>
-                     {customers.map(c => <option key={c.kode} value={c.nama}>{c.kode} - {c.nama}</option>)}
-                     <option value="CASH">CASH (Langsung)</option>
-                  </select>
+                  <div className="flex gap-2">
+                    <input type="text" readOnly value={header.customer} placeholder="Pilih Customer..." className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:bg-slate-950 dark:border-slate-700 dark:text-white outline-none cursor-not-allowed"/>
+                    <button type="button" onClick={() => setCustomerModalOpen(true)} className="px-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
+                      <Search className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Sales</label>
-                  <select name="sales" value={header.sales} onChange={handleHeaderChange} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:bg-slate-950 dark:border-slate-700 dark:text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none">
-                     <option value="">-- Pilih Sales --</option>
-                     {salesList.map(s => <option key={s.kode} value={s.nama}>{s.kode} - {s.nama}</option>)}
-                  </select>
+                  <div className="flex gap-2">
+                    <input type="text" readOnly value={header.sales} placeholder="Pilih Sales..." className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:bg-slate-950 dark:border-slate-700 dark:text-white outline-none cursor-not-allowed"/>
+                    <button type="button" onClick={() => setSalesModalOpen(true)} className="px-3 bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200 transition-colors border border-slate-300">
+                      <Search className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -223,7 +318,12 @@ export default function CreateOrderJual() {
 
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Valuta</label>
-                  <input type="text" name="valuta" required value={header.valuta} onChange={handleHeaderChange} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:bg-slate-950 dark:border-slate-700 dark:text-white focus:border-indigo-500 outline-none"/>
+                  <div className="flex gap-2">
+                    <input type="text" readOnly value={header.valuta} className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm dark:bg-slate-950 dark:border-slate-700 dark:text-white outline-none cursor-not-allowed"/>
+                    <button type="button" onClick={() => setValutaModalOpen(true)} className="px-3 bg-slate-100 text-slate-600 rounded-md hover:bg-slate-200 transition-colors border border-slate-300">
+                      <Search className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -242,9 +342,6 @@ export default function CreateOrderJual() {
           <div className="p-6 md:p-8 space-y-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
              <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Detail Barang</h3>
-                <button type="button" onClick={addItem} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-emerald-100 text-emerald-700 rounded-md hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors">
-                   <Plus className="h-4 w-4"/> Tambah Baris
-                </button>
              </div>
              
              <div className="overflow-x-auto min-h-[200px]">
@@ -252,7 +349,7 @@ export default function CreateOrderJual() {
                    <thead>
                       <tr className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-y border-slate-200 dark:border-slate-700">
                          <th className="p-3 w-10 text-center">#</th>
-                         <th className="p-3 w-64">Kode & Nama Barang</th>
+                         <th className="p-3 w-64">Nama Barang</th>
                          <th className="p-3 w-24">Satuan</th>
                          <th className="p-3 w-24">Jumlah</th>
                          <th className="p-3 w-32">Harga</th>
@@ -266,20 +363,25 @@ export default function CreateOrderJual() {
                       {items.map((item, index) => (
                          <tr key={index} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                             <td className="p-3 text-center text-slate-500">{index + 1}</td>
-                            <td className="p-2">
-                               <select name="kode_barang" value={item.kode_barang} onChange={(e) => handleItemChange(index, e)} className="w-full text-sm p-2 rounded border border-slate-300 dark:border-slate-700 bg-transparent outline-none focus:border-indigo-500">
-                                  <option value="">Pilih Barang...</option>
-                                  {barangs.map(b => (
-                                     <option key={b.kode} value={b.kode}>{b.kode} - {b.nama}</option>
-                                  ))}
-                                  <option value="MANUAL">-- Input Manual --</option>
-                               </select>
-                               {item.kode_barang === "MANUAL" && (
-                                 <input type="text" name="nama_barang" placeholder="Nama Barang Manual" value={item.nama_barang} onChange={(e) => handleItemChange(index, e)} className="w-full mt-2 text-sm p-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 outline-none" required/>
-                               )}
+                             <td className="p-2">
+                                <div className="flex gap-1 group/item">
+                                   <input 
+                                     type="text" 
+                                     name="nama_barang" 
+                                     readOnly 
+                                     placeholder="Klik ikon cari untuk pilih barang..." 
+                                     value={item.nama_barang} 
+                                     className="flex-1 text-sm p-2 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 outline-none cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" 
+                                     onClick={() => { setActiveItemIndex(index); setBarangModalOpen(true); }}
+                                     required
+                                   />
+                                   <button type="button" onClick={() => { setActiveItemIndex(index); setBarangModalOpen(true); }} className="px-2 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 border border-indigo-200 transition-colors">
+                                      <Search className="h-3.5 w-3.5" />
+                                   </button>
+                                </div>
                             </td>
                             <td className="p-2">
-                               <input type="text" name="satuan" value={item.satuan} onChange={(e) => handleItemChange(index, e)} className="w-full text-sm p-2 rounded border border-slate-300 dark:border-slate-700 bg-transparent outline-none" placeholder="PCS"/>
+                               <input type="text" name="satuan" readOnly value={item.satuan} className="w-full text-sm p-2 rounded border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 outline-none cursor-not-allowed" placeholder="PCS"/>
                             </td>
                             <td className="p-2">
                                <input type="number" name="jumlah" min="1" step="0.01" value={item.jumlah} onChange={(e) => handleItemChange(index, e)} className="w-full text-sm p-2 rounded border border-slate-300 dark:border-slate-700 bg-transparent outline-none" required/>
@@ -306,6 +408,12 @@ export default function CreateOrderJual() {
                    </tbody>
                 </table>
              </div>
+             
+             <div className="flex justify-start">
+                <button type="button" onClick={addItem} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 transition-all border border-indigo-200 dark:border-indigo-800 shadow-sm mt-4">
+                   <Plus className="h-4 w-4"/> Tambah Baris Detail
+                </button>
+             </div>
           </div>
 
           {/* Totals Section */}
@@ -324,8 +432,11 @@ export default function CreateOrderJual() {
                    <span className="font-semibold text-slate-900 dark:text-white">{new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(dpp)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
-                   <span className="text-slate-600 dark:text-slate-400 font-medium pt-2">PPN Nominal (+)</span>
-                   <input type="number" min="0" name="ppnNominal" value={header.ppnNominal || ''} onChange={handleHeaderChange} className="w-1/3 text-right text-sm p-1.5 rounded border border-slate-300 dark:border-slate-700 bg-transparent outline-none focus:border-indigo-500"/>
+                   <div className="flex items-center gap-2">
+                      <span className="text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">PPN (%)</span>
+                      <input type="number" min="0" max="100" name="ppnPct" value={header.ppnPct || ''} onChange={handleHeaderChange} className="w-16 text-center text-sm p-1.5 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:border-indigo-500"/>
+                   </div>
+                   <input type="number" min="0" name="ppnNominal" value={header.ppnNominal || ''} onChange={handleHeaderChange} className="w-1/2 text-right text-sm p-1.5 rounded border border-slate-300 dark:border-slate-700 bg-transparent outline-none focus:border-indigo-500"/>
                 </div>
                 <div className="flex justify-between items-center pt-3 border-t-2 border-slate-slate-300 dark:border-slate-700">
                    <span className="text-base font-bold text-slate-900 dark:text-white">Grand Total</span>
@@ -336,18 +447,44 @@ export default function CreateOrderJual() {
              </div>
           </div>
 
-          <div className="p-6 md:p-8 flex justify-end bg-slate-50 dark:bg-slate-900/50">
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-indigo-600 px-8 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save className="h-4 w-4" />
-              {loading ? "Menyimpan..." : "Simpan Order Jual"}
-            </button>
-          </div>
         </form>
       </div>
+
+      {/* Modals */}
+      <BrowseCustomerModal 
+        isOpen={isCustomerModalOpen} 
+        onClose={() => setCustomerModalOpen(false)}
+        onSelect={(cust) => {
+          setHeader(prev => ({ ...prev, customer: cust.nama }));
+          setCustomerModalOpen(false);
+        }}
+      />
+      <BrowseSalesModal
+        isOpen={isSalesModalOpen}
+        onClose={() => setSalesModalOpen(false)}
+        onSelect={(sales) => {
+          setHeader(prev => ({ ...prev, sales: sales.nama }));
+          setSalesModalOpen(false);
+        }}
+      />
+      <BrowseValutaModal
+        isOpen={isValutaModalOpen}
+        onClose={() => setValutaModalOpen(false)}
+        onSelect={(valuta) => {
+          setHeader(prev => ({ ...prev, valuta: valuta.kode, kurs: parseFloat(String(valuta.kurs)) || 1 }));
+          setValutaModalOpen(false);
+        }}
+      />
+      <BrowseBarangModal
+        isOpen={isBarangModalOpen}
+        onClose={() => setBarangModalOpen(false)}
+        onSelect={handleSelectBarang}
+      />
+      <ScanPOModal
+        isOpen={isOCRModalOpen}
+        onClose={() => setOCRModalOpen(false)}
+        onSuccess={handleOCRSuccess}
+      />
     </div>
   );
 }

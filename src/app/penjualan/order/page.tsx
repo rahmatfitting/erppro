@@ -233,17 +233,17 @@ export default function OrderJualPage() {
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Link href={`/penjualan/order/${item.kode}?mode=view`} title="View Detail" className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white shadow-sm border border-slate-200 rounded p-1.5 dark:bg-slate-900 dark:border-slate-700">
+                          <Link href={`/penjualan/order/${item.nomor}?mode=view`} title="View Detail" className="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white shadow-sm border border-slate-200 rounded p-1.5 dark:bg-slate-900 dark:border-slate-700">
                              <Search className="h-4 w-4" />
                           </Link>
 
                            {!isCanceled && !isApproved && (
                               <>
-                               <Link href={`/penjualan/order/${item.kode}?mode=edit`} title="Edit" className="text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 bg-white shadow-sm border border-slate-200 rounded p-1.5 dark:bg-slate-900 dark:border-slate-700">
+                               <Link href={`/penjualan/order/${item.nomor}?mode=edit`} title="Edit" className="text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 bg-white shadow-sm border border-slate-200 rounded p-1.5 dark:bg-slate-900 dark:border-slate-700">
                                  <Edit className="h-4 w-4" />
                                </Link>
                                <button 
-                                 onClick={() => handleAction(item.kode, 'approve')} 
+                                 onClick={() => handleAction(item.nomor, 'approve')} 
                                  disabled={isPending}
                                  title="Approve" 
                                  className="text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 bg-white shadow-sm border border-slate-200 rounded p-1.5 dark:bg-slate-900 dark:border-slate-700 disabled:opacity-50"

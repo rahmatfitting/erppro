@@ -10,7 +10,7 @@ export async function GET(request: Request, context: any) {
     const params = await context.params;
     const id = params.id;
     // Get Header
-    const headerQuery = `SELECT * FROM thjualorder WHERE kode = ?`;
+    const headerQuery = `SELECT * FROM thjualorder WHERE nomor = ?`;
     const [headerRows]: any = await pool.query(headerQuery, [id]);
     
     if (headerRows.length === 0) {
@@ -31,6 +31,7 @@ export async function GET(request: Request, context: any) {
             diskon_nominal: Number(header.diskon_nominal || 0),
             dpp: Number(header.dpp || 0),
             ppn_nominal: Number(header.ppn_nominal || 0),
+            ppn_prosentase: Number(header.ppn_prosentase || 0),
             total: Number(header.total || 0),
             total_idr: Number(header.total_idr || 0),
             kurs: Number(header.kurs || 1),
@@ -63,7 +64,7 @@ export async function PUT(request: Request, context: any) {
     const body = await request.json();
     const { 
       tanggal, customer, sales, nomor_po_customer, valuta, kurs, keterangan, 
-      subtotal, diskonNominal, dpp, ppnNominal, grandTotal, items, user 
+      subtotal, diskonNominal, dpp, ppnNominal, ppnProsentase, grandTotal, items, user 
     } = body;
 
     if (!tanggal || !customer || !items || !Array.isArray(items) || items.length === 0) {
@@ -75,8 +76,8 @@ export async function PUT(request: Request, context: any) {
     // Find header
     const [headerRows]: any = await connection.execute(
       `SELECT nomor, tanggal, customer, sales, nomor_po_customer, valuta, kurs, keterangan, 
-              subtotal, diskon_nominal, dpp, ppn_nominal, total 
-       FROM thjualorder WHERE kode = ?`, [id]
+              subtotal, diskon_nominal, dpp, ppn_nominal, ppn_prosentase, total 
+       FROM thjualorder WHERE nomor = ?`, [id]
     );
     if (headerRows.length === 0) {
         await connection.rollback();
@@ -98,13 +99,14 @@ export async function PUT(request: Request, context: any) {
       diskon_nominal: 'Diskon Nominal',
       dpp: 'DPP',
       ppn_nominal: 'PPN',
+      ppn_prosentase: 'PPN %',
       total: 'Total'
     };
     const newData = {
       tanggal, customer, sales: sales || '', nomor_po_customer: nomor_po_customer || '',
       valuta: valuta || 'IDR', kurs: kurs || 1, keterangan: keterangan || '',
       subtotal: subtotal || 0, diskon_nominal: diskonNominal || 0, dpp: dpp || 0, 
-      ppn_nominal: ppnNominal || 0, total: grandTotal || 0
+      ppn_nominal: ppnNominal || 0, ppn_prosentase: ppnProsentase || 0, total: grandTotal || 0
     };
     const logDetails = getChanges(oldHeader, newData, fieldLabels);
 
@@ -112,11 +114,11 @@ export async function PUT(request: Request, context: any) {
     await connection.execute(
       `UPDATE thjualorder 
         SET tanggal = ?, customer = ?, sales = ?, nomor_po_customer = ?, valuta = ?, kurs = ?, keterangan = ?, 
-            subtotal = ?, diskon_nominal = ?, dpp = ?, ppn_nominal = ?, total = ?, total_idr = ?
+            subtotal = ?, diskon_nominal = ?, dpp = ?, ppn_nominal = ?, ppn_prosentase = ?, total = ?, total_idr = ?
         WHERE nomor = ?`,
       [
         tanggal, customer, sales || '', nomor_po_customer || '', valuta || 'IDR', kurs || 1, keterangan || '',
-        subtotal || 0, diskonNominal || 0, dpp || 0, ppnNominal || 0, grandTotal || 0, (grandTotal || 0) * (kurs || 1), headerId
+        subtotal || 0, diskonNominal || 0, dpp || 0, ppnNominal || 0, ppnProsentase || 0, grandTotal || 0, (grandTotal || 0) * (kurs || 1), headerId
       ]
     );
 

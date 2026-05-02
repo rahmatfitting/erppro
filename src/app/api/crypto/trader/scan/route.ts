@@ -84,6 +84,9 @@ export async function GET() {
       } catch (_) {}
     }
 
+    // Data already reset at start of scan (line 38)
+    // If no signals found, table stays empty (reset state)
+
     return NextResponse.json({ success: true, message: `Top Trader Scan selesai. ${saved} sinyal ditemukan.` });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

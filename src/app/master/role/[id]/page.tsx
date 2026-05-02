@@ -5,27 +5,11 @@ import { Save, ArrowLeft, Loader2, Settings, ShieldCheck, AlertCircle } from "lu
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import React from "react";
+import { getGroupedMenuTitles } from "@/components/Sidebar";
 
-const MENU_LIST = [
-  // Master Data - Inventory
-  "Kategori Barang", "Master Barang", "Satuan", "Gudang",
-  // Master Data - Koneksi
-  "Vendor / Supplier", "Customer", "Sales / Karyawan",
-  // Master Data - Finansial
-  "Valuta", "Jenis Penyesuaian",
-  // Pembelian
-  "Permintaan Pembelian", "Order Pembelian", "Penerimaan Barang", "Nota Pembelian",
-  // Penjualan
-  "Order Penjualan", "Delivery Order", "Surat Jalan", "Nota Penjualan", "POS Kasir",
-  // Keuangan
-  "Uang Masuk Utama", "Uang Masuk Lain", "Uang Keluar Utama", "Uang Keluar Lain",
-  // Laporan
-  "Laporan Piutang", "Laporan Hutang", "Laporan Kas Bank", "Laporan Laba Rugi",
-  // Stok
-  "Stok Opname", "Transfer Antar Gudang", "Pemakaian Internal", "Transformasi Barang",
-  // Sistem
-  "Master User", "Master Role"
-];
+const menuGroups = getGroupedMenuTitles();
+const ALL_MENUS = menuGroups.flatMap(g => g.menus);
 
 export default function RoleEdit() {
   const router = useRouter();
@@ -43,7 +27,7 @@ export default function RoleEdit() {
   });
 
   const [access, setAccess] = useState<Record<string, { view: boolean; add: boolean; edit: boolean; delete: boolean; approve: boolean }>>(
-     MENU_LIST.reduce((acc, menu) => ({
+     ALL_MENUS.reduce((acc, menu) => ({
         ...acc,
         [menu]: { view: false, add: false, edit: false, delete: false, approve: false }
      }), {})
@@ -64,7 +48,7 @@ export default function RoleEdit() {
             setAccess(prev => {
                 const newAccess = { ...prev };
                 json.data.hak_akses.forEach((hak: any) => {
-                    if (MENU_LIST.includes(hak.menu)) {
+                    if (ALL_MENUS.includes(hak.menu)) {
                         newAccess[hak.menu] = {
                             view: hak.view,
                             add: hak.add,
@@ -232,35 +216,45 @@ export default function RoleEdit() {
                         <th className="px-4 py-3 font-semibold text-center w-16 text-emerald-600">Approve</th>
                      </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                     {MENU_LIST.map((menu) => (
-                        <tr key={menu} className="hover:bg-slate-50/50">
-                           <td className="px-4 py-3 text-slate-800 font-medium border-r border-slate-100">
-                              {menu}
-                              <button 
-                                 type="button"
-                                 onClick={() => toggleAll(menu, !access[menu].view)}
-                                 className="ml-3 text-[10px] uppercase font-bold text-slate-400 hover:text-indigo-600 px-1.5 py-0.5 border border-slate-200 rounded"
-                              >
-                                 {access[menu].view && access[menu].add && access[menu].edit && access[menu].delete && access[menu].approve ? "Uncheck All" : "Check All"}
-                              </button>
-                           </td>
-                           <td className="px-4 py-3 text-center bg-indigo-50/30">
-                              <input type="checkbox" checked={formData.kode === 'SA' ? true : access[menu].view} onChange={e => handleAccessChange(menu, 'view', e.target.checked)} className="h-4 w-4 accent-indigo-600 cursor-pointer rounded border-slate-300" />
-                           </td>
-                           <td className="px-4 py-3 text-center hover:bg-slate-50">
-                              <input type="checkbox" checked={formData.kode === 'SA' ? true : access[menu].add} onChange={e => handleAccessChange(menu, 'add', e.target.checked)} className="h-4 w-4 accent-indigo-600 cursor-pointer rounded border-slate-300" />
-                           </td>
-                           <td className="px-4 py-3 text-center border-l border-slate-100 hover:bg-slate-50">
-                              <input type="checkbox" checked={formData.kode === 'SA' ? true : access[menu].edit} onChange={e => handleAccessChange(menu, 'edit', e.target.checked)} className="h-4 w-4 accent-indigo-600 cursor-pointer rounded border-slate-300" />
-                           </td>
-                           <td className="px-4 py-3 text-center hover:bg-slate-50">
-                              <input type="checkbox" checked={formData.kode === 'SA' ? true : access[menu].delete} onChange={e => handleAccessChange(menu, 'delete', e.target.checked)} className="h-4 w-4 accent-indigo-600 cursor-pointer rounded border-slate-300" />
-                           </td>
-                           <td className="px-4 py-3 text-center border-l bg-emerald-50/20 hover:bg-emerald-50/50">
-                              <input type="checkbox" checked={formData.kode === 'SA' ? true : access[menu].approve} onChange={e => handleAccessChange(menu, 'approve', e.target.checked)} className="h-4 w-4 accent-emerald-600 cursor-pointer rounded border-slate-300" />
-                           </td>
-                        </tr>
+                   <tbody className="divide-y divide-slate-100">
+                     {menuGroups.map((group) => (
+                        <React.Fragment key={group.section}>
+                           {/* Section Header */}
+                           <tr className="bg-slate-100/50 uppercase">
+                              <td colSpan={6} className="px-4 py-2 text-[10px] font-bold text-slate-500">
+                                 {group.section}
+                              </td>
+                           </tr>
+                           {group.menus.map((menu) => (
+                              <tr key={menu} className="hover:bg-slate-50/50">
+                                 <td className="px-4 py-3 text-slate-800 font-medium border-r border-slate-100">
+                                    {menu}
+                                    <button 
+                                       type="button"
+                                       onClick={() => toggleAll(menu, !access[menu]?.view)}
+                                       className="ml-3 text-[10px] uppercase font-bold text-slate-400 hover:text-indigo-600 px-1.5 py-0.5 border border-slate-200 rounded"
+                                    >
+                                       {access[menu]?.view && access[menu]?.add && access[menu]?.edit && access[menu]?.delete && access[menu]?.approve ? "Uncheck All" : "Check All"}
+                                    </button>
+                                 </td>
+                                 <td className="px-4 py-3 text-center bg-indigo-50/30">
+                                    <input type="checkbox" checked={formData.kode === 'SA' ? true : (access[menu]?.view || false)} onChange={e => handleAccessChange(menu, 'view', e.target.checked)} className="h-4 w-4 accent-indigo-600 cursor-pointer rounded border-slate-300" />
+                                 </td>
+                                 <td className="px-4 py-3 text-center hover:bg-slate-50">
+                                    <input type="checkbox" checked={formData.kode === 'SA' ? true : (access[menu]?.add || false)} onChange={e => handleAccessChange(menu, 'add', e.target.checked)} className="h-4 w-4 accent-indigo-600 cursor-pointer rounded border-slate-300" />
+                                 </td>
+                                 <td className="px-4 py-3 text-center border-l border-slate-100 hover:bg-slate-50">
+                                    <input type="checkbox" checked={formData.kode === 'SA' ? true : (access[menu]?.edit || false)} onChange={e => handleAccessChange(menu, 'edit', e.target.checked)} className="h-4 w-4 accent-indigo-600 cursor-pointer rounded border-slate-300" />
+                                 </td>
+                                 <td className="px-4 py-3 text-center hover:bg-slate-50">
+                                    <input type="checkbox" checked={formData.kode === 'SA' ? true : (access[menu]?.delete || false)} onChange={e => handleAccessChange(menu, 'delete', e.target.checked)} className="h-4 w-4 accent-indigo-600 cursor-pointer rounded border-slate-300" />
+                                 </td>
+                                 <td className="px-4 py-3 text-center border-l bg-emerald-50/20 hover:bg-emerald-50/50">
+                                    <input type="checkbox" checked={formData.kode === 'SA' ? true : (access[menu]?.approve || false)} onChange={e => handleAccessChange(menu, 'approve', e.target.checked)} className="h-4 w-4 accent-emerald-600 cursor-pointer rounded border-slate-300" />
+                                 </td>
+                              </tr>
+                           ))}
+                        </React.Fragment>
                      ))}
                   </tbody>
                </table>

@@ -94,6 +94,9 @@ export async function GET() {
       } catch (_) {}
     }
 
+    // Data already reset at start of scan (line 33)
+    // If no signals found, table stays empty (reset state)
+
     return NextResponse.json({ success: true, message: `Divergence Scan selesai. ${saved} sinyal ditampung.` });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

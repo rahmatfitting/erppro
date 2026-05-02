@@ -46,6 +46,14 @@ const MODULE_HREF: Record<string, string> = {
   "Nota Beli Langsung": "/pembelian/nota-beli-langsung",
   "Gold Prices": "/gold-prices",
   "Buyback Prices": "/gold-buyback",
+  "Forex Probability": "/forex/screener",
+  "XAUUSD AI Screener": "/forex/xauusd",
+  "XAUUSD 5M Scalper": "/forex/xauusd5m",
+  "XAGUSD AI Screener": "/forex/xagusd",
+  "EURUSD AI Screener": "/forex/eurusd",
+  "Inflow / Outflow AI": "/crypto/flow",
+  "ETHUSDT 5M Scalper": "/crypto/ethusdt5m",
+  "Crypto SMC 5M Multi-Pair": "/crypto/scalp5m",
 };
 
 function timeAgo(dateStr: string) {
@@ -174,19 +182,24 @@ export function Header() {
   }, []);
 
   const getPageTitle = () => {
-    // if (pathname === "/") return "Dashboard Overview";
-    // const parts = pathname.split('/').filter(Boolean);
-    // return parts.map((p: string) => p.charAt(0).toUpperCase() + p.slice(1)).join(" / ");
     if (pathname === "/") return "Dashboard Overview";
 
-    const parts = pathname.split('/').filter(Boolean);
+    // Try to find title from menuData
+    for (const section of menuData) {
+      for (const item of section.items) {
+        if (item.href === pathname) return item.title;
+        if (item.subItems) {
+          const sub = item.subItems.find(s => s.href === pathname);
+          if (sub) return `${item.title} / ${sub.title}`;
+        }
+      }
+    }
 
+    const parts = pathname.split('/').filter(Boolean);
     return parts
-      .slice(0, 2) // 👈 ambil hanya 2 level pertama
+      .slice(0, 2)
       .map((p: string) => p.charAt(0).toUpperCase() + p.slice(1))
       .join(" / ");
-
-
   };
 
   const fetchNotifs = useCallback(async () => {

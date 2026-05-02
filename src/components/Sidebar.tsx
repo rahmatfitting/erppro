@@ -41,6 +41,7 @@ import {
   PackagePlus,
   PackageMinus,
   BarChart3,
+  BarChart2,
   Calendar,
   Coins,
   TrendingUp,
@@ -48,6 +49,14 @@ import {
   Waves,
   GitMerge,
   Clock,
+  Globe,
+  Crosshair,
+  Ticket,
+  Target,
+  Bot,
+  Camera,
+  HardHat,
+  Briefcase
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +71,40 @@ export type MenuItem = {
   icon: any;
   subItems?: { title: string; href: string; icon: any }[];
 };
+
+/**
+ * Returns a flat list of all menu titles for permissions matching
+ */
+export function getAllMenuTitles(): string[] {
+  const titles: string[] = [];
+  menuData.forEach(section => {
+    section.items.forEach(item => {
+      if (item.subItems) {
+        item.subItems.forEach(sub => titles.push(sub.title));
+      } else {
+        titles.push(item.title);
+      }
+    });
+  });
+  return Array.from(new Set(titles)); // Unique titles
+}
+
+/**
+ * Returns categorized menu titles for the permissions matrix UI
+ */
+export function getGroupedMenuTitles(): { section: string; menus: string[] }[] {
+  return menuData.map(section => {
+    const menus: string[] = [];
+    section.items.forEach(item => {
+      if (item.subItems) {
+        item.subItems.forEach(sub => menus.push(sub.title));
+      } else {
+        menus.push(item.title);
+      }
+    });
+    return { section: section.title, menus };
+  }).filter(s => s.menus.length > 0);
+}
 
 export const menuData: MenuSection[] = [
   {
@@ -105,6 +148,7 @@ export const menuData: MenuSection[] = [
           { title: "Master Sales", href: "/master/sales", icon: ShoppingCart },
           { title: "Master Perusahaan", href: "/master/perusahaan", icon: Building2 },
           { title: "Master Cabang", href: "/master/cabang", icon: MapPin },
+          { title: "Master Promo", href: "/master/promo", icon: Ticket },
         ],
       },
       {
@@ -140,6 +184,7 @@ export const menuData: MenuSection[] = [
         title: "Penjualan",
         icon: Receipt,
         subItems: [
+          { title: "Penawaran (Quotation)", href: "/penawaran", icon: FileText },
           { title: "Order Penjualan", href: "/penjualan/order", icon: FileText },
           { title: "Delivery Order", href: "/penjualan/delivery", icon: Truck },
           { title: "Surat Jalan", href: "/penjualan/surat-jalan", icon: Truck },
@@ -234,11 +279,53 @@ export const menuData: MenuSection[] = [
         href: "/keuangan/laporan-kas-bank",
         icon: Banknote,
       },
+      {
+        title: "Laporan Promo",
+        href: "/report/promo",
+        icon: Ticket,
+      },
     ],
+  },
+  {
+    title: "Proyek & Lapangan",
+    items: [
+      {
+        title: "Manajemen Proyek",
+        icon: Briefcase,
+        subItems: [
+          { title: "Daftar Proyek", href: "/proyek", icon: Briefcase },
+          { title: "RAB (Anggaran)", href: "/rab", icon: ClipboardList },
+          { title: "Timeline", href: "/proyek/timeline", icon: Calendar },
+          { title: "Progress Report", href: "/proyek/progress", icon: Camera },
+          { title: "Dokumentasi Lapangan", href: "/proyek/dokumentasi", icon: Camera },
+          { title: "Subkontraktor", href: "/master/subkontraktor", icon: HardHat },
+        ]
+      }
+    ]
   },
   {
     title: "Market Intelligence",
     items: [
+      {
+        title: "Master Flow AI",
+        href: "/crypto/market-scan",
+        icon: Crosshair,
+      },
+      {
+        title: "Whale Flow Screener",
+        href: "/crypto/whale",
+        icon: Waves,
+      },
+      {
+        title: "Volume Spike AI",
+        href: "/crypto/volume",
+        icon: BarChart2,
+      },
+      {
+        title: "Inflow / Outflow AI",
+        href: "/crypto/flow",
+        icon: Activity,
+      },
       {
         title: "Crypto FVG Screener",
         href: "/crypto/fvg",
@@ -260,6 +347,11 @@ export const menuData: MenuSection[] = [
         icon: BarChart3,
       },
       {
+        title: "Reversal Sniper",
+        href: "/crypto/reversal",
+        icon: Crosshair,
+      },
+      {
         title: "Hedge Fund Screener",
         href: "/crypto/hedge",
         icon: Crown,
@@ -268,6 +360,11 @@ export const menuData: MenuSection[] = [
         title: "Liquidity Sweep",
         href: "/crypto/sweep",
         icon: Waves,
+      },
+      {
+        title: "Hammer Reversal",
+        href: "/crypto/hammer",
+        icon: Crosshair,
       },
       {
         title: "Top Trader Flow",
@@ -283,6 +380,66 @@ export const menuData: MenuSection[] = [
         title: "ICT Kill Zone",
         href: "/crypto/ict",
         icon: Clock,
+      },
+      {
+        title: "Break Trendline MTF",
+        href: "/crypto/trendline",
+        icon: TrendingUp,
+      },
+      {
+        title: "Funding Fee Farming",
+        href: "/crypto/funding-farming",
+        icon: Coins,
+      },
+      // {
+      //   title: "ETHUSDT 5M Scalper",
+      //   href: "/crypto/ethusdt5m",
+      //   icon: Crosshair,
+      // },
+      {
+        title: "Crypto SMC 5M Multi-Pair",
+        href: "/crypto/scalp5m",
+        icon: Zap,
+      },
+      {
+        title: "EMA MTF Screener",
+        href: "/ema-screener",
+        icon: Activity,
+      },
+      {
+        title: "Auto FVG Trading Bot",
+        href: "/crypto/bot",
+        icon: Bot,
+      },
+    ],
+  },
+  {
+    title: "Forex Intelligence",
+    items: [
+      {
+        title: "Forex Probability",
+        href: "/forex/screener",
+        icon: TrendingUp,
+      },
+      {
+        title: "XAUUSD AI Screener",
+        href: "/forex/xauusd",
+        icon: Target,
+      },
+      {
+        title: "XAUUSD 5M Scalper",
+        href: "/forex/xauusd5m",
+        icon: Crosshair,
+      },
+      {
+        title: "XAGUSD AI Screener",
+        href: "/forex/xagusd",
+        icon: Zap,
+      },
+      {
+        title: "EURUSD AI Screener",
+        href: "/forex/eurusd",
+        icon: Globe,
       },
     ],
   },
@@ -394,10 +551,14 @@ function SidebarContent({ user, onClose }: { user?: any; onClose?: () => void })
     return menuData.map(section => {
       const filteredItems = section.items.map(item => {
         if (item.subItems) {
-          const filteredSubItems = item.subItems.filter(sub => user.hak_akses.includes(sub.title));
+          const filteredSubItems = item.subItems.filter(sub => {
+            const alwaysShow = ["Daftar Proyek", "Timeline", "Progress Report", "Dokumentasi Lapangan", "Subkontraktor"].includes(sub.title);
+            return alwaysShow || user.hak_akses.includes(sub.title);
+          });
           return { ...item, subItems: filteredSubItems };
         } else {
-          if (user.hak_akses.includes(item.title) || item.title === "Dashboard") return item;
+          const alwaysShow = ["Daftar Proyek", "Timeline", "Progress Report", "Dokumentasi Lapangan", "Subkontraktor"].includes(item.title);
+          if (user.hak_akses.includes(item.title) || item.title === "Dashboard" || alwaysShow) return item;
           return null;
         }
       }).filter(Boolean) as MenuItem[];

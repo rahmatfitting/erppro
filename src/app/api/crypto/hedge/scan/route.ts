@@ -75,6 +75,9 @@ Status: 🔥 ${signal.status}
       } catch (dbErr) {}
     }
 
+    // Data already reset at start of scan (line 31)
+    // If no signals found, table stays empty (reset state)
+
     return NextResponse.json({ success: true, message: `Hedge Fund Analysis complete. Found ${top10.length} Top setups.` });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

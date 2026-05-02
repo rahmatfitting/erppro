@@ -10,6 +10,8 @@ const SPOT_HOSTS = [
   'https://api2.binance.com',
   'https://api3.binance.com',
   'https://api4.binance.com',
+  'https://data-api.binance.com',
+  'https://api-gcp.binance.com',
 ];
 
 const HEADERS = {
@@ -84,6 +86,14 @@ export interface FVGSignal {
   takeProfit: number;
   distance: number;
   status: 'FRESH' | 'RETESTED';
+  features: {
+    impulseSize: number;
+    volumeSpike: number;
+    trendStrength: number;
+    fvgSize: number;
+  };
+  score: number;
+  grade: string;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -122,9 +132,32 @@ function calcATR(candles: any[], period = 14): number {
 
 /** Average body size over the last `period` candles before `endIdx` */
 function avgBodySize(candles: any[], endIdx: number, period = 10): number {
-  if (endIdx < period) return 0;
+  if (endIdx < period) return 0.000001; // Avoid divide by zero
   const slice = candles.slice(endIdx - period, endIdx);
   return slice.reduce((acc: number, c: any) => acc + Math.abs(c.close - c.open), 0) / period;
+}
+
+/** Average volume over the last `period` candles before `endIdx` */
+function avgVolume(candles: any[], endIdx: number, period = 10): number {
+  if (endIdx < period) return 1; // Avoid divide by zero
+  const slice = candles.slice(endIdx - period, endIdx);
+  return slice.reduce((acc: number, c: any) => acc + c.volume, 0) / period;
+}
+
+/** Simple Moving Average */
+function calcSMA(candles: any[], period = 20): number {
+  if (candles.length < period) return 0;
+  const slice = candles.slice(-period);
+  return slice.reduce((acc: number, c: any) => acc + c.close, 0) / period;
+}
+
+/** AI Grade Mapper */
+function calculateGrade(score: number): string {
+  if (score >= 85) return 'A+';
+  if (score >= 70) return 'A';
+  if (score >= 55) return 'B';
+  if (score >= 40) return 'C';
+  return 'D';
 }
 
 /** Highest high in a window */
@@ -227,12 +260,26 @@ export function detectBulishFVG(symbol: string, candles: any[]): FVGSignal | nul
     if (riskPips <= 0 || rewardPips / riskPips < 2.0) continue;
 
     // ── Scoring (pick BEST if multiple found) ────────────────
-    // More recent = better | Bigger gap = better | Closer = better
-    const recencyScore = (i / candles.length) * 40;      // 0-40 pts
-    const gapScore     = Math.min(gapSize / atr, 3) * 20; // 0-60 pts (cap at 3×ATR)
-    const distScore    = Math.max(0, 15 - distance) * 1;  // closer → higher (0-15 pts)
-    const rrBonus      = Math.min(rewardPips / riskPips, 5) * 2; // R:R bonus 0-10
-    const totalScore   = recencyScore + gapScore + distScore + rrBonus;
+    const sma20 = calcSMA(candles, 20);
+    const volumeB = B.volume;
+    const avgVol = avgVolume(candles, i - 1, 10);
+    
+    // Feature Extraction
+    const impulseSize = bodyB / avgBody;
+    const volumeSpike = volumeB / avgVol;
+    const trendStrength = currentPrice / (sma20 || currentPrice);
+    const fvgSize = gapSize;
+
+    // AI Scoring Model (Normalized weights to 100)
+    // Formula from User: (1/dist)*0.3 + impulse*0.3 + volume*0.2 + trend*0.2
+    // We scale weights by 100 to get a 0-100 range and cap components for stability.
+    const scoreDist    = Math.min(1 / (distance || 0.1), 3) * 10;     // Max 30 pts
+    const scoreImpulse = Math.min(impulseSize, 3) * 10;              // Max 30 pts
+    const scoreVolume  = Math.min(volumeSpike, 5) * 4;               // Max 20 pts
+    const scoreTrend   = Math.min(trendStrength, 1.2) * 16.6;        // Max 20 pts
+    
+    const totalScore   = Math.min(Math.round(scoreDist + scoreImpulse + scoreVolume + scoreTrend), 100);
+    const grade = calculateGrade(totalScore);
 
     if (totalScore > bestScore) {
       bestScore  = totalScore;
@@ -245,6 +292,14 @@ export function detectBulishFVG(symbol: string, candles: any[]): FVGSignal | nul
         takeProfit: tp,
         distance,
         status: 'FRESH',
+        features: {
+          impulseSize,
+          volumeSpike,
+          trendStrength,
+          fvgSize,
+        },
+        score: totalScore,
+        grade,
       };
     }
   }

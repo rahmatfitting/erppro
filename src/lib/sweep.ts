@@ -103,3 +103,63 @@ export function detectLiquiditySweepBullish(
     reason: reasons,
   };
 }
+
+export function detectLiquiditySweepBearish(
+  symbol: string,
+  candles: any[],
+  timeframe: string
+): any | null {
+  if (candles.length < 30) return null;
+
+  // --- Step 1: Identify Swing High ---
+  const lookback = Math.min(40, candles.length - 5);
+  let swingHigh = -Infinity;
+  let swingHighIndex = -1;
+
+  for (let i = candles.length - 3; i >= candles.length - lookback; i--) {
+    const c = candles[i];
+    const prev = candles[i - 1];
+    const next = candles[i + 1];
+    if (c.high > prev.high && c.high > next.high) {
+      swingHigh = c.high;
+      swingHighIndex = i;
+      break;
+    }
+  }
+
+  if (swingHighIndex === -1) return null;
+
+  // --- Step 2: Detect Sweep on the latest candle ---
+  const current = candles[candles.length - 1];
+  const broke = current.high > swingHigh;           // Wick above swing high
+  const rejected = current.close < swingHigh;       // Closed back below
+
+  if (!broke || !rejected) return null;
+
+  // --- Step 3: Filter conditions ---
+  const wickSize = current.high - current.low;
+  const bodySize = Math.abs(current.open - current.close);
+  const hasStrongWick = wickSize > bodySize * 2;
+
+  const avgVolume = candles.slice(-20, -1).reduce((sum: number, c: any) => sum + c.volume, 0) / 19;
+  const volumeRatio = current.volume / avgVolume;
+  const hasVolumeSpike = volumeRatio > 1.5;
+
+  if (!hasStrongWick || !hasVolumeSpike) return null;
+
+  const reasons: string[] = [`Sweep High (${(current.high - swingHigh).toFixed(2)} pts)`, `Strong Rejection (${(wickSize / bodySize).toFixed(1)}x body)`];
+  if (hasVolumeSpike) reasons.push(`Volume Spike (${volumeRatio.toFixed(1)}x avg)`);
+
+  return {
+    symbol,
+    timeframe,
+    swingHigh,
+    sweepHigh: current.high,
+    closePrice: current.close,
+    wickSize,
+    bodySize,
+    volumeRatio,
+    strength: 'MODERATE',
+    reason: reasons,
+  };
+}

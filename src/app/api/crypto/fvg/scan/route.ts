@@ -29,6 +29,17 @@ async function ensureTable() {
     try { await executeQuery(`ALTER TABLE crypto_fvg_signals DROP INDEX symbol`); } catch(e) {}
     await executeQuery(`ALTER TABLE crypto_fvg_signals ADD UNIQUE INDEX (symbol, entry, timeframe)`);
   }
+
+  // Add Scoring Columns (Migration)
+  const scoreCols: any = await executeQuery(`SHOW COLUMNS FROM crypto_fvg_signals LIKE 'score'`);
+  if (scoreCols.length === 0) {
+    await executeQuery(`ALTER TABLE crypto_fvg_signals ADD COLUMN score INT DEFAULT 0 AFTER timeframe`);
+    await executeQuery(`ALTER TABLE crypto_fvg_signals ADD COLUMN grade VARCHAR(5) DEFAULT 'D' AFTER score`);
+    await executeQuery(`ALTER TABLE crypto_fvg_signals ADD COLUMN impulse_size DECIMAL(10, 2) DEFAULT 0 AFTER grade`);
+    await executeQuery(`ALTER TABLE crypto_fvg_signals ADD COLUMN volume_spike DECIMAL(10, 2) DEFAULT 0 AFTER impulse_size`);
+    await executeQuery(`ALTER TABLE crypto_fvg_signals ADD COLUMN trend_strength DECIMAL(10, 4) DEFAULT 0 AFTER volume_spike`);
+    await executeQuery(`ALTER TABLE crypto_fvg_signals ADD COLUMN fvg_size DECIMAL(20, 8) DEFAULT 0 AFTER trend_strength`);
+  }
 }
 
 export async function GET(request: Request) {
@@ -55,9 +66,14 @@ export async function GET(request: Request) {
         // Save to DB
         try {
           const res: any = await executeQuery(
-            `INSERT INTO crypto_fvg_signals (symbol, fvg_low, fvg_high, entry, stop_loss, take_profit, distance, timeframe) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [symbol, signal.fvgLow, signal.fvgHigh, signal.entry, signal.stopLoss, signal.takeProfit, signal.distance, interval]
+            `INSERT INTO crypto_fvg_signals (
+              symbol, fvg_low, fvg_high, entry, stop_loss, take_profit, distance, timeframe, 
+              score, grade, impulse_size, volume_spike, trend_strength, fvg_size
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              symbol, signal.fvgLow, signal.fvgHigh, signal.entry, signal.stopLoss, signal.takeProfit, signal.distance, interval,
+              signal.score, signal.grade, signal.features.impulseSize, signal.features.volumeSpike, signal.features.trendStrength, signal.features.fvgSize
+            ]
           );
           
           if (res.affectedRows > 0) {
@@ -65,6 +81,7 @@ export async function GET(request: Request) {
             // Notify Telegram
             const msg = `🚀 *NEW BULLISH FVG (${interval})*
 Symbol: ${symbol}
+*AI Score: ${signal.score} (${signal.grade})*
 Entry: ${signal.entry}
 SL: ${signal.stopLoss}
 TP: ${signal.takeProfit}
@@ -76,6 +93,11 @@ Distance: ${signal.distance.toFixed(2)}%
           // Ignore unique constraint errors
         }
       }
+    }
+
+    // Reset data if no signals detected
+    if (detectedCount === 0) {
+      await executeQuery(`DELETE FROM crypto_fvg_signals WHERE timeframe = ?`, [interval]);
     }
 
     return NextResponse.json({ success: true, message: `Scan [${interval}] complete. Detected ${detectedCount} new FVG signals.` });

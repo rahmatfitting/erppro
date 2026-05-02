@@ -13,7 +13,10 @@ import {
   Info,
   Crown,
   BarChart3,
+  FileDown,
+  MinusCircle
 } from "lucide-react";
+import { exportToExcel } from "@/lib/exportUtils";
 
 const SIGNAL_FILTERS = [
   { label: "All Signals", value: "ALL" },
@@ -87,6 +90,25 @@ export default function TopTraderPage() {
     }
   };
 
+  const handleExport = () => {
+    if (signals.length === 0) return;
+    exportToExcel({
+      title: "Top Trader Flow Report",
+      subtitle: `Generated: ${new Date().toLocaleString()}`,
+      fileName: `Top_Trader_${new Date().toISOString().split('T')[0]}`,
+      columns: [
+        { header: "Symbol", key: "symbol" },
+        { header: "Master Score", key: "score" },
+        { header: "Signal Type", key: "signal_type" },
+        { header: "Retail Long Ratio", key: "long_ratio", format: (v) => (parseFloat(v) * 100).toFixed(0) + "%" },
+        { header: "Whale Bias", key: "whale_bias" },
+        { header: "Open Interest Change", key: "oi_change", format: (v) => parseFloat(v).toFixed(1) + "%" },
+        { header: "Created At", key: "created_at", format: (v) => new Date(v).toLocaleString('id-ID') },
+      ],
+      data: signals,
+    });
+  };
+
   const signalColor: Record<string, string> = {
     "STRONG LONG": "text-emerald-500",
     "LONG BIAS": "text-emerald-400",
@@ -127,6 +149,14 @@ export default function TopTraderPage() {
               className="p-4 bg-white/10 hover:bg-white/20 rounded-2xl border border-white/10 transition-all"
             >
               <RefreshCcw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+            <button 
+              onClick={handleExport}
+              disabled={signals.length === 0}
+              className="p-4 bg-white/10 hover:bg-white/20 rounded-2xl border border-white/10 transition-all font-bold text-white shadow-xl"
+              title="Export Excel"
+            >
+              <FileDown className="h-5 w-5" />
             </button>
             <button
               onClick={handleScan}

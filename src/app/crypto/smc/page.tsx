@@ -12,8 +12,10 @@ import {
   ArrowUpRight, 
   Info,
   ShieldCheck,
-  Target
+  Target,
+  FileDown
 } from "lucide-react";
+import { exportToExcel } from "@/lib/exportUtils";
 
 const TIMEFRAMES = [
   { label: "1 Jam", value: "1h" },
@@ -62,6 +64,24 @@ export default function CryptoSmcPage() {
     }
   };
 
+  const handleExport = () => {
+    if (filteredSignals.length === 0) return;
+    exportToExcel({
+      title: "SMC Market Structure Report",
+      subtitle: `Timeframe: ${TIMEFRAMES.find(t => t.value === timeframe)?.label} | Generated: ${new Date().toLocaleString()}`,
+      fileName: `SMC_Scan_${timeframe}_${new Date().toISOString().split('T')[0]}`,
+      columns: [
+        { header: "Symbol", key: "symbol" },
+        { header: "Structure", key: "structure" },
+        { header: "Bias", key: "bias" },
+        { header: "Order Block Price", key: "ob_price", format: (v) => parseFloat(v).toLocaleString() },
+        { header: "Timeframe", key: "timeframe" },
+        { header: "Created At", key: "created_at", format: (v) => new Date(v).toLocaleString('id-ID') },
+      ],
+      data: filteredSignals,
+    });
+  };
+
   const filteredSignals = signals
     .filter(s => s.symbol.toLowerCase().includes(search.toLowerCase()))
     .filter(s => structureFilter === "ALL" || s.structure === structureFilter);
@@ -100,6 +120,14 @@ export default function CryptoSmcPage() {
             title="Refresh Data"
           >
             <RefreshCcw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button 
+            onClick={handleExport}
+            disabled={filteredSignals.length === 0}
+            className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl hover:bg-slate-200 transition-all border border-slate-200 dark:border-slate-700 shadow-sm"
+            title="Export Excel"
+          >
+            <FileDown className="h-5 w-5" />
           </button>
           <button 
             onClick={handleScan}
