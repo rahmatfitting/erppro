@@ -1,14 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/db';
 
-export async function GET(request: Request, context: { params: { symbol: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ symbol: string }> }) {
   try {
-    const { params } = context;
-    // For Next.js 15, route params in Route Handlers should be accessed as async (wait for resolution) 
-    // or just direct destructure based on Next.js setup. Assuming typical params object or search param:
-    
-    // Actually, params could be a promise in newer Next.js versions. We use it directly for fallback:
-    const symbol = (await Promise.resolve(params)).symbol.toUpperCase();
+    const { symbol: rawSymbol } = await context.params;
+    const symbol = rawSymbol.toUpperCase();
 
     const data = await executeQuery<any[]>(`
       SELECT c.symbol, c.name, e.timeframe, e.ema20, e.ema50, e.ema100, e.ema200, e.trend, e.timestamp 
