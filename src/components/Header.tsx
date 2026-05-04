@@ -369,7 +369,11 @@ export function Header() {
     window.addEventListener('offline', handleOffline);
 
     // Fallback Polling (since Windows Chrome with active localhost/VMWare adapters can miss offline events)
+    let isFetchingSession = false;
     const intervalId = setInterval(() => {
+      if (isFetchingSession) return;
+      isFetchingSession = true;
+
       fetch('/api/auth/session', { method: 'HEAD', cache: 'no-store' })
         .then(() => {
           setIsOnline(prev => {
@@ -379,8 +383,11 @@ export function Header() {
         })
         .catch(() => {
           setIsOnline(false);
+        })
+        .finally(() => {
+          isFetchingSession = false;
         });
-    }, 5000);
+    }, 10000);
 
     return () => {
       if ('serviceWorker' in navigator) {

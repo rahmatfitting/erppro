@@ -56,7 +56,8 @@ import {
   Bot,
   Camera,
   HardHat,
-  Briefcase
+  Briefcase,
+  PlusCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -302,6 +303,48 @@ export const menuData: MenuSection[] = [
         ]
       }
     ]
+  },
+  {
+    title: "Travel Management",
+    items: [
+      {
+        title: "Travel Dashboard",
+        href: "/travel/dashboard",
+        icon: LayoutDashboard,
+      },
+      {
+        title: "Fleet & Driver",
+        icon: Truck,
+        subItems: [
+          { title: "Armada Kendaraan", href: "/travel/fleet/vehicles", icon: Truck },
+          { title: "Manajemen Driver", href: "/travel/fleet/drivers", icon: Users },
+          { title: "Monitoring Servis", href: "/travel/fleet/maintenance", icon: Wrench },
+        ],
+      },
+      {
+        title: "Rute & Jadwal",
+        icon: MapPin,
+        subItems: [
+          { title: "Master Rute", href: "/travel/schedule/routes", icon: Globe },
+          { title: "Jadwal Keberangkatan", href: "/travel/schedule/timetables", icon: Clock },
+        ],
+      },
+      {
+        title: "Booking System",
+        icon: Ticket,
+        subItems: [
+          { title: "Reservasi Baru", href: "/travel/booking/new", icon: PlusCircle },
+          { title: "Daftar Booking", href: "/travel/booking/list", icon: ClipboardList },
+          { title: "Manifest Penumpang", href: "/travel/booking/manifest", icon: Users },
+          { title: "Daftar Pembayaran", href: "/travel/booking/payments", icon: CreditCard },
+        ],
+      },
+      {
+        title: "Laporan Finansial",
+        href: "/travel/reports",
+        icon: BarChart3,
+      },
+    ],
   },
   {
     title: "Market Intelligence",

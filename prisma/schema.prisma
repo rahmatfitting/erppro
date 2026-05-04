@@ -1,0 +1,2998 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model buyback_prices {
+  id           Int      @id @default(autoincrement())
+  fetch_date   DateTime @unique(map: "fetch_date") @db.Date
+  price_1g     Decimal  @db.Decimal(15, 2)
+  prev_price   Decimal  @db.Decimal(15, 2)
+  diff         Decimal  @db.Decimal(15, 2)
+  last_updated DateTime @default(now()) @db.Timestamp(0)
+}
+
+model buyback_prices_history {
+  id           Int      @id @default(autoincrement())
+  fetch_date   DateTime @db.Date
+  price_1g     Decimal  @db.Decimal(15, 2)
+  prev_price   Decimal  @db.Decimal(15, 2)
+  diff         Decimal  @db.Decimal(15, 2)
+  last_updated DateTime @default(now()) @db.Timestamp(0)
+  created_at   DateTime @default(now()) @db.Timestamp(0)
+}
+
+model crypto_divergence_signals {
+  nomor         Int       @id @default(autoincrement())
+  symbol        String    @unique(map: "symbol") @db.VarChar(20)
+  dominant_type String?   @db.VarChar(10)
+  score         Decimal?  @db.Decimal(5, 1)
+  confidence    String?   @db.VarChar(10)
+  active_tfs    String?   @db.VarChar(50)
+  tf_15m        String?   @db.VarChar(10)
+  tf_1h         String?   @db.VarChar(10)
+  tf_4h         String?   @db.VarChar(10)
+  tf_1d         String?   @db.VarChar(10)
+  macd_confirms Boolean?
+  volume_spike  Boolean?
+  created_at    DateTime? @default(now()) @db.DateTime(0)
+}
+
+model crypto_fvg_signals {
+  nomor       Int       @id @default(autoincrement())
+  symbol      String    @db.VarChar(20)
+  fvg_low     Decimal?  @db.Decimal(20, 8)
+  fvg_high    Decimal?  @db.Decimal(20, 8)
+  entry       Decimal?  @db.Decimal(20, 8)
+  stop_loss   Decimal?  @db.Decimal(20, 8)
+  take_profit Decimal?  @db.Decimal(20, 8)
+  distance    Decimal?  @db.Decimal(10, 2)
+  timeframe   String?   @default("1w") @db.VarChar(10)
+  status      String?   @default("FRESH") @db.VarChar(20)
+  created_at  DateTime? @default(now()) @db.DateTime(0)
+}
+
+model crypto_hedge_signals {
+  nomor      Int       @id @default(autoincrement())
+  symbol     String    @unique(map: "symbol") @db.VarChar(20)
+  score      Int?
+  setup      String?   @db.VarChar(100)
+  distance   Decimal?  @db.Decimal(10, 2)
+  volatility Decimal?  @db.Decimal(10, 2)
+  volume_24h Decimal?  @db.Decimal(20, 2)
+  status     String?   @db.VarChar(20)
+  created_at DateTime? @default(now()) @db.DateTime(0)
+}
+
+model crypto_ict_signals {
+  nomor            Int       @id @default(autoincrement())
+  symbol           String    @db.VarChar(20)
+  timeframe        String?   @db.VarChar(10)
+  phase            String?   @db.VarChar(10)
+  bias             String?   @db.VarChar(10)
+  score            Int?
+  confidence       String?   @db.VarChar(10)
+  killzone_active  Boolean?
+  killzone_session String?   @db.VarChar(20)
+  accumulation     Boolean?
+  equal_highs      Boolean?
+  equal_lows       Boolean?
+  manipulation     String?   @db.VarChar(20)
+  bos              Boolean?
+  distribution     Boolean?
+  volume_spike     Boolean?
+  created_at       DateTime? @default(now()) @db.DateTime(0)
+
+  @@unique([symbol, timeframe], map: "symbol")
+}
+
+model crypto_rsi_signals {
+  nomor      Int       @id @default(autoincrement())
+  symbol     String    @db.VarChar(20)
+  rsi_value  Decimal?  @db.Decimal(10, 2)
+  status     String?   @db.VarChar(20)
+  timeframe  String?   @db.VarChar(10)
+  created_at DateTime? @default(now()) @db.DateTime(0)
+
+  @@unique([symbol, timeframe], map: "symbol")
+}
+
+model crypto_smc_signals {
+  nomor      Int       @id @default(autoincrement())
+  symbol     String    @db.VarChar(20)
+  structure  String?   @db.VarChar(20)
+  bias       String?   @db.VarChar(20)
+  ob_price   Decimal?  @db.Decimal(20, 8)
+  timeframe  String?   @db.VarChar(10)
+  created_at DateTime? @default(now()) @db.DateTime(0)
+
+  @@unique([symbol, timeframe, ob_price], map: "symbol")
+}
+
+model crypto_sweep_signals {
+  nomor         Int       @id @default(autoincrement())
+  symbol        String    @db.VarChar(20)
+  timeframe     String    @db.VarChar(10)
+  swing_low     Decimal?  @db.Decimal(20, 8)
+  sweep_low     Decimal?  @db.Decimal(20, 8)
+  close_price   Decimal?  @db.Decimal(20, 8)
+  wick_ratio    Decimal?  @db.Decimal(10, 2)
+  volume_ratio  Decimal?  @db.Decimal(10, 2)
+  near_fvg      Boolean?
+  near_prev_low Boolean?
+  strength      String?   @db.VarChar(10)
+  reason        String?   @db.Text
+  created_at    DateTime? @default(now()) @db.DateTime(0)
+
+  @@unique([symbol, timeframe], map: "symbol")
+}
+
+model crypto_trader_signals {
+  nomor            Int       @id @default(autoincrement())
+  symbol           String    @unique(map: "symbol") @db.VarChar(20)
+  score            Int?
+  signal_type      String?   @db.VarChar(20)
+  long_ratio       Decimal?  @db.Decimal(5, 4)
+  top_trader_ratio Decimal?  @db.Decimal(5, 4)
+  oi_change        Decimal?  @db.Decimal(10, 2)
+  price_change     Decimal?  @db.Decimal(10, 2)
+  contrarian_bias  String?   @db.VarChar(40)
+  whale_bias       String?   @db.VarChar(20)
+  oi_trend         String?   @db.VarChar(10)
+  reason           String?   @db.Text
+  created_at       DateTime? @default(now()) @db.DateTime(0)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model crypto_trendline_signals {
+  nomor          Int       @id @default(autoincrement())
+  symbol         String    @unique(map: "symbol") @db.VarChar(20)
+  direction      String    @db.VarChar(10)
+  timeframes     String?   @db.VarChar(50)
+  total_score    Decimal?  @db.Decimal(5, 1)
+  confidence     String?   @db.VarChar(20)
+  volume_level   String?   @db.VarChar(10)
+  best_timeframe String?   @db.VarChar(10)
+  break_price    Decimal?  @db.Decimal(20, 8)
+  break_percent  Decimal?  @db.Decimal(8, 2)
+  has_bos        Boolean?  @default(false)
+  has_sweep      Boolean?  @default(false)
+  has_fvg        Boolean?  @default(false)
+  details        String?   @db.LongText
+  created_at     DateTime? @default(now()) @db.DateTime(0)
+}
+
+model crypto_visual_signals {
+  nomor        Int       @id @default(autoincrement())
+  symbol       String    @unique(map: "symbol") @db.VarChar(20)
+  price_change Decimal?  @db.Decimal(10, 2)
+  oi_change    Decimal?  @db.Decimal(10, 2)
+  sentiment    String?   @db.VarChar(20)
+  potential    Decimal?  @db.Decimal(10, 2)
+  created_at   DateTime? @default(now()) @db.DateTime(0)
+}
+
+model forex_news_cache {
+  nomor        Int       @id @default(autoincrement())
+  title        String?   @db.Text
+  currency     String?   @db.VarChar(10)
+  impact       String?   @db.VarChar(10)
+  actual_val   String?   @db.VarChar(30)
+  forecast_val String?   @db.VarChar(30)
+  previous_val String?   @db.VarChar(30)
+  sentiment    String?   @db.VarChar(10)
+  points       Int?
+  event_date   DateTime? @db.DateTime(0)
+  created_at   DateTime? @default(now()) @db.DateTime(0)
+}
+
+model forex_probability_signals {
+  nomor       Int       @id @default(autoincrement())
+  pair        String    @unique(map: "pair") @db.VarChar(10)
+  action      String?   @db.VarChar(10)
+  probability Int?
+  confidence  String?   @db.VarChar(10)
+  bias        String?   @db.Text
+  sentiment   String?   @db.VarChar(80)
+  top_event   String?   @db.Text
+  killzone    String?   @db.VarChar(20)
+  reasoning   String?   @db.Text
+  created_at  DateTime? @default(now()) @db.DateTime(0)
+}
+
+model gold_prices {
+  id           Int      @id @default(autoincrement())
+  fetch_date   DateTime @unique(map: "fetch_date") @db.Date
+  price_1g     Decimal  @db.Decimal(15, 2)
+  prev_price   Decimal  @db.Decimal(15, 2)
+  diff         Decimal  @db.Decimal(15, 2)
+  last_updated DateTime @default(now()) @db.Timestamp(0)
+}
+
+model gold_prices_history {
+  id           Int       @id @default(autoincrement())
+  fetch_date   DateTime  @db.Date
+  price_1g     Decimal   @db.Decimal(15, 2)
+  prev_price   Decimal   @db.Decimal(15, 2)
+  diff         Decimal   @db.Decimal(15, 2)
+  last_updated DateTime  @default(now()) @db.Timestamp(0)
+  created_at   DateTime? @default(now()) @db.Timestamp(0)
+}
+
+model mdbom {
+  nomor      Int     @id @default(autoincrement())
+  nomormhbom Int
+  item_id    Int
+  jumlah     Decimal @db.Decimal(18, 4)
+  satuan_id  Int
+  mhbom      mhbom   @relation(fields: [nomormhbom], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "mdbom_ibfk_1")
+
+  @@index([nomormhbom], map: "nomormhbom")
+}
+
+model mhaccount {
+  nomor            Int       @id @default(autoincrement())
+  nomormhcabang    Int       @default(0)
+  kode             String    @unique(map: "kode") @db.VarChar(100)
+  kode_inisial     String?   @db.VarChar(100)
+  nama             String    @db.VarChar(200)
+  kas              Int       @default(0) @db.TinyInt
+  bank             Int       @default(0) @db.TinyInt
+  giro             Int       @default(0) @db.TinyInt
+  detail           Int       @default(0) @db.TinyInt
+  is_foh           Int?      @default(0) @db.TinyInt
+  is_browse_ums    Int?      @default(0) @db.TinyInt
+  keterangan       String?   @db.Text
+  catatan          String?   @db.Text
+  status_aktif     Int       @default(1) @db.TinyInt
+  dibuat_oleh      Int       @default(0)
+  dibuat_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh      Int       @default(0)
+  diubah_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh     Int       @default(0)
+  dihapus_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui Int       @default(0) @db.TinyInt
+  disetujui_oleh   Int       @default(0)
+  disetujui_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh  Int       @default(0)
+  dibatalkan_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print     Int       @default(0) @db.TinyInt
+  diprint_oleh     Int       @default(0)
+  diprint_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt        String?   @db.VarChar(200)
+  ditt_oleh        String?   @db.VarChar(100)
+  ditt_pada        DateTime? @db.DateTime(0)
+
+  @@index([bank], map: "bank")
+  @@index([giro], map: "giro")
+  @@index([kas], map: "kas")
+  @@index([nama], map: "nama")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model mhaset {
+  nomor                    Int       @id @default(autoincrement())
+  nomormhcabang            Int       @default(1)
+  nomormhaccountaset       Int?      @default(0)
+  nomormhaccountbeban      Int?      @default(0)
+  nomormhkategoriaset      Int       @default(0)
+  nomormhaccountakumulasi  Int?      @default(0)
+  nomorthbelinota          Int       @default(0)
+  nomormhsatuan            Int       @default(0)
+  kode                     String    @db.VarChar(100)
+  tanggal                  DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal_mulai_penyusutan DateTime? @db.Date
+  nama                     String    @db.VarChar(200)
+  perolehan                Decimal   @default(0.000000) @db.Decimal(30, 6)
+  penyusutan_lama          Int       @default(0)
+  penyusutan_sisa          Decimal   @default(0.000000) @db.Decimal(30, 6)
+  penyusutan_total         Decimal   @default(0.000000) @db.Decimal(30, 6)
+  tipe                     Int       @default(2) @db.TinyInt
+  keterangan               String?   @db.Text
+  catatan                  String?   @db.Text
+  utama                    Int?      @default(0) @db.TinyInt
+  status_aktif             Int       @default(1) @db.TinyInt
+  dibuat_oleh              Int       @default(0)
+  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh              Int       @default(0)
+  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh             Int       @default(0)
+  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui         Int       @default(0) @db.TinyInt
+  disetujui_oleh           Int       @default(0)
+  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh          Int       @default(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print             Int       @default(0) @db.TinyInt
+  diprint_oleh             Int       @default(0)
+  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                String?   @db.VarChar(200)
+  ditt_oleh                String?   @db.VarChar(100)
+  ditt_pada                DateTime? @db.DateTime(0)
+  tarif                    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  tanggal_jual             DateTime? @default(dbgenerated("'2000-01-01'")) @db.Date
+
+  @@index([kode], map: "kode")
+  @@index([nama], map: "nama")
+  @@index([nomormhcabang], map: "nomormhcabang")
+}
+
+model mhbarang {
+  nomor           Int         @id @default(autoincrement())
+  kode            String      @unique(map: "kode") @db.VarChar(50)
+  nama            String      @db.VarChar(255)
+  gambar          String?     @db.Text
+  nomormhsatuan   Int?
+  satuan          String?     @db.VarChar(50)
+  kategori        String?     @db.VarChar(100)
+  nomormhkategori Int?        @default(0)
+  harga_beli      Decimal?    @default(0.00) @db.Decimal(15, 2)
+  harga_jual      Decimal?    @default(0.00) @db.Decimal(15, 2)
+  status_aktif    Boolean?    @default(true)
+  dibuat_oleh     String?     @db.VarChar(50)
+  dibuat_pada     DateTime?   @default(now()) @db.DateTime(0)
+  mhsatuan        mhsatuan?   @relation(fields: [nomormhsatuan], references: [nomor], onUpdate: NoAction, map: "mhbarang_ibfk_1")
+  rab_items       rab_items[]
+
+  @@index([nomormhsatuan], map: "nomormhsatuan")
+}
+
+model mhbom {
+  nomor             Int       @id @default(autoincrement())
+  nomormhperusahaan Int
+  nomormhcabang     Int
+  kode              String    @unique(map: "kode") @db.VarChar(50)
+  nama              String    @db.VarChar(255)
+  item_id           Int
+  keterangan        String?   @db.Text
+  status_aktif      Boolean?  @default(true)
+  dibuat_oleh       String?   @db.VarChar(50)
+  dibuat_pada       DateTime? @default(now()) @db.DateTime(0)
+  mdbom             mdbom[]
+}
+
+model mhcabang {
+  nomor             Int          @id @default(autoincrement())
+  nomormhperusahaan Int
+  kode              String       @unique(map: "kode") @db.VarChar(50)
+  nama              String       @db.VarChar(255)
+  alamat            String?      @db.Text
+  telepon           String?      @db.VarChar(50)
+  status_aktif      Boolean?     @default(true)
+  dibuat_oleh       String?      @db.VarChar(50)
+  dibuat_pada       DateTime?    @default(now()) @db.DateTime(0)
+  mhperusahaan      mhperusahaan @relation(fields: [nomormhperusahaan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "mhcabang_ibfk_1")
+
+  @@index([nomormhperusahaan], map: "nomormhperusahaan")
+}
+
+model mhcustomer {
+  nomor         Int      @id @default(autoincrement())
+  kode          String   @unique(map: "kode") @db.VarChar(50)
+  nama          String   @db.VarChar(100)
+  alamat        String?  @db.Text
+  telepon       String?  @db.VarChar(20)
+  email         String?  @db.VarChar(100)
+  kontak_person String?  @db.VarChar(100)
+  status_aktif  Boolean? @default(true)
+  dibuat_oleh   String?  @db.VarChar(50)
+  dibuat_pada   DateTime @default(now()) @db.Timestamp(0)
+  diubah_oleh   String?  @db.VarChar(50)
+  diubah_pada   DateTime @default(now()) @db.Timestamp(0)
+
+  travel_bookings TravelBooking[]
+}
+
+model mhgudang {
+  nomor            Int      @id @default(autoincrement())
+  kode             String   @unique(map: "kode") @db.VarChar(50)
+  nama             String   @db.VarChar(100)
+  lokasi           String?  @db.Text
+  penanggung_jawab String?  @db.VarChar(100)
+  status_aktif     Boolean? @default(true)
+  dibuat_oleh      String?  @db.VarChar(50)
+  dibuat_pada      DateTime @default(now()) @db.Timestamp(0)
+  diubah_oleh      String?  @db.VarChar(50)
+  diubah_pada      DateTime @default(now()) @db.Timestamp(0)
+}
+
+model mhkategori {
+  nomor             Int       @id @default(autoincrement())
+  kode              String    @unique(map: "kode") @db.VarChar(50)
+  nama              String    @db.VarChar(100)
+  keterangan        String?   @db.Text
+  nomormhperusahaan Int?      @default(0)
+  nomormhcabang     Int?      @default(0)
+  status_aktif      Boolean?  @default(true)
+  dibuat_oleh       String?   @db.VarChar(50)
+  dibuat_pada       DateTime? @default(now()) @db.DateTime(0)
+}
+
+model mhkategoriaset {
+  nomor                   Int       @id @default(autoincrement())
+  nomormhaccount          Int?      @default(0)
+  nomormhaccountakumulasi Int?      @default(0)
+  nomormhaccountbeban     Int?      @default(0)
+  kode                    String?   @db.VarChar(100)
+  nama                    String    @unique(map: "nama") @db.VarChar(200)
+  penyusutan_sisa         Decimal?  @default(0.00) @db.Decimal(30, 2)
+  penyusutan_lama         Decimal?  @default(0.00) @db.Decimal(30, 2)
+  keterangan              String?   @db.Text
+  catatan                 String?   @db.Text
+  status_aktif            Int       @default(1) @db.TinyInt
+  dibuat_oleh             Int       @default(0)
+  dibuat_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh             Int       @default(0)
+  diubah_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh            Int       @default(0)
+  dihapus_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui        Int       @default(0) @db.TinyInt
+  disetujui_oleh          Int       @default(0)
+  disetujui_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh         Int       @default(0)
+  dibatalkan_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print            Int       @default(0) @db.TinyInt
+  diprint_oleh            Int       @default(0)
+  diprint_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt               String?   @db.VarChar(200)
+  ditt_oleh               String?   @db.VarChar(100)
+  ditt_pada               DateTime? @db.DateTime(0)
+
+  @@index([status_aktif], map: "status_aktif")
+}
+
+model mhnotifikasi {
+  nomor       Int       @id @default(autoincrement())
+  nomor_user  Int       @default(0)
+  modul       String?   @db.VarChar(200)
+  judul       String?   @db.VarChar(500)
+  isi         String?   @db.Text
+  ref_kode    String?   @db.VarChar(100)
+  dibaca      Int?      @default(0) @db.TinyInt
+  dibaca_pada DateTime? @db.DateTime(0)
+  dibuat_pada DateTime? @default(now()) @db.DateTime(0)
+
+  @@index([nomor_user, dibaca], map: "idx_user_dibaca")
+}
+
+model mhnotifikasi_setting {
+  nomor        Int       @id @default(autoincrement())
+  modul        String    @db.VarChar(200)
+  nomor_user   Int       @default(0)
+  status_aktif Int?      @default(1) @db.TinyInt
+  dibuat_pada  DateTime? @default(now()) @db.DateTime(0)
+
+  @@index([modul], map: "idx_modul")
+  @@index([nomor_user], map: "idx_user")
+}
+
+model mhnotifikasi_wa_log {
+  nomor    Int       @id @default(autoincrement())
+  tanggal  DateTime? @default(now()) @db.DateTime(0)
+  target   String?   @db.VarChar(20)
+  status   String?   @db.VarChar(10)
+  pesan    String?   @db.Text
+  response String?   @db.Text
+  jenis    String?   @db.VarChar(20)
+}
+
+model mhpenyesuaian {
+  nomor            Int       @id @default(autoincrement())
+  nomormhaccount   Int       @default(1)
+  account_nama     String?   @db.VarChar(200)
+  account_kode     String?   @db.VarChar(200)
+  kode             String?   @db.VarChar(100)
+  nama             String    @db.VarChar(200)
+  keterangan       String?   @db.Text
+  catatan          String?   @db.Text
+  status_aktif     Int       @default(1) @db.TinyInt
+  dibuat_oleh      Int       @default(0)
+  dibuat_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh      Int       @default(0)
+  diubah_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh     Int       @default(0)
+  dihapus_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui Int       @default(0) @db.TinyInt
+  disetujui_oleh   Int       @default(0)
+  disetujui_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh  Int       @default(0)
+  dibatalkan_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print     Int       @default(0) @db.TinyInt
+  diprint_oleh     Int       @default(0)
+  diprint_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt        String?   @db.VarChar(200)
+  ditt_oleh        String?   @db.VarChar(200)
+  ditt_pada        DateTime? @db.DateTime(0)
+}
+
+model mhperusahaan {
+  nomor        Int        @id @default(autoincrement())
+  kode         String     @unique(map: "kode") @db.VarChar(50)
+  nama         String     @db.VarChar(255)
+  alamat       String?    @db.Text
+  telepon      String?    @db.VarChar(50)
+  email        String?    @db.VarChar(100)
+  npwp         String?    @db.VarChar(50)
+  status_aktif Boolean?   @default(true)
+  dibuat_oleh  String?    @db.VarChar(50)
+  dibuat_pada  DateTime?  @default(now()) @db.DateTime(0)
+  mhcabang     mhcabang[]
+}
+
+model mhsales {
+  nomor        Int      @id @default(autoincrement())
+  kode         String   @unique(map: "kode") @db.VarChar(50)
+  nama         String   @db.VarChar(100)
+  telepon      String?  @db.VarChar(20)
+  email        String?  @db.VarChar(100)
+  status_aktif Boolean? @default(true)
+  dibuat_oleh  String?  @db.VarChar(50)
+  dibuat_pada  DateTime @default(now()) @db.Timestamp(0)
+  diubah_oleh  String?  @db.VarChar(50)
+  diubah_pada  DateTime @default(now()) @db.Timestamp(0)
+}
+
+model mhsatuan {
+  nomor        Int        @id @default(autoincrement())
+  kode         String     @unique(map: "kode") @db.VarChar(50)
+  nama         String     @db.VarChar(100)
+  status_aktif Boolean?   @default(true)
+  dibuat_oleh  String?    @db.VarChar(50)
+  dibuat_pada  DateTime?  @default(now()) @db.DateTime(0)
+  mhbarang     mhbarang[]
+}
+
+model mhsetting_notifikasi_wa {
+  nomor           Int       @id @default(autoincrement())
+  target_number   String    @db.VarChar(20)
+  gateway_url     String?   @default("https://api.fonnte.com/send") @db.VarChar(255)
+  gateway_token   String?   @db.VarChar(255)
+  is_enabled      Boolean?  @default(true)
+  send_time       DateTime? @default(dbgenerated("'20:00:00'")) @db.Time(0)
+  dibuat_pada     DateTime? @default(now()) @db.DateTime(0)
+  diperbarui_pada DateTime? @default(now()) @db.DateTime(0)
+}
+
+model mhsupplier {
+  nomor         Int       @id @default(autoincrement())
+  kode          String    @unique(map: "kode") @db.VarChar(50)
+  nama          String    @db.VarChar(255)
+  alamat        String?   @db.Text
+  telepon       String?   @db.VarChar(50)
+  email         String?   @db.VarChar(100)
+  kontak_person String?   @db.VarChar(100)
+  status_aktif  Boolean?  @default(true)
+  dibuat_oleh   String?   @db.VarChar(50)
+  dibuat_pada   DateTime? @default(now()) @db.DateTime(0)
+}
+
+model mhuser {
+  nomor        Int         @id @default(autoincrement())
+  username     String      @unique(map: "username") @db.VarChar(100)
+  password     String      @db.VarChar(255)
+  nama         String?     @db.VarChar(200)
+  email        String?     @db.VarChar(200)
+  no_hp        String?     @db.VarChar(20)
+  grup_id      Int?
+  status_aktif Boolean?    @default(true)
+  last_login   DateTime?   @db.DateTime(0)
+  dibuat_oleh  String?     @db.VarChar(100)
+  dibuat_pada  DateTime?   @default(now()) @db.DateTime(0)
+  mhusergrup   mhusergrup? @relation(fields: [grup_id], references: [nomor], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_grup")
+
+  travel_bookings TravelBooking[]
+
+  @@index([grup_id], map: "grup_id")
+}
+
+model mhuser_akses {
+  nomor         Int       @id @default(autoincrement())
+  nomormhuser   Int
+  nomormhcabang Int
+  dibuat_pada   DateTime? @default(now()) @db.DateTime(0)
+
+  @@unique([nomormhuser, nomormhcabang], map: "uq_user_cabang")
+}
+
+model mhuser_push_subscriptions {
+  id          Int       @id @default(autoincrement())
+  nomor_user  Int
+  endpoint    String    @db.Text
+  p256dh      String    @db.VarChar(255)
+  auth        String    @db.VarChar(255)
+  dibuat_pada DateTime? @default(now()) @db.DateTime(0)
+
+  @@index([nomor_user], map: "idx_nomor_user")
+}
+
+model mhusergrup {
+  nomor              Int                  @id @default(autoincrement())
+  kode               String               @unique(map: "kode") @db.VarChar(20)
+  nama               String               @db.VarChar(100)
+  keterangan         String?              @db.Text
+  status_aktif       Boolean?             @default(true)
+  dibuat_oleh        String?              @db.VarChar(100)
+  dibuat_pada        DateTime?            @db.DateTime(0)
+  mhuser             mhuser[]
+  mhusergruphakakses mhusergruphakakses[]
+}
+
+model mhusergruphakakses {
+  nomor         Int        @id @default(autoincrement())
+  grup_id       Int
+  menu          String     @db.VarChar(200)
+  akses_view    Boolean?   @default(false)
+  akses_add     Boolean?   @default(false)
+  akses_edit    Boolean?   @default(false)
+  akses_delete  Boolean?   @default(false)
+  akses_approve Boolean?   @default(false)
+  akses_print   Boolean?   @default(false)
+  mhusergrup    mhusergrup @relation(fields: [grup_id], references: [nomor], onDelete: NoAction, onUpdate: NoAction, map: "fk_hakakses_grup")
+
+  @@index([grup_id], map: "grup_id")
+}
+
+model mhvaluta {
+  nomor            Int       @id @default(autoincrement())
+  kode             String    @unique(map: "kode") @db.VarChar(100)
+  nama             String    @db.VarChar(200)
+  simbol           String    @db.VarChar(100)
+  kurs             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  keterangan       String?   @db.Text
+  catatan          String?   @db.Text
+  status_aktif     Int       @default(1) @db.TinyInt
+  dibuat_oleh      Int       @default(0)
+  dibuat_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh      Int       @default(0)
+  diubah_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh     Int       @default(0)
+  dihapus_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui Int       @default(0) @db.TinyInt
+  disetujui_oleh   Int       @default(0)
+  disetujui_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh  Int       @default(0)
+  dibatalkan_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print     Int       @default(0) @db.TinyInt
+  diprint_oleh     Int       @default(0)
+  diprint_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt        String?   @db.VarChar(200)
+  ditt_oleh        String?   @db.VarChar(100)
+  ditt_pada        DateTime? @db.DateTime(0)
+
+  @@index([nama], map: "nama")
+  @@index([status_aktif], map: "status_aktif")
+}
+
+model progress_reports {
+  nomor               Int      @id @default(autoincrement())
+  project_id          Int
+  timeline_id         Int?
+  report_date         DateTime @db.Date
+  progress_percentage Decimal? @default(0.00) @db.Decimal(5, 2)
+  description         String?  @db.Text
+  weather             String?  @db.VarChar(100)
+  issues              String?  @db.Text
+  created_by          String?  @db.VarChar(100)
+  created_at          DateTime @default(now()) @db.Timestamp(0)
+
+  @@index([project_id], map: "idx_project")
+  @@index([timeline_id], map: "idx_timeline")
+}
+
+model project_subcontractors {
+  nomor            Int       @id @default(autoincrement())
+  project_id       Int
+  subcontractor_id Int
+  role             String?   @db.VarChar(150)
+  start_date       DateTime? @db.Date
+  end_date         DateTime? @db.Date
+  status           String?   @default("active") @db.VarChar(50)
+  created_at       DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([project_id], map: "idx_project")
+  @@index([subcontractor_id], map: "idx_subcon")
+}
+
+model project_timelines {
+  nomor               Int       @id @default(autoincrement())
+  project_id          Int
+  title               String    @db.VarChar(255)
+  description         String?   @db.Text
+  start_date          DateTime? @db.Date
+  end_date            DateTime? @db.Date
+  progress_percentage Decimal?  @default(0.00) @db.Decimal(5, 2)
+  status              String?   @default("pending") @db.VarChar(50)
+  created_at          DateTime  @default(now()) @db.Timestamp(0)
+  updated_at          DateTime  @default(now()) @db.Timestamp(0)
+
+  @@index([project_id], map: "idx_project")
+}
+
+model projects {
+  nomor               Int       @id @default(autoincrement())
+  project_code        String    @unique(map: "project_code") @db.VarChar(50)
+  project_name        String    @db.VarChar(255)
+  client_id           Int?
+  location            String?   @db.VarChar(255)
+  start_date          DateTime? @db.Date
+  end_date            DateTime? @db.Date
+  status              String?   @default("planning") @db.VarChar(50)
+  budget_total        Decimal?  @default(0.00) @db.Decimal(15, 2)
+  progress_percentage Decimal?  @default(0.00) @db.Decimal(5, 2)
+  dibuat_oleh         String?   @db.VarChar(100)
+  created_at          DateTime  @default(now()) @db.Timestamp(0)
+  updated_at          DateTime  @default(now()) @db.Timestamp(0)
+}
+
+model push_subscriptions {
+  id          Int       @id @default(autoincrement())
+  endpoint    String    @db.Text
+  keys_p256dh String    @db.Text
+  keys_auth   String    @db.Text
+  created_at  DateTime? @default(now()) @db.DateTime(0)
+}
+
+model quotations {
+  id               Int                @id @default(autoincrement())
+  quotation_number String             @unique(map: "quotation_number") @db.VarChar(50)
+  project_id       Int?
+  client_name      String?            @db.VarChar(255)
+  project_name     String?            @db.VarChar(255)
+  date             DateTime           @db.Date
+  total_amount     Decimal?           @default(0.00) @db.Decimal(15, 2)
+  status           quotations_status? @default(draft)
+  created_at       DateTime?          @default(now()) @db.DateTime(0)
+  updated_at       DateTime?          @default(now()) @db.DateTime(0)
+  rabs             rabs[]
+}
+
+model rab_items {
+  id           Int                 @id @default(autoincrement())
+  section_id   Int
+  mhbarang_id  Int?
+  item_name    String              @db.VarChar(255)
+  category     rab_items_category? @default(material)
+  volume       Decimal?            @default(0.00) @db.Decimal(15, 2)
+  unit         String?             @default("") @db.VarChar(50)
+  unit_price   Decimal?            @default(0.00) @db.Decimal(15, 2)
+  subtotal     Decimal?            @default(0.00) @db.Decimal(15, 2)
+  rab_sections rab_sections        @relation(fields: [section_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "rab_items_ibfk_1")
+  mhbarang     mhbarang?           @relation(fields: [mhbarang_id], references: [nomor], onUpdate: NoAction, map: "rab_items_ibfk_2")
+
+  @@index([section_id], map: "idx_rab_items_section")
+  @@index([mhbarang_id], map: "mhbarang_id")
+}
+
+model rab_sections {
+  id           Int         @id @default(autoincrement())
+  rab_id       Int
+  name         String      @db.VarChar(255)
+  order_number Int?        @default(0)
+  rab_items    rab_items[]
+  rabs         rabs        @relation(fields: [rab_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "rab_sections_ibfk_1")
+
+  @@index([rab_id], map: "idx_rab_sections_rab")
+}
+
+model rabs {
+  id           Int            @id @default(autoincrement())
+  project_id   Int?
+  quotation_id Int?
+  rab_number   String         @db.VarChar(50)
+  name         String         @db.VarChar(255)
+  total_amount Decimal?       @default(0.00) @db.Decimal(15, 2)
+  version      Int?           @default(1)
+  status       rabs_status?   @default(draft)
+  parent_id    Int?
+  created_at   DateTime?      @default(now()) @db.DateTime(0)
+  updated_at   DateTime?      @default(now()) @db.DateTime(0)
+  rab_sections rab_sections[]
+  quotations   quotations?    @relation(fields: [quotation_id], references: [id], onUpdate: NoAction, map: "rabs_ibfk_1")
+
+  @@index([project_id], map: "idx_rabs_project")
+  @@index([quotation_id], map: "idx_rabs_quotation")
+}
+
+model rhjurnal {
+  nomor          BigInt   @id @default(autoincrement())
+  tanggal        DateTime @db.Date
+  nomormhcabang  Int      @default(11)
+  nomormhaccount Int
+  nomormhvaluta  Int      @default(1)
+  acc_selisih    String?  @db.VarChar(100)
+  jenis          String   @default("") @db.VarChar(50)
+  source         String   @default("") @db.VarChar(50)
+  ref            BigInt
+  summary        Int      @default(0) @db.TinyInt
+  kurs           Decimal  @default(1.000000) @db.Decimal(30, 6)
+  jumlah         Decimal  @default(0.000000) @db.Decimal(30, 6)
+  jumlah_idr     Decimal  @default(0.000000) @db.Decimal(30, 6)
+  kode           String?  @db.Text
+  keterangan     String?  @db.Text
+  locked         Int      @default(0) @db.TinyInt
+
+  @@index([nomormhaccount], map: "nomormhaccount")
+  @@index([nomormhcabang], map: "nomormhcabang")
+  @@index([nomormhvaluta], map: "nomormhvaluta")
+  @@index([source, ref, jenis], map: "source")
+  @@index([tanggal, nomormhcabang, nomormhaccount, nomormhvaluta, summary], map: "tanggal")
+}
+
+model rhlaporanhutang {
+  nomor             Int      @id @default(autoincrement())
+  nomormhcabang     Int      @default(0)
+  nomormhperusahaan Int?     @default(0)
+  nomormhsupplier   Int      @default(0)
+  nomormhvaluta     Int      @default(0)
+  nomormhbiaya      Int      @default(0)
+  nomormhtransaksi  Int      @default(0)
+  biaya             Int      @default(0) @db.TinyInt
+  jenis             String   @db.VarChar(200)
+  tanggal           DateTime @default(dbgenerated("'2000-01-01'")) @db.Date
+  transaksi_nomor   Int      @default(0)
+  transaksi_kode    String   @db.VarChar(200)
+  transaksi_tanggal DateTime @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  jatuh_tempo       DateTime @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  kurs              Decimal  @default(0.00) @db.Decimal(30, 2)
+  total             Decimal  @default(0.00) @db.Decimal(30, 2)
+  total_idr         Decimal  @default(0.00) @db.Decimal(30, 2)
+  pelunasan_nomor   Int      @default(0)
+  pelunasan_kode    String   @db.VarChar(200)
+  keterangan        String   @db.Text
+  catatan           String?  @db.Text
+
+  @@index([biaya], map: "biaya")
+  @@index([jatuh_tempo], map: "jatuh_tempo")
+  @@index([jenis], map: "jenis")
+  @@index([nomormhbiaya], map: "nomormhbiaya")
+  @@index([nomormhcabang], map: "nomormhcabang")
+  @@index([nomormhsupplier], map: "nomormhsupplier")
+  @@index([nomormhvaluta], map: "nomormhvaluta")
+  @@index([pelunasan_kode], map: "pelunasan_kode")
+  @@index([pelunasan_nomor], map: "pelunasan_nomor")
+  @@index([tanggal], map: "tanggal")
+  @@index([transaksi_kode], map: "transaksi_kode")
+  @@index([transaksi_nomor], map: "transaksi_nomor")
+  @@index([transaksi_tanggal], map: "transaksi_tanggal")
+}
+
+model rhlaporanpiutang {
+  nomor             Int      @id @default(autoincrement())
+  nomormhcabang     Int      @default(0)
+  nomormhcustomer   Int      @default(0)
+  nomormhvaluta     Int      @default(0)
+  nomormhtransaksi  Int      @default(0)
+  umc               Int      @default(0) @db.TinyInt
+  jenis             String   @db.VarChar(200)
+  tanggal           DateTime @default(dbgenerated("'2000-01-01'")) @db.Date
+  transaksi_nomor   Int      @default(0)
+  transaksi_kode    String   @db.VarChar(200)
+  transaksi_tanggal DateTime @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  jatuh_tempo       DateTime @default(now()) @db.Timestamp(0)
+  kurs              Decimal  @default(0.00) @db.Decimal(30, 2)
+  total             Decimal  @default(0.00) @db.Decimal(30, 2)
+  total_idr         Decimal  @default(0.00) @db.Decimal(30, 2)
+  pelunasan_nomor   Int      @default(0)
+  pelunasan_kode    String?  @db.VarChar(200)
+  keterangan        String?  @db.Text
+  catatan           String?  @db.Text
+
+  @@index([jatuh_tempo], map: "jatuh_tempo")
+  @@index([jenis], map: "jenis")
+  @@index([nomormhcabang], map: "nomormhcabang")
+  @@index([nomormhcustomer], map: "nomormhcustomer")
+  @@index([nomormhvaluta], map: "nomormhvaluta")
+  @@index([pelunasan_kode], map: "pelunasan_kode")
+  @@index([pelunasan_nomor], map: "pelunasan_nomor")
+  @@index([tanggal], map: "tanggal")
+  @@index([transaksi_kode], map: "transaksi_kode")
+  @@index([transaksi_nomor], map: "transaksi_nomor")
+  @@index([transaksi_tanggal], map: "transaksi_tanggal")
+  @@index([umc], map: "umc")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model rhlaporanstok {
+  nomor             Int       @id @default(autoincrement())
+  nomormhcabang     Int?      @default(0)
+  nomormhperusahaan Int?      @default(0)
+  nomormhgudang     Int?      @default(0)
+  nomormhbarang     Int       @default(0)
+  nomormhikan       Int       @default(0)
+  nomormhsupplier   Int?      @default(0)
+  nomormhcustomer   Int?      @default(0)
+  nomormhtransaksi  Int?      @default(0)
+  nomorthstokawal   Int?
+  saldo_awal        Int?      @default(0) @db.TinyInt
+  prioritas         Int?      @default(0) @db.TinyInt
+  jenis             String?   @db.VarChar(200)
+  inthitung         Int?      @default(0)
+  inthitung_old     Int?      @default(0)
+  tanggal           DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  transaksi_nomor   Int?      @default(0)
+  transaksi_kode    String?   @db.VarChar(200)
+  jumlah            Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  fisik             Int?      @default(1) @db.TinyInt
+  hpp               Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  hpp_hitung        Int       @default(0) @db.TinyInt
+  hpp_20221006      Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  pelunasan_nomor   Int?      @default(0)
+  batch_number      String    @db.VarChar(200)
+  batch_expired     String    @db.VarChar(200)
+  batch_alias       String?   @db.VarChar(200)
+  keterangan        String?   @db.Text
+  barcode           String?   @db.VarChar(200)
+
+  @@index([jenis], map: "jenis")
+  @@index([nomormhbarang], map: "nomormhbarang")
+  @@index([nomormhcabang], map: "nomormhcabang")
+  @@index([nomormhcustomer], map: "nomormhcustomer")
+  @@index([nomormhgudang], map: "nomormhgudang")
+  @@index([nomormhsupplier], map: "nomormhsupplier")
+  @@index([nomormhtransaksi], map: "nomormhtransaksi")
+  @@index([nomorthstokawal], map: "nomorthstokawal")
+  @@index([pelunasan_nomor], map: "pelunasan_nomor")
+  @@index([prioritas], map: "prioritas")
+  @@index([saldo_awal], map: "saldo_awal")
+  @@index([tanggal], map: "tanggal")
+  @@index([transaksi_kode], map: "transaksi_kode")
+  @@index([transaksi_nomor], map: "transaksi_nomor")
+}
+
+model subcontractors {
+  nomor          Int      @id @default(autoincrement())
+  name           String   @db.VarChar(255)
+  phone          String?  @db.VarChar(50)
+  specialization String?  @db.VarChar(150)
+  address        String?  @db.Text
+  created_at     DateTime @default(now()) @db.Timestamp(0)
+  updated_at     DateTime @default(now()) @db.Timestamp(0)
+}
+
+model tdbelinota {
+  nomor                 Int        @id @default(autoincrement())
+  nomorthbelinota       Int
+  nomorthbelipenerimaan Int?
+  kode_pb               String?    @db.VarChar(50)
+  nomortdbelipenerimaan Int?
+  nomormhbarang         Int?
+  kode_barang           String?    @db.VarChar(50)
+  nama_barang           String?    @db.VarChar(255)
+  nomormhsatuan         Int?
+  satuan                String?    @db.VarChar(50)
+  jumlah                Decimal?   @default(0.00) @db.Decimal(15, 2)
+  keterangan            String?    @db.Text
+  harga                 Decimal?   @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase     Decimal?   @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal        Decimal?   @default(0.00) @db.Decimal(15, 2)
+  netto                 Decimal?   @default(0.00) @db.Decimal(15, 2)
+  subtotal              Decimal?   @default(0.00) @db.Decimal(15, 2)
+  status_aktif          Boolean?   @default(true)
+  dibuat_oleh           String?    @db.VarChar(50)
+  dibuat_pada           DateTime?  @default(now()) @db.DateTime(0)
+  dibatalkan_oleh       String?    @db.VarChar(50)
+  dibatalkan_pada       DateTime?  @db.DateTime(0)
+  thbelinota            thbelinota @relation(fields: [nomorthbelinota], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbelinota_ibfk_1")
+
+  @@index([nomorthbelipenerimaan, nomortdbelipenerimaan], map: "idx_tdbelinota_pb")
+  @@index([nomorthbelinota], map: "nomorthbelinota")
+}
+
+model tdbeliorder {
+  nomor                 Int         @id @default(autoincrement())
+  nomorthbeliorder      Int
+  nomorthbelipermintaan Int?
+  nomortdbelipermintaan Int?
+  kode_pr               String?     @db.VarChar(50)
+  nomormhbarang         Int?
+  kode_barang           String?     @db.VarChar(50)
+  nama_barang           String?     @db.VarChar(255)
+  nomormhsatuan         Int?
+  satuan                String?     @db.VarChar(50)
+  jumlah                Decimal?    @default(0.00) @db.Decimal(15, 2)
+  keterangan            String?     @db.Text
+  harga                 Decimal?    @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase     Decimal?    @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal        Decimal?    @default(0.00) @db.Decimal(15, 2)
+  netto                 Decimal?    @default(0.00) @db.Decimal(15, 2)
+  subtotal              Decimal?    @default(0.00) @db.Decimal(15, 2)
+  status_aktif          Boolean?    @default(true)
+  dibuat_oleh           String?     @db.VarChar(50)
+  dibuat_pada           DateTime?   @default(now()) @db.DateTime(0)
+  dibatalkan_oleh       String?     @db.VarChar(50)
+  dibatalkan_pada       DateTime?   @db.DateTime(0)
+  jumlah_ter_pb         Decimal?    @default(0.00) @db.Decimal(15, 2)
+  thbeliorder           thbeliorder @relation(fields: [nomorthbeliorder], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbeliorder_ibfk_1")
+
+  @@index([nomorthbelipermintaan, nomortdbelipermintaan], map: "idx_tdbeliorder_pr")
+  @@index([nomorthbeliorder], map: "nomorthbeliorder")
+}
+
+model tdbelipenerimaan {
+  nomor                 Int              @id @default(autoincrement())
+  nomorthbelipenerimaan Int
+  nomorthbeliorder      Int?             @default(0)
+  kode_po               String?          @db.VarChar(100)
+  nomortdbeliorder      Int?
+  nomormhbarang         Int?
+  kode_barang           String?          @db.VarChar(50)
+  nama_barang           String?          @db.VarChar(255)
+  nomormhsatuan         Int?
+  satuan                String?          @db.VarChar(50)
+  jumlah                Decimal?         @default(0.00) @db.Decimal(15, 2)
+  keterangan            String?          @db.Text
+  harga                 Decimal?         @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase     Decimal?         @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal        Decimal?         @default(0.00) @db.Decimal(15, 2)
+  netto                 Decimal?         @default(0.00) @db.Decimal(15, 2)
+  subtotal              Decimal?         @default(0.00) @db.Decimal(15, 2)
+  status_aktif          Boolean?         @default(true)
+  dibuat_oleh           String?          @db.VarChar(50)
+  dibuat_pada           DateTime?        @default(now()) @db.DateTime(0)
+  dibatalkan_oleh       String?          @db.VarChar(50)
+  dibatalkan_pada       DateTime?        @db.DateTime(0)
+  jumlah_ter_nota       Decimal?         @default(0.00) @db.Decimal(15, 2)
+  thbelipenerimaan      thbelipenerimaan @relation(fields: [nomorthbelipenerimaan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbelipenerimaan_ibfk_1")
+
+  @@index([nomortdbeliorder], map: "idx_tdbelipenerimaan_po")
+  @@index([nomorthbelipenerimaan], map: "nomorthbelipenerimaan")
+}
+
+model tdbelipermintaan {
+  nomor                 Int              @id @default(autoincrement())
+  nomorthbelipermintaan Int
+  nomormhbarang         Int?
+  kode_barang           String?          @db.VarChar(50)
+  nama_barang           String?          @db.VarChar(255)
+  nomormhsatuan         Int?
+  satuan                String?          @db.VarChar(50)
+  jumlah                Decimal?         @default(0.00) @db.Decimal(15, 2)
+  keterangan            String?          @db.Text
+  status_aktif          Boolean?         @default(true)
+  dibuat_oleh           String?          @db.VarChar(50)
+  dibuat_pada           DateTime?        @default(now()) @db.DateTime(0)
+  dibatalkan_oleh       String?          @db.VarChar(50)
+  dibatalkan_pada       DateTime?        @db.DateTime(0)
+  jumlah_ter_po         Decimal?         @default(0.00) @db.Decimal(15, 2)
+  thbelipermintaan      thbelipermintaan @relation(fields: [nomorthbelipermintaan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbelipermintaan_ibfk_1")
+
+  @@index([nomorthbelipermintaan], map: "nomorthbelipermintaan")
+}
+
+model tdbeliretur {
+  nomor             Int       @id @default(autoincrement())
+  nomorthbeliretur  Int       @default(0)
+  nomortdbelinota   Int?      @default(0)
+  nomorthbelinota   Int?      @default(0)
+  nomormhbarang     Int?      @default(0)
+  kode_barang       String?   @db.VarChar(100)
+  nama_barang       String?   @db.VarChar(200)
+  nomormhsatuan     Int?      @default(0)
+  satuan            String?   @db.VarChar(50)
+  jumlah            Decimal?  @default(0.0000) @db.Decimal(20, 4)
+  keterangan        String?   @db.Text
+  harga             Decimal?  @default(0.00) @db.Decimal(30, 2)
+  diskon_prosentase Decimal?  @default(0.00) @db.Decimal(10, 2)
+  diskon_nominal    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  netto             Decimal?  @default(0.00) @db.Decimal(30, 2)
+  subtotal          Decimal?  @default(0.00) @db.Decimal(30, 2)
+  status_aktif      Int?      @default(1) @db.TinyInt
+  dibuat_oleh       String?   @default("Admin") @db.VarChar(100)
+  dibuat_pada       DateTime? @default(now()) @db.DateTime(0)
+  dibatalkan_oleh   String?   @db.VarChar(100)
+  dibatalkan_pada   DateTime? @db.DateTime(0)
+}
+
+model tdbonbahan {
+  nomor           Int        @id @default(autoincrement())
+  nomorthbonbahan Int
+  item_id         Int
+  qty             Decimal    @db.Decimal(18, 4)
+  satuan_id       Int?
+  keterangan      String?    @db.Text
+  thbonbahan      thbonbahan @relation(fields: [nomorthbonbahan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbonbahan_ibfk_1")
+
+  @@index([nomorthbonbahan], map: "nomorthbonbahan")
+}
+
+model tddeliveryorder {
+  nomor                Int       @id @default(autoincrement())
+  nomorthdeliveryorder Int
+  nomortdjualorder     Int?
+  nomormhbarang        Int?
+  kode_barang          String?   @db.VarChar(50)
+  nama_barang          String?   @db.VarChar(100)
+  nomormhsatuan        Int?
+  satuan               String?   @db.VarChar(20)
+  jumlah               Decimal?  @default(0.00) @db.Decimal(10, 2)
+  keterangan           String?   @db.Text
+  harga                Decimal?  @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase    Decimal?  @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal       Decimal?  @default(0.00) @db.Decimal(15, 2)
+  netto                Decimal?  @default(0.00) @db.Decimal(15, 2)
+  subtotal             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  status_aktif         Boolean?  @default(true)
+  dibuat_oleh          String?   @db.VarChar(50)
+  dibuat_pada          DateTime  @default(now()) @db.Timestamp(0)
+  dibatalkan_oleh      String?   @db.VarChar(50)
+  dibatalkan_pada      DateTime? @db.DateTime(0)
+}
+
+model tdhasilproduksi {
+  nomor                Int                    @id @default(autoincrement())
+  nomorthhasilproduksi Int
+  item_id              Int
+  qty                  Decimal                @db.Decimal(18, 4)
+  jenis                tdhasilproduksi_jenis? @default(FG)
+  thhasilproduksi      thhasilproduksi        @relation(fields: [nomorthhasilproduksi], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdhasilproduksi_ibfk_1")
+
+  @@index([nomorthhasilproduksi], map: "nomorthhasilproduksi")
+}
+
+model tdjualnota {
+  nomor             Int       @id @default(autoincrement())
+  nomorthjualnota   Int
+  kode_sj           String?   @db.VarChar(50)
+  nomorthsuratjalan Int?
+  nomortdsuratjalan Int?
+  nomormhbarang     Int?
+  kode_barang       String?   @db.VarChar(50)
+  nama_barang       String?   @db.VarChar(100)
+  nomormhsatuan     Int?
+  satuan            String?   @db.VarChar(20)
+  jumlah            Decimal?  @default(0.00) @db.Decimal(10, 2)
+  keterangan        String?   @db.Text
+  harga             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase Decimal?  @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal    Decimal?  @default(0.00) @db.Decimal(15, 2)
+  netto             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  subtotal          Decimal?  @default(0.00) @db.Decimal(15, 2)
+  status_aktif      Boolean?  @default(true)
+  dibuat_oleh       String?   @db.VarChar(50)
+  dibuat_pada       DateTime  @default(now()) @db.Timestamp(0)
+  dibatalkan_oleh   String?   @db.VarChar(50)
+  dibatalkan_pada   DateTime? @db.DateTime(0)
+}
+
+model tdjualorder {
+  nomor             Int       @id @default(autoincrement())
+  nomorthjualorder  Int
+  nomormhbarang     Int?
+  kode_barang       String?   @db.VarChar(50)
+  nama_barang       String?   @db.VarChar(100)
+  nomormhsatuan     Int?
+  satuan            String?   @db.VarChar(20)
+  jumlah            Decimal?  @default(0.00) @db.Decimal(10, 2)
+  keterangan        String?   @db.Text
+  harga             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase Decimal?  @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal    Decimal?  @default(0.00) @db.Decimal(15, 2)
+  netto             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  subtotal          Decimal?  @default(0.00) @db.Decimal(15, 2)
+  status_aktif      Boolean?  @default(true)
+  dibuat_oleh       String?   @db.VarChar(50)
+  dibuat_pada       DateTime  @default(now()) @db.Timestamp(0)
+  dibatalkan_oleh   String?   @db.VarChar(50)
+  dibatalkan_pada   DateTime? @db.DateTime(0)
+}
+
+model tdjualretur {
+  nomor             Int       @id @default(autoincrement())
+  nomorthjualretur  Int       @default(0)
+  nomortdjualnota   Int       @default(0)
+  nomortdjualdo     Int?      @default(0)
+  nomorthjualdo     Int?      @default(0)
+  nomormhbarang     Int       @default(0)
+  nomormhsatuan     Int       @default(0)
+  nomormhsatuanunit Int       @default(0)
+  nomormhgudang     Int?      @default(0)
+  kode              String?   @db.VarChar(100)
+  jumlah            Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_konversi   Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_unit       Decimal   @default(0.000000) @db.Decimal(30, 6)
+  sisa              Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  harga             Decimal   @default(0.000000) @db.Decimal(30, 6)
+  harga_ppn         Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  diskon_nominal    Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  subtotal          Decimal   @default(0.000000) @db.Decimal(30, 6)
+  keterangan        String?   @db.Text
+  catatan           String?   @db.Text
+  status_aktif      Int       @default(1) @db.TinyInt
+  dibuat_oleh       Int       @default(0)
+  dibuat_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh       Int       @default(0)
+  diubah_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh      Int       @default(0)
+  dihapus_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui  Int       @default(0) @db.TinyInt
+  disetujui_oleh    Int       @default(0)
+  disetujui_pada    DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh   Int       @default(0)
+  dibatalkan_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print      Int       @default(0) @db.TinyInt
+  diprint_oleh      Int       @default(0)
+  diprint_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt         String?   @db.VarChar(200)
+  ditt_oleh         String?   @db.VarChar(100)
+  ditt_pada         DateTime? @db.DateTime(0)
+}
+
+model tdkembalibahan {
+  nomor               Int            @id @default(autoincrement())
+  nomorthkembalibahan Int
+  item_id             Int
+  qty                 Decimal        @db.Decimal(18, 4)
+  satuan_id           Int?
+  thkembalibahan      thkembalibahan @relation(fields: [nomorthkembalibahan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdkembalibahan_ibfk_1")
+
+  @@index([nomorthkembalibahan], map: "nomorthkembalibahan")
+}
+
+model tdpelunasanpiutang {
+  nomor                   Int       @id @default(autoincrement())
+  nomorthpelunasanpiutang Int       @default(0)
+  nomormhaccount          Int       @default(1)
+  nomormhvaluta           Int?      @default(0)
+  tipe                    Int       @default(0) @db.TinyInt
+  tanggal                 DateTime? @default(dbgenerated("'2000-01-01'")) @db.Date
+  jenis                   String    @db.VarChar(200)
+  transaksinomor          Int?      @default(0)
+  transaksitabel          String?   @db.VarChar(200)
+  transaksikode           String?   @db.VarChar(200)
+  transaksinama           String?   @db.VarChar(200)
+  kursasal                Decimal?  @default(0.00) @db.Decimal(30, 2)
+  kursbayar               Decimal?  @default(0.00) @db.Decimal(30, 2)
+  sisa                    Decimal   @default(0.00) @db.Decimal(30, 2)
+  subtotal                Decimal   @default(0.00) @db.Decimal(30, 2)
+  subtotal_idr            Decimal   @default(0.00) @db.Decimal(30, 2)
+  keterangan              String?   @db.Text
+  catatan                 String?   @db.Text
+  status_aktif            Int       @default(1) @db.TinyInt
+  dibuat_oleh             Int       @default(0)
+  dibuat_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh             Int       @default(0)
+  diubah_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh            Int       @default(0)
+  dihapus_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui        Int       @default(0) @db.TinyInt
+  disetujui_oleh          Int       @default(0)
+  disetujui_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh         Int       @default(0)
+  dibatalkan_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print            Int       @default(0) @db.TinyInt
+  diprint_oleh            Int       @default(0)
+  diprint_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt               String?   @db.VarChar(200)
+  ditt_oleh               String?   @db.VarChar(100)
+  ditt_pada               DateTime? @db.DateTime(0)
+  kode_so                 String?   @db.VarChar(50)
+
+  @@index([nomormhaccount, nomormhvaluta, jenis, transaksinomor, transaksitabel, transaksikode, transaksinama], map: "idx_1")
+  @@index([nomorthpelunasanpiutang, status_aktif], map: "nomorthpelunasanpiutang")
+}
+
+model tdpelunasanpiutangselisih {
+  nomor                         Int       @id @default(autoincrement())
+  nomorthpelunasanpiutang       Int       @default(0)
+  nomorthpenagihanhutang        Int?      @default(0)
+  nomortdpenagihanhutangselisih Int?      @default(0)
+  nomormhaccount                Int       @default(0)
+  kurs                          Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  subtotal_default              Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  subtotal                      Decimal   @default(0.000000) @db.Decimal(30, 6)
+  keterangan                    String?   @db.Text
+  catatan                       String?   @db.Text
+  status_aktif                  Int       @default(1) @db.TinyInt
+  dibuat_oleh                   Int       @default(0)
+  dibuat_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh                   Int       @default(0)
+  diubah_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh                  Int       @default(0)
+  dihapus_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui              Int       @default(0) @db.TinyInt
+  disetujui_oleh                Int       @default(0)
+  disetujui_pada                DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh               Int       @default(0)
+  dibatalkan_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print                  Int       @default(0) @db.TinyInt
+  diprint_oleh                  Int       @default(0)
+  diprint_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                     String?   @db.VarChar(200)
+  ditt_oleh                     String?   @db.VarChar(100)
+  ditt_pada                     DateTime? @db.DateTime(0)
+}
+
+model tdpemakaianinternal {
+  nomor                    Int       @id @default(autoincrement())
+  nomorthpemakaianinternal Int       @default(0)
+  nomormhbarang            Int       @default(1)
+  nomormhikan              Int       @default(0)
+  nomormhsatuan            Int       @default(1)
+  nomormhsatuanunit        Int       @default(1)
+  nomormhaccount           Int?      @default(0)
+  kode                     String?   @db.VarChar(100)
+  batch                    Int       @default(0) @db.TinyInt
+  expdate                  Int       @default(0) @db.TinyInt
+  sn                       Int       @default(0) @db.TinyInt
+  batch_number             String?   @db.VarChar(200)
+  batch_expired            String?   @db.VarChar(200)
+  jumlah                   Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_awal              Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_selisih           Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_konversi          Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_unit              Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_awal_unit         Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_selisih_unit      Decimal   @default(0.000000) @db.Decimal(30, 6)
+  harga                    Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total_berat              Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  berat                    Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  kategori                 String?   @db.VarChar(200)
+  keterangan               String?   @db.Text
+  catatan                  String?   @db.Text
+  status_aktif             Int       @default(1) @db.TinyInt
+  dibuat_oleh              Int       @default(0)
+  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh              Int       @default(0)
+  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh             Int       @default(0)
+  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui         Int       @default(0) @db.TinyInt
+  disetujui_oleh           Int       @default(0)
+  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh          Int       @default(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print             Int       @default(0) @db.TinyInt
+  diprint_oleh             Int       @default(0)
+  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                String?   @db.VarChar(200)
+  ditt_oleh                String?   @db.VarChar(100)
+  ditt_pada                DateTime? @db.DateTime(0)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tdpenagihanhutang {
+  nomor                    Int       @id @default(autoincrement())
+  nomorthpenagihanhutang   Int       @default(0)
+  nomormhaccount           Int       @default(0)
+  tipe                     Int       @default(0) @db.TinyInt
+  jenis                    String    @db.VarChar(200)
+  transaksinomor           Int?      @default(0)
+  transaksitabel           String?   @db.VarChar(200)
+  transaksikode            String?   @db.VarChar(200)
+  transaksinama            String?   @db.VarChar(200)
+  kurs                     Decimal?  @default(0.00) @db.Decimal(30, 2)
+  sisa                     Decimal   @default(0.00) @db.Decimal(30, 2)
+  subtotal                 Decimal   @default(0.00) @db.Decimal(30, 2)
+  subtotal_idr             Decimal   @default(0.00) @db.Decimal(30, 2)
+  multiplier               Decimal   @default(1.00) @db.Decimal(30, 2)
+  keterangan               String?   @db.Text
+  catatan                  String?   @db.Text
+  finish                   Int       @default(0)
+  status_aktif             Int       @default(1) @db.TinyInt
+  dibuat_oleh              Int       @default(0)
+  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh              Int       @default(0)
+  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh             Int       @default(0)
+  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui         Int       @default(0) @db.TinyInt
+  disetujui_oleh           Int       @default(0)
+  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh          Int       @default(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print             Int       @default(0) @db.TinyInt
+  diprint_oleh             Int       @default(0)
+  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                String?   @db.VarChar(200)
+  ditt_oleh                String?   @db.VarChar(100)
+  ditt_pada                DateTime? @db.DateTime(0)
+  sisa_bayar               Decimal   @default(0.00) @db.Decimal(30, 2)
+  subtotal_lain            Decimal   @default(0.00) @db.Decimal(30, 2)
+  nomormhaccount_bayarlain Int       @default(0)
+  nomormhvaluta            Int       @default(0)
+
+  @@index([transaksinomor], map: "`transaksinomor`")
+  @@index([nomormhaccount, jenis, transaksitabel, transaksikode, transaksinama], map: "idx_1")
+  @@index([nomorthpenagihanhutang], map: "nomorthpenagihanhutang")
+}
+
+model tdpos {
+  nomor             Int      @id @default(autoincrement())
+  nomorthpos        Int
+  nomormhbarang     Int?     @default(0)
+  kode_barang       String?  @db.VarChar(50)
+  nama_barang       String?  @db.VarChar(200)
+  nomormhsatuan     Int?     @default(0)
+  satuan            String?  @db.VarChar(50)
+  jumlah            Decimal? @default(0.00) @db.Decimal(10, 2)
+  harga             Decimal? @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase Decimal? @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal    Decimal? @default(0.00) @db.Decimal(15, 2)
+  netto             Decimal? @default(0.00) @db.Decimal(15, 2)
+  subtotal          Decimal? @default(0.00) @db.Decimal(15, 2)
+  status_aktif      Int?     @default(1) @db.TinyInt
+  thpos             thpos    @relation(fields: [nomorthpos], references: [nomor], onDelete: NoAction, onUpdate: NoAction, map: "fk_tdpos_thpos")
+
+  @@index([nomorthpos], map: "idx_nomorthpos")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tdstokpengiriman {
+  nomor                     Int       @id @default(autoincrement())
+  nomorthstokpengiriman     Int       @default(0)
+  nomortdstokpermintaan     Int       @default(0)
+  nomormhbarang             Int       @default(1)
+  nomormhsatuan             Int       @default(1)
+  nomormhsatuanunit         Int       @default(1)
+  kode                      String?   @db.VarChar(100)
+  tipe                      Int       @default(0) @db.TinyInt
+  batch                     Int       @default(0) @db.TinyInt
+  expdate                   Int       @default(0) @db.TinyInt
+  sn                        Int       @default(0) @db.TinyInt
+  batch_number              String?   @db.VarChar(200)
+  batch_expired             String?   @db.VarChar(200)
+  jumlah                    Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_konversi           Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_unit               Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_awal_permintaan    Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_selesai_penerimaan Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total_berat               Decimal   @default(0.000000) @db.Decimal(30, 6)
+  berat                     Decimal   @default(0.000000) @db.Decimal(30, 6)
+  kategori                  String?   @db.VarChar(200)
+  keterangan                String?   @db.Text
+  catatan                   String?   @db.Text
+  status_aktif              Int       @default(1) @db.TinyInt
+  dibuat_oleh               Int       @default(0)
+  dibuat_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh               Int       @default(0)
+  diubah_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh              Int       @default(0)
+  dihapus_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui          Int       @default(0) @db.TinyInt
+  disetujui_oleh            Int       @default(0)
+  disetujui_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh           Int       @default(0)
+  dibatalkan_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print              Int       @default(0) @db.TinyInt
+  diprint_oleh              Int       @default(0)
+  diprint_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                 String?   @db.VarChar(200)
+  ditt_oleh                 String?   @db.VarChar(100)
+  ditt_pada                 DateTime? @db.DateTime(0)
+}
+
+model tdstokpenyesuaian {
+  nomor                  Int       @id @default(autoincrement())
+  nomorthstokpenyesuaian Int       @default(0)
+  nomormhbarang          Int       @default(1)
+  kode_barang            String?   @db.VarChar(200)
+  nama_barang            String?   @db.VarChar(200)
+  nomormhikan            Int       @default(0)
+  nomormhsatuan          Int       @default(1)
+  satuan                 String?   @db.VarChar(100)
+  nomormhsatuanunit      Int       @default(1)
+  kode                   String?   @db.VarChar(100)
+  batch                  Int       @default(0) @db.TinyInt
+  expdate                Int       @default(0) @db.TinyInt
+  sn                     Int       @default(0) @db.TinyInt
+  batch_number           String?   @db.VarChar(200)
+  batch_expired          String?   @db.VarChar(200)
+  jumlah                 Decimal   @default(0.000000) @db.Decimal(30, 6)
+  aktual                 Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  jumlah_awal            Decimal   @default(0.000000) @db.Decimal(30, 6)
+  tercatat               Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  jumlah_selisih         Decimal   @default(0.000000) @db.Decimal(30, 6)
+  perubahan              Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  jumlah_konversi        Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_unit            Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_awal_unit       Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_selisih_unit    Decimal   @default(0.000000) @db.Decimal(30, 6)
+  harga                  Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total_berat            Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  berat                  Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  kategori               String?   @db.VarChar(200)
+  keterangan             String?   @db.Text
+  catatan                String?   @db.Text
+  status_aktif           Int       @default(1) @db.TinyInt
+  dibuat_oleh            Int       @default(0)
+  dibuat_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh            Int       @default(0)
+  diubah_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh           Int       @default(0)
+  dihapus_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui       Int       @default(0) @db.TinyInt
+  disetujui_oleh         Int       @default(0)
+  disetujui_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh        Int       @default(0)
+  dibatalkan_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print           Int       @default(0) @db.TinyInt
+  diprint_oleh           Int       @default(0)
+  diprint_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt              String?   @db.VarChar(200)
+  ditt_oleh              String?   @db.VarChar(100)
+  ditt_pada              DateTime? @db.DateTime(0)
+}
+
+model tdsuratjalan {
+  nomor                Int       @id @default(autoincrement())
+  nomorthsuratjalan    Int
+  nomortddeliveryorder Int?
+  nomormhbarang        Int?
+  kode_barang          String?   @db.VarChar(50)
+  nama_barang          String?   @db.VarChar(100)
+  nomormhsatuan        Int?
+  satuan               String?   @db.VarChar(20)
+  jumlah               Decimal?  @default(0.00) @db.Decimal(10, 2)
+  keterangan           String?   @db.Text
+  harga                Decimal?  @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase    Decimal?  @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal       Decimal?  @default(0.00) @db.Decimal(15, 2)
+  netto                Decimal?  @default(0.00) @db.Decimal(15, 2)
+  subtotal             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  status_aktif         Boolean?  @default(true)
+  dibuat_oleh          String?   @db.VarChar(50)
+  dibuat_pada          DateTime  @default(now()) @db.Timestamp(0)
+  dibatalkan_oleh      String?   @db.VarChar(50)
+  dibatalkan_pada      DateTime? @db.DateTime(0)
+}
+
+model tduangkeluar {
+  nomor                  Int       @id @default(autoincrement())
+  nomorthuangkeluar      Int       @default(0)
+  nomormhaccount         Int       @default(0)
+  nomorthtransaksi       Int       @default(0)
+  nomorthpenagihanhutang Int       @default(0)
+  nomortdpenagihanhutang Int       @default(0)
+  nomormhvaluta          Int       @default(0)
+  nomorthjualdo          Int?      @default(0)
+  tipe                   Int       @default(0) @db.TinyInt
+  jenis                  String    @default("") @db.VarChar(200)
+  jenis_detail           String?   @default("") @db.VarChar(200)
+  transaksinomor         Int?      @default(0)
+  transaksitabel         String?   @db.VarChar(200)
+  transaksikode          String?   @db.VarChar(200)
+  transaksinama          String?   @db.VarChar(200)
+  kurs                   Decimal?  @default(1.00) @db.Decimal(30, 2)
+  kurs_bayar             Decimal?  @default(1.00) @db.Decimal(30, 2)
+  sisa                   Decimal?  @default(0.00) @db.Decimal(30, 2)
+  sisa_idr               Decimal?  @default(0.00) @db.Decimal(30, 2)
+  subtotal               Decimal?  @default(0.00) @db.Decimal(30, 2)
+  subtotal_idr           Decimal?  @default(0.00) @db.Decimal(30, 2)
+  nominal                Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_bayar            Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_bayar_idr        Decimal?  @default(0.00) @db.Decimal(30, 2)
+  multiplier             Decimal?  @default(0.00) @db.Decimal(30, 2)
+  keterangan             String?   @db.Text
+  catatan                String?   @db.Text
+  status_aktif           Int       @default(1) @db.TinyInt
+  dibuat_oleh            Int       @default(0)
+  dibuat_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh            Int       @default(0)
+  diubah_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh           Int       @default(0)
+  dihapus_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui       Int       @default(0) @db.TinyInt
+  disetujui_oleh         Int       @default(0)
+  disetujui_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh        Int       @default(0)
+  dibatalkan_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print           Int       @default(0) @db.TinyInt
+  diprint_oleh           Int       @default(0)
+  diprint_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt              String?   @db.VarChar(200)
+  ditt_oleh              String?   @db.VarChar(100)
+  ditt_pada              DateTime? @db.DateTime(0)
+  account_kode           String?   @db.VarChar(100)
+  account_nama           String?   @db.VarChar(100)
+
+  @@index([nomorthuangkeluar, nomormhaccount, nomortdpenagihanhutang, nomormhvaluta, jenis, transaksinomor, transaksitabel, transaksikode, transaksinama], map: "idx_1")
+  @@index([nomorthpenagihanhutang], map: "nomorthpenagihanhutang")
+}
+
+model tduangkeluarselisih {
+  nomor                         Int       @id @default(autoincrement())
+  nomorthuangkeluar             Int       @default(0)
+  nomorthpenagihanhutang        Int       @default(0)
+  nomortdpenagihanhutangselisih Int       @default(0)
+  nomormhaccount                Int       @default(0)
+  subtotal                      Decimal   @default(0.00) @db.Decimal(30, 2)
+  keterangan                    String?   @db.Text
+  catatan                       String?   @db.Text
+  status_aktif                  Int       @default(1) @db.TinyInt
+  dibuat_oleh                   Int       @default(0)
+  dibuat_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh                   Int       @default(0)
+  diubah_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh                  Int       @default(0)
+  dihapus_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui              Int       @default(0) @db.TinyInt
+  disetujui_oleh                Int       @default(0)
+  disetujui_pada                DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh               Int       @default(0)
+  dibatalkan_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print                  Int       @default(0) @db.TinyInt
+  diprint_oleh                  Int       @default(0)
+  diprint_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                     String?   @db.VarChar(200)
+  ditt_oleh                     String?   @db.VarChar(100)
+  ditt_pada                     DateTime? @db.DateTime(0)
+}
+
+model tduangmasuk {
+  nomor              Int                @id @default(autoincrement())
+  nomorthuangmasuk   Int
+  nomormhaccount     Int?
+  account_kode       String?            @db.VarChar(200)
+  account_nama       String?            @db.VarChar(200)
+  nomorthtransaksi   Int?
+  transaksikode      String?            @db.VarChar(100)
+  kurs_asal          Decimal?           @default(0.00) @db.Decimal(30, 2)
+  kurs_bayar         Decimal?           @default(0.00) @db.Decimal(30, 2)
+  sisa               Decimal?           @default(0.00) @db.Decimal(30, 2)
+  sisa_idr           Decimal?           @default(0.00) @db.Decimal(30, 2)
+  subtotal           Decimal?           @default(0.00) @db.Decimal(30, 2)
+  subtotal_idr       Decimal?           @default(0.00) @db.Decimal(30, 2)
+  nominal            Decimal?           @default(0.00) @db.Decimal(30, 2)
+  nominal_idr        Decimal?           @default(0.00) @db.Decimal(30, 2)
+  total_terbayar     Decimal?           @default(0.00) @db.Decimal(30, 2)
+  total_terbayar_idr Decimal?           @default(0.00) @db.Decimal(30, 2)
+  jenis              tduangmasuk_jenis?
+  jenis_detail       String?            @db.VarChar(200)
+  keterangan         String?            @db.Text
+  catatan            String?            @db.Text
+  status_aktif       Int                @default(1) @db.TinyInt
+  dibuat_oleh        Int                @default(0)
+  dibuat_pada        DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh        Int                @default(0)
+  diubah_pada        DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh       Int                @default(0)
+  dihapus_pada       DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui   Int                @default(0) @db.TinyInt
+  disetujui_oleh     Int                @default(0)
+  disetujui_pada     DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh    Int                @default(0)
+  dibatalkan_pada    DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print       Int                @default(0) @db.TinyInt
+  diprint_oleh       Int                @default(0)
+  diprint_pada       DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt          String?            @db.VarChar(200)
+  ditt_oleh          String?            @db.VarChar(100)
+  ditt_pada          DateTime?          @db.DateTime(0)
+
+  @@index([nomorthuangmasuk, nomormhaccount, transaksikode, jenis], map: "idx_1")
+}
+
+model tduangmasukselisih {
+  nomor                         Int       @id @default(autoincrement())
+  nomorthuangmasuk              Int       @default(0)
+  nomorthpenagihanhutang        Int       @default(0)
+  nomortdpenagihanhutangselisih Int       @default(0)
+  nomormhaccount                Int       @default(0)
+  subtotal                      Decimal   @default(0.00) @db.Decimal(30, 2)
+  keterangan                    String?   @db.Text
+  catatan                       String?   @db.Text
+  status_aktif                  Int       @default(1) @db.TinyInt
+  dibuat_oleh                   Int       @default(0)
+  dibuat_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh                   Int       @default(0)
+  diubah_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh                  Int       @default(0)
+  dihapus_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui              Int       @default(0) @db.TinyInt
+  disetujui_oleh                Int       @default(0)
+  disetujui_pada                DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh               Int       @default(0)
+  dibatalkan_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print                  Int       @default(0) @db.TinyInt
+  diprint_oleh                  Int       @default(0)
+  diprint_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                     String?   @db.VarChar(200)
+  ditt_oleh                     String?   @db.VarChar(100)
+  ditt_pada                     DateTime? @db.DateTime(0)
+}
+
+model tdubahbentuk {
+  nomor               Int       @id @default(autoincrement())
+  nomorthubahbentuk   Int       @default(0)
+  nomormhbarang       Int       @default(1)
+  nomormhikan         Int       @default(0)
+  nomormhsatuan       Int       @default(1)
+  nomormhsatuanunit   Int       @default(1)
+  nomormhaccount      Int?      @default(0)
+  kode                String?   @db.VarChar(100)
+  batch               Int       @default(0) @db.TinyInt
+  expdate             Int       @default(0) @db.TinyInt
+  sn                  Int       @default(0) @db.TinyInt
+  batch_number        String?   @db.VarChar(200)
+  batch_expired       String?   @db.VarChar(200)
+  jumlah              Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_awal         Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_selisih      Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_konversi     Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_unit         Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_awal_unit    Decimal   @default(0.000000) @db.Decimal(30, 6)
+  jumlah_selisih_unit Decimal   @default(0.000000) @db.Decimal(30, 6)
+  harga               Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total_berat         Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  berat               Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  kategori            String?   @db.VarChar(200)
+  keterangan          String?   @db.Text
+  catatan             String?   @db.Text
+  status_aktif        Int       @default(1) @db.TinyInt
+  dibuat_oleh         Int       @default(0)
+  dibuat_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh         Int       @default(0)
+  diubah_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh        Int       @default(0)
+  dihapus_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui    Int       @default(0) @db.TinyInt
+  disetujui_oleh      Int       @default(0)
+  disetujui_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh     Int       @default(0)
+  dibatalkan_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print        Int       @default(0) @db.TinyInt
+  diprint_oleh        Int       @default(0)
+  diprint_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt           String?   @db.VarChar(200)
+  ditt_oleh           String?   @db.VarChar(100)
+  ditt_pada           DateTime? @db.DateTime(0)
+
+  @@index([nomorthubahbentuk, nomormhbarang, nomormhsatuan, nomormhsatuanunit, status_aktif], map: "idx_1")
+}
+
+model thbelinota {
+  nomor                 Int          @id @default(autoincrement())
+  kode                  String       @unique(map: "kode") @db.VarChar(50)
+  tanggal               DateTime     @db.Date
+  jatuh_tempo           DateTime?    @db.Date
+  keterangan            String?      @db.Text
+  nomor_faktur_supplier String?      @db.VarChar(100)
+  nomormhsupplier       Int?
+  supplier              String?      @db.VarChar(255)
+  subtotal              Decimal?     @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase     Decimal?     @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal        Decimal?     @default(0.00) @db.Decimal(15, 2)
+  dpp                   Decimal?     @default(0.00) @db.Decimal(15, 2)
+  ppn_prosentase        Decimal?     @default(0.00) @db.Decimal(5, 2)
+  ppn_nominal           Decimal?     @default(0.00) @db.Decimal(15, 2)
+  total                 Decimal?     @default(0.00) @db.Decimal(15, 2)
+  total_idr             Decimal?     @default(0.00) @db.Decimal(15, 2)
+  valuta                String?      @db.VarChar(10)
+  nomormhvaluta         Int?
+  kurs                  Decimal?     @default(1.00) @db.Decimal(15, 2)
+  jenis                 String?      @db.VarChar(100)
+  status_aktif          Boolean?     @default(true)
+  dibuat_oleh           String?      @db.VarChar(50)
+  dibuat_pada           DateTime?    @default(now()) @db.DateTime(0)
+  dibatalkan_oleh       String?      @db.VarChar(50)
+  dibatalkan_pada       DateTime?    @db.DateTime(0)
+  status_disetujui      Boolean?     @default(false)
+  disetujui_oleh        String?      @db.VarChar(50)
+  disetujui_pada        DateTime?    @db.DateTime(0)
+  total_terbayar        Decimal?     @default(0.00) @db.Decimal(15, 2)
+  total_terbayar_idr    Decimal?     @default(0.00) @db.Decimal(15, 2)
+  account_tujuan        String?      @db.VarChar(200)
+  nomormhaccount        Int?         @default(0)
+  kode_nota_beli        String?      @db.VarChar(100)
+  nomormhcabang         Int?         @default(0)
+  nomormhperusahaan     Int?         @default(0)
+  tdbelinota            tdbelinota[]
+
+  @@index([jatuh_tempo], map: "idx_thbelinota_jatuhtempo")
+  @@index([kode], map: "idx_thbelinota_kode")
+  @@index([status_aktif, status_disetujui], map: "idx_thbelinota_status")
+  @@index([tanggal, nomormhsupplier], map: "idx_thbelinota_tgl_supplier")
+}
+
+model thbeliorder {
+  nomor             Int           @id @default(autoincrement())
+  kode              String        @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime      @db.Date
+  keterangan        String?       @db.Text
+  nomormhsupplier   Int?
+  supplier          String?       @db.VarChar(255)
+  subtotal          Decimal?      @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase Decimal?      @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal    Decimal?      @default(0.00) @db.Decimal(15, 2)
+  dpp               Decimal?      @default(0.00) @db.Decimal(15, 2)
+  ppn_prosentase    Decimal?      @default(0.00) @db.Decimal(5, 2)
+  ppn_nominal       Decimal?      @default(0.00) @db.Decimal(15, 2)
+  total             Decimal?      @default(0.00) @db.Decimal(15, 2)
+  total_idr         Decimal?      @default(0.00) @db.Decimal(15, 2)
+  valuta            String?       @db.VarChar(10)
+  nomormhvaluta     Int?
+  kurs              Decimal?      @default(1.00) @db.Decimal(15, 2)
+  status_aktif      Boolean?      @default(true)
+  dibuat_oleh       String?       @db.VarChar(50)
+  dibuat_pada       DateTime?     @default(now()) @db.DateTime(0)
+  dibatalkan_oleh   String?       @db.VarChar(50)
+  dibatalkan_pada   DateTime?     @db.DateTime(0)
+  status_disetujui  Boolean?      @default(false)
+  disetujui_oleh    String?       @db.VarChar(50)
+  disetujui_pada    DateTime?     @db.DateTime(0)
+  status_selesai_pb Boolean?      @default(false)
+  nomormhcabang     Int?          @default(0)
+  nomormhperusahaan Int?          @default(0)
+  tdbeliorder       tdbeliorder[]
+
+  @@index([kode], map: "idx_thbeliorder_kode")
+  @@index([status_aktif, status_disetujui, status_selesai_pb], map: "idx_thbeliorder_status")
+  @@index([tanggal, nomormhsupplier], map: "idx_thbeliorder_tgl_supplier")
+}
+
+model thbelipenerimaan {
+  nomor               Int                @id @default(autoincrement())
+  kode                String             @unique(map: "kode") @db.VarChar(50)
+  tanggal             DateTime           @db.Date
+  nomor_surat_jalan   String?            @db.VarChar(100)
+  tanggal_surat_jalan DateTime?          @db.Date
+  keterangan          String?            @db.Text
+  nomorthbeliorder    Int?
+  kode_po             String?            @db.VarChar(50)
+  nomormhsupplier     Int?
+  supplier            String?            @db.VarChar(255)
+  subtotal            Decimal?           @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase   Decimal?           @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal      Decimal?           @default(0.00) @db.Decimal(15, 2)
+  dpp                 Decimal?           @default(0.00) @db.Decimal(15, 2)
+  ppn_prosentase      Decimal?           @default(0.00) @db.Decimal(5, 2)
+  ppn_nominal         Decimal?           @default(0.00) @db.Decimal(15, 2)
+  total               Decimal?           @default(0.00) @db.Decimal(15, 2)
+  total_idr           Decimal?           @default(0.00) @db.Decimal(15, 2)
+  valuta              String?            @db.VarChar(10)
+  nomormhvaluta       Int?
+  kurs                Decimal?           @default(1.00) @db.Decimal(15, 2)
+  status_aktif        Boolean?           @default(true)
+  dibuat_oleh         String?            @db.VarChar(50)
+  dibuat_pada         DateTime?          @default(now()) @db.DateTime(0)
+  dibatalkan_oleh     String?            @db.VarChar(50)
+  dibatalkan_pada     DateTime?          @db.DateTime(0)
+  status_disetujui    Boolean?           @default(false)
+  disetujui_oleh      String?            @db.VarChar(50)
+  disetujui_pada      DateTime?          @db.DateTime(0)
+  status_selesai_nota Boolean?           @default(false)
+  nomormhcabang       Int?               @default(0)
+  nomormhperusahaan   Int?               @default(0)
+  nomormhgudang       Int?               @default(0)
+  gudang              String?            @db.VarChar(100)
+  tdbelipenerimaan    tdbelipenerimaan[]
+
+  @@index([kode], map: "idx_thbelipenerimaan_kode")
+  @@index([nomorthbeliorder], map: "idx_thbelipenerimaan_po")
+  @@index([status_aktif, status_disetujui, status_selesai_nota], map: "idx_thbelipenerimaan_status")
+  @@index([tanggal, nomormhsupplier], map: "idx_thbelipenerimaan_tgl_supplier")
+}
+
+model thbelipermintaan {
+  nomor             Int                @id @default(autoincrement())
+  kode              String             @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime           @db.Date
+  keterangan        String?            @db.Text
+  status_aktif      Boolean?           @default(true)
+  dibuat_oleh       String?            @db.VarChar(50)
+  dibuat_pada       DateTime?          @default(now()) @db.DateTime(0)
+  dibatalkan_oleh   String?            @db.VarChar(50)
+  dibatalkan_pada   DateTime?          @db.DateTime(0)
+  status_disetujui  Boolean?           @default(false)
+  disetujui_oleh    String?            @db.VarChar(50)
+  disetujui_pada    DateTime?          @db.DateTime(0)
+  status_selesai_po Boolean?           @default(false)
+  nomormhcabang     Int?               @default(0)
+  nomormhperusahaan Int?               @default(0)
+  tdbelipermintaan  tdbelipermintaan[]
+
+  @@index([kode], map: "idx_thbelipermintaan_kode")
+  @@index([status_aktif, status_disetujui, status_selesai_po], map: "idx_thbelipermintaan_status")
+  @@index([tanggal], map: "idx_thbelipermintaan_tgl")
+}
+
+model thbeliretur {
+  nomor             Int       @id @default(autoincrement())
+  nomorthbelinota   Int?      @default(0)
+  kode              String    @unique(map: "uq_thbeliretur_kode") @db.VarChar(100)
+  tanggal           DateTime  @db.Date
+  keterangan        String?   @db.Text
+  nomormhsupplier   Int?      @default(0)
+  supplier          String?   @db.VarChar(200)
+  valuta            String?   @default("IDR") @db.VarChar(20)
+  nomormhvaluta     Int?      @default(0)
+  kurs              Decimal?  @default(1.00) @db.Decimal(30, 2)
+  subtotal          Decimal?  @default(0.00) @db.Decimal(30, 2)
+  diskon_prosentase Decimal?  @default(0.00) @db.Decimal(10, 2)
+  diskon_nominal    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  dpp               Decimal?  @default(0.00) @db.Decimal(30, 2)
+  ppn_prosentase    Decimal?  @default(0.00) @db.Decimal(10, 2)
+  ppn_nominal       Decimal?  @default(0.00) @db.Decimal(30, 2)
+  pph               Decimal?  @default(0.00) @db.Decimal(10, 2)
+  pphnominal        Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total             Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_idr         Decimal?  @default(0.00) @db.Decimal(30, 2)
+  status_aktif      Int?      @default(1) @db.TinyInt
+  dibuat_oleh       String?   @default("Admin") @db.VarChar(100)
+  dibuat_pada       DateTime? @default(now()) @db.DateTime(0)
+  diubah_oleh       Int?      @default(0)
+  diubah_pada       DateTime? @db.DateTime(0)
+  dibatalkan_oleh   String?   @db.VarChar(100)
+  dibatalkan_pada   DateTime? @db.DateTime(0)
+  status_disetujui  Int?      @default(0) @db.TinyInt
+  disetujui_oleh    String?   @db.VarChar(100)
+  disetujui_pada    DateTime? @db.DateTime(0)
+  nomormhcabang     Int?      @default(0)
+  nomormhperusahaan Int?      @default(0)
+  nomormhgudang     Int?      @default(0)
+  gudang            String?   @db.VarChar(50)
+}
+
+model thbonbahan {
+  nomor             Int          @id @default(autoincrement())
+  nomormhperusahaan Int
+  nomormhcabang     Int
+  kode              String       @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime     @db.Date
+  nomorthworkorder  Int?
+  keterangan        String?      @db.Text
+  status_aktif      Boolean?     @default(true)
+  dibuat_oleh       String?      @db.VarChar(50)
+  dibuat_pada       DateTime?    @default(now()) @db.DateTime(0)
+  tdbonbahan        tdbonbahan[]
+}
+
+model thdeliveryorder {
+  nomor             Int       @id @default(autoincrement())
+  kode              String    @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime  @db.Date
+  keterangan        String?   @db.Text
+  gudang            String?   @db.VarChar(100)
+  nomormhcustomer   Int?
+  customer          String?   @db.VarChar(100)
+  nomormhsales      Int?
+  sales             String?   @db.VarChar(100)
+  kode_order_jual   String?   @db.VarChar(50)
+  nomorthjualorder  Int?
+  subtotal          Decimal?  @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase Decimal?  @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal    Decimal?  @default(0.00) @db.Decimal(15, 2)
+  dpp               Decimal?  @default(0.00) @db.Decimal(15, 2)
+  ppn_prosentase    Decimal?  @default(0.00) @db.Decimal(5, 2)
+  ppn_nominal       Decimal?  @default(0.00) @db.Decimal(15, 2)
+  total             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  total_idr         Decimal?  @default(0.00) @db.Decimal(15, 2)
+  valuta            String?   @default("IDR") @db.VarChar(10)
+  nomormhvaluta     Int?
+  kurs              Decimal?  @default(1.00) @db.Decimal(10, 2)
+  status_aktif      Boolean?  @default(true)
+  dibuat_oleh       String?   @db.VarChar(50)
+  dibuat_pada       DateTime  @default(now()) @db.Timestamp(0)
+  dibatalkan_oleh   String?   @db.VarChar(50)
+  dibatalkan_pada   DateTime? @db.DateTime(0)
+  status_disetujui  Boolean?  @default(false)
+  disetujui_oleh    String?   @db.VarChar(50)
+  disetujui_pada    DateTime? @db.DateTime(0)
+  nomormhcabang     Int?      @default(0)
+  nomormhperusahaan Int?      @default(0)
+}
+
+model thhasilproduksi {
+  nomor             Int               @id @default(autoincrement())
+  nomormhperusahaan Int
+  nomormhcabang     Int
+  kode              String            @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime          @db.Date
+  nomorthworkorder  Int?
+  item_id           Int?
+  qty_fg            Decimal           @default(0.0000) @db.Decimal(18, 4)
+  qty_afalan        Decimal           @default(0.0000) @db.Decimal(18, 4)
+  keterangan        String?           @db.Text
+  status_aktif      Boolean?          @default(true)
+  dibuat_oleh       String?           @db.VarChar(50)
+  dibuat_pada       DateTime?         @default(now()) @db.DateTime(0)
+  tdhasilproduksi   tdhasilproduksi[]
+}
+
+model thjualnota {
+  nomor               Int       @id @default(autoincrement())
+  kode                String    @unique(map: "kode") @db.VarChar(50)
+  tanggal             DateTime  @db.Date
+  jatuh_tempo         DateTime? @db.Date
+  keterangan          String?   @db.Text
+  gudang              String?   @db.VarChar(100)
+  nomormhcustomer     Int?
+  customer            String?   @db.VarChar(100)
+  nomormhsales        Int?
+  sales               String?   @db.VarChar(100)
+  kode_order_jual     String?   @db.VarChar(50)
+  nomorthjualorder    Int?
+  subtotal            Decimal?  @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase   Decimal?  @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal      Decimal?  @default(0.00) @db.Decimal(15, 2)
+  dpp                 Decimal?  @default(0.00) @db.Decimal(15, 2)
+  uang_muka_penjualan Decimal?  @default(0.00) @db.Decimal(15, 2)
+  ppn_prosentase      Decimal?  @default(0.00) @db.Decimal(5, 2)
+  ppn_nominal         Decimal?  @default(0.00) @db.Decimal(15, 2)
+  total               Decimal?  @default(0.00) @db.Decimal(15, 2)
+  total_idr           Decimal?  @default(0.00) @db.Decimal(15, 2)
+  valuta              String?   @default("IDR") @db.VarChar(10)
+  nomormhvaluta       Int?
+  kurs                Decimal?  @default(1.00) @db.Decimal(10, 2)
+  status_aktif        Boolean?  @default(true)
+  dibuat_oleh         String?   @db.VarChar(50)
+  dibuat_pada         DateTime  @default(now()) @db.Timestamp(0)
+  dibatalkan_oleh     String?   @db.VarChar(50)
+  dibatalkan_pada     DateTime? @db.DateTime(0)
+  status_disetujui    Boolean?  @default(false)
+  disetujui_oleh      String?   @db.VarChar(50)
+  disetujui_pada      DateTime? @db.DateTime(0)
+  jenis               String?   @db.VarChar(100)
+  pph                 Decimal?  @default(0.00) @db.Decimal(10, 2)
+  pphnominal          Decimal?  @default(0.00) @db.Decimal(30, 2)
+  account_tujuan      String?   @db.VarChar(200)
+  kode_nota_jual      String?   @db.VarChar(100)
+  nomormhcabang       Int?      @default(0)
+  nomormhperusahaan   Int?      @default(0)
+}
+
+model thjualorder {
+  nomor             Int       @id @default(autoincrement())
+  kode              String    @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime  @db.Date
+  keterangan        String?   @db.Text
+  nomormhcustomer   Int?
+  customer          String?   @db.VarChar(100)
+  nomormhsales      Int?
+  sales             String?   @db.VarChar(100)
+  nomor_po_customer String?   @db.VarChar(50)
+  subtotal          Decimal?  @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase Decimal?  @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal    Decimal?  @default(0.00) @db.Decimal(15, 2)
+  dpp               Decimal?  @default(0.00) @db.Decimal(15, 2)
+  ppn_prosentase    Decimal?  @default(0.00) @db.Decimal(5, 2)
+  ppn_nominal       Decimal?  @default(0.00) @db.Decimal(15, 2)
+  total             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  total_idr         Decimal?  @default(0.00) @db.Decimal(15, 2)
+  valuta            String?   @default("IDR") @db.VarChar(10)
+  nomormhvaluta     Int?
+  kurs              Decimal?  @default(1.00) @db.Decimal(10, 2)
+  status_aktif      Boolean?  @default(true)
+  dibuat_oleh       String?   @db.VarChar(50)
+  dibuat_pada       DateTime  @default(now()) @db.Timestamp(0)
+  dibatalkan_oleh   String?   @db.VarChar(50)
+  dibatalkan_pada   DateTime? @db.DateTime(0)
+  status_disetujui  Boolean?  @default(false)
+  disetujui_oleh    String?   @db.VarChar(50)
+  disetujui_pada    DateTime? @db.DateTime(0)
+  nomormhcabang     Int?      @default(0)
+  nomormhperusahaan Int?      @default(0)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model thjualretur {
+  nomor                   Int       @id @default(autoincrement())
+  nomormhcabang           Int       @default(0)
+  nomormhperusahaan       Int       @default(0)
+  nomormhgudang           Int       @default(0)
+  nomorthjualnota         Int       @default(0)
+  nomormhrelasi           Int       @default(0)
+  nomormhvaluta           Int       @default(0)
+  nomormhaccount          Int?      @default(0)
+  kode                    String    @db.VarChar(100)
+  tanggal                 DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tipe                    Int       @default(0) @db.TinyInt
+  jenis                   String?   @db.VarChar(50)
+  ppn                     Int       @default(1) @db.TinyInt
+  kurs                    Decimal   @default(0.000000) @db.Decimal(30, 6)
+  subtotal                Decimal   @default(0.000000) @db.Decimal(30, 6)
+  diskon_prosentase       Decimal   @default(0.000000) @db.Decimal(30, 6)
+  diskon_nominal          Decimal   @default(0.000000) @db.Decimal(30, 6)
+  diskon_prosentase_2     Decimal   @default(0.000000) @db.Decimal(30, 6)
+  diskon_nominal_2        Decimal   @default(0.000000) @db.Decimal(30, 6)
+  diskon_prosentase_3     Decimal   @default(0.000000) @db.Decimal(30, 6)
+  diskon_nominal_3        Decimal   @default(0.000000) @db.Decimal(30, 6)
+  diskon_total            Decimal   @default(0.000000) @db.Decimal(30, 6)
+  um                      Decimal   @default(0.000000) @db.Decimal(30, 6)
+  um_2                    Decimal   @default(0.000000) @db.Decimal(30, 6)
+  um_3                    Decimal   @default(0.000000) @db.Decimal(30, 6)
+  um_total                Decimal   @default(0.000000) @db.Decimal(30, 6)
+  dpp                     Decimal   @default(0.000000) @db.Decimal(30, 6)
+  ppn_prosentase          Decimal   @default(0.000000) @db.Decimal(30, 6)
+  ppn_nominal             Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total                   Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total_idr               Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total_terbayar          Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total_terbayar_idr      Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  total_terpakai          Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  total_terpakai_idr      Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  keterangan              String?   @db.Text
+  catatan                 String?   @db.Text
+  status_aktif            Int       @default(1) @db.TinyInt
+  dibuat_oleh             Int       @default(0)
+  dibuat_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh             Int       @default(0)
+  diubah_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh            Int       @default(0)
+  dihapus_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui        Int       @default(0) @db.TinyInt
+  disetujui_oleh          Int       @default(0)
+  disetujui_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh         Int       @default(0)
+  dibatalkan_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print            Int       @default(0) @db.TinyInt
+  diprint_oleh            Int       @default(0)
+  diprint_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt               String?   @db.VarChar(200)
+  ditt_oleh               String?   @db.VarChar(100)
+  ditt_pada               DateTime? @db.DateTime(0)
+  toggle_pph              Float?    @default(0)
+  pph21_23_accounting     String?   @default("0") @db.VarChar(100)
+  pph21_23                Float?    @default(0)
+  total_piutang_usaha     Float?    @default(0)
+  total_piutang_usaha_idr Float?
+}
+
+model thkembalibahan {
+  nomor             Int              @id @default(autoincrement())
+  nomormhperusahaan Int
+  nomormhcabang     Int
+  kode              String           @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime         @db.Date
+  nomorthworkorder  Int?
+  keterangan        String?          @db.Text
+  status_aktif      Boolean?         @default(true)
+  dibuat_oleh       String?          @db.VarChar(50)
+  dibuat_pada       DateTime?        @default(now()) @db.DateTime(0)
+  tdkembalibahan    tdkembalibahan[]
+}
+
+model thmatcheck {
+  nomor             Int                      @id @default(autoincrement())
+  nomormhperusahaan Int
+  nomormhcabang     Int
+  nomorthprodplan   Int
+  item_id           Int
+  qty_needed        Decimal                  @db.Decimal(18, 4)
+  qty_available     Decimal                  @db.Decimal(18, 4)
+  qty_deficit       Decimal                  @db.Decimal(18, 4)
+  status_order      thmatcheck_status_order? @default(Pending)
+  dibuat_pada       DateTime?                @default(now()) @db.DateTime(0)
+}
+
+model thpelunasanpiutang {
+  nomor                 Int       @id @default(autoincrement())
+  nomormhcabang         Int       @default(0)
+  nomormhaccount        Int       @default(1)
+  nomormhaccountselisih Int       @default(1)
+  nomormhvaluta         Int       @default(1)
+  kode                  String    @db.VarChar(100)
+  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  relasinomor           Int?      @default(0)
+  relasitabel           String?   @db.VarChar(200)
+  relasikode            String?   @db.VarChar(200)
+  relasinama            String?   @db.VarChar(200)
+  kurs                  Decimal   @default(1.00) @db.Decimal(30, 2)
+  total                 Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_idr             Decimal   @default(0.00) @db.Decimal(30, 2)
+  bayar                 Decimal   @default(0.00) @db.Decimal(30, 2)
+  bayar_idr             Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih               Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih_idr           Decimal   @default(0.00) @db.Decimal(30, 2)
+  terpakai              Decimal?  @default(0.00) @db.Decimal(30, 2)
+  terpakai_idr          Decimal?  @default(0.00) @db.Decimal(30, 2)
+  sisa                  Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih_account       Decimal?  @default(0.00) @db.Decimal(30, 2)
+  keterangan            String?   @db.Text
+  catatan               String?   @db.Text
+  status_aktif          Int       @default(1) @db.TinyInt
+  dibuat_oleh           Int       @default(0)
+  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh           Int       @default(0)
+  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh          Int       @default(0)
+  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui      Int       @default(0) @db.TinyInt
+  disetujui_oleh        Int       @default(0)
+  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh       Int       @default(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print          Int       @default(0) @db.TinyInt
+  diprint_oleh          Int       @default(0)
+  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt             String?   @db.VarChar(200)
+  ditt_oleh             String?   @db.VarChar(100)
+  ditt_pada             DateTime? @db.DateTime(0)
+
+  @@index([nomormhcabang, nomormhaccount, nomormhaccountselisih, nomormhvaluta, tanggal, relasinomor, relasitabel, relasikode, relasinama, selisih_account], map: "idx_1")
+}
+
+model thpemakaianinternal {
+  nomor                 Int       @id @default(autoincrement())
+  nomormhcabang         Int       @default(1)
+  nomormhgudang         Int       @default(1)
+  nomormhjenispemakaian Int       @default(1)
+  kode                  String    @db.VarChar(100)
+  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  komoditi              Int       @default(1) @db.TinyInt
+  jenis                 String?   @db.VarChar(200)
+  keterangan            String?   @db.Text
+  catatan               String?   @db.Text
+  status_aktif          Int       @default(1) @db.TinyInt
+  dibuat_oleh           Int       @default(0)
+  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh           Int       @default(0)
+  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh          Int       @default(0)
+  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui      Int       @default(0) @db.TinyInt
+  disetujui_oleh        Int       @default(0)
+  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh       Int       @default(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print          Int       @default(0) @db.TinyInt
+  diprint_oleh          Int       @default(0)
+  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt             String?   @db.VarChar(200)
+  ditt_oleh             String?   @db.VarChar(100)
+  ditt_pada             DateTime? @db.DateTime(0)
+}
+
+model thpenagihanhutang {
+  nomor                 Int       @id @default(autoincrement())
+  nomormhcabang         Int       @default(0)
+  nomormhaccount        Int       @default(0)
+  nomormhaccountselisih Int       @default(0)
+  nomormhvaluta         Int?      @default(0)
+  kode                  String?   @db.VarChar(100)
+  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  relasinomor           Int?      @default(0)
+  relasitabel           String?   @db.VarChar(200)
+  relasikode            String?   @db.VarChar(200)
+  relasinama            String?   @db.VarChar(200)
+  kurs                  Decimal   @default(1.00) @db.Decimal(30, 2)
+  total                 Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_idr             Decimal   @default(0.00) @db.Decimal(30, 2)
+  bayar                 Decimal   @default(0.00) @db.Decimal(30, 2)
+  bayar_idr             Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih               Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih_idr           Decimal   @default(0.00) @db.Decimal(30, 2)
+  sisa                  Decimal   @default(0.00) @db.Decimal(30, 2)
+  keterangan            String?   @db.Text
+  catatan               String?   @db.Text
+  status_aktif          Int       @default(1) @db.TinyInt
+  dibuat_oleh           Int       @default(0)
+  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh           Int       @default(0)
+  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh          Int       @default(0)
+  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui      Int       @default(0) @db.TinyInt
+  disetujui_oleh        Int       @default(0)
+  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh       Int       @default(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print          Int       @default(0) @db.TinyInt
+  diprint_oleh          Int       @default(0)
+  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt             String?   @db.VarChar(200)
+  ditt_oleh             String?   @db.VarChar(100)
+  ditt_pada             DateTime? @db.DateTime(0)
+  finish                Int?      @default(0)
+
+  @@index([nomormhcabang, nomormhvaluta, tanggal, relasinomor, relasitabel, relasikode, relasinama], map: "idx_1")
+}
+
+model thpos {
+  nomor             Int      @id @default(autoincrement())
+  nomormhcabang     Int?     @default(0)
+  nomormhperusahaan Int?     @default(0)
+  nomormhcustomer   Int?     @default(0)
+  nomormhgudang     Int?     @default(0)
+  kode              String   @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime @db.DateTime(0)
+  customer          String?  @db.VarChar(150)
+  subtotal          Decimal? @default(0.00) @db.Decimal(15, 2)
+  diskon_nominal    Decimal? @default(0.00) @db.Decimal(15, 2)
+  dpp               Decimal? @default(0.00) @db.Decimal(15, 2)
+  ppn_nominal       Decimal? @default(0.00) @db.Decimal(15, 2)
+  total             Decimal? @default(0.00) @db.Decimal(15, 2)
+  pembayaran        String?  @db.Text
+  jumlah_bayar      Decimal? @default(0.00) @db.Decimal(15, 2)
+  kembalian         Decimal? @default(0.00) @db.Decimal(15, 2)
+  dibuat_oleh       String?  @db.VarChar(100)
+  status_aktif      Int?     @default(1) @db.TinyInt
+  created_at        DateTime @default(now()) @db.Timestamp(0)
+  updated_at        DateTime @default(now()) @db.Timestamp(0)
+  tdpos             tdpos[]
+}
+
+model thprodplan {
+  nomor             Int                @id @default(autoincrement())
+  nomormhperusahaan Int
+  nomormhcabang     Int
+  kode              String             @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime           @db.Date
+  item_id           Int
+  qty               Decimal            @db.Decimal(18, 4)
+  status            thprodplan_status? @default(Backlog)
+  keterangan        String?            @db.Text
+  dibuat_oleh       String?            @db.VarChar(50)
+  dibuat_pada       DateTime?          @default(now()) @db.DateTime(0)
+}
+
+model thstokpengiriman {
+  nomor                 Int       @id @default(autoincrement())
+  nomorthstokpermintaan Int       @default(0)
+  nomormhcabang         Int       @default(1)
+  nomormhgudangasal     Int       @default(1)
+  nomormhgudangtujuan   Int       @default(1)
+  kode                  String    @db.VarChar(100)
+  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  komoditi              Int       @default(0) @db.TinyInt
+  transfer              Int       @default(0) @db.TinyInt
+  total_jumlah_unit     Decimal   @default(0.000000) @db.Decimal(30, 6)
+  total_berat           Decimal   @default(0.000000) @db.Decimal(30, 6)
+  kategori              String?   @db.VarChar(200)
+  keterangan            String?   @db.Text
+  catatan               String?   @db.Text
+  alasan_validasi       String?   @db.Text
+  alasan_unvalidasi     String?   @db.Text
+  validasi_oleh         Int       @default(0)
+  validasi_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  unvalidasi_oleh       Int       @default(0)
+  unvalidasi_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_aktif          Int       @default(1) @db.TinyInt
+  dibuat_oleh           Int       @default(0)
+  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh           Int       @default(0)
+  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh          Int       @default(0)
+  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui      Int       @default(0) @db.TinyInt
+  disetujui_oleh        Int       @default(0)
+  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh       Int       @default(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print          Int       @default(0) @db.TinyInt
+  diprint_oleh          Int       @default(0)
+  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt             String?   @db.VarChar(200)
+  ditt_oleh             String?   @db.VarChar(100)
+  ditt_pada             DateTime? @db.DateTime(0)
+}
+
+model thstokpenyesuaian {
+  nomor              Int       @id @default(autoincrement())
+  nomormhcabang      Int       @default(1)
+  nomormhgudang      Int       @default(1)
+  gudang_nama        String?   @db.VarChar(200)
+  nomormhpenyesuaian Int       @default(1)
+  penyesuaian_nama   String?   @db.VarChar(200)
+  kode               String    @db.VarChar(100)
+  tanggal            DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  komoditi           Int       @default(1) @db.TinyInt
+  jenis              String?   @db.VarChar(200)
+  keterangan         String?   @db.Text
+  catatan            String?   @db.Text
+  status_aktif       Int       @default(1) @db.TinyInt
+  dibuat_oleh        Int       @default(0)
+  dibuat_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh        Int       @default(0)
+  diubah_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh       Int       @default(0)
+  dihapus_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui   Int       @default(0) @db.TinyInt
+  disetujui_oleh     Int       @default(0)
+  disetujui_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh    Int       @default(0)
+  dibatalkan_pada    DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print       Int       @default(0) @db.TinyInt
+  diprint_oleh       Int       @default(0)
+  diprint_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt          String?   @db.VarChar(200)
+  ditt_oleh          String?   @db.VarChar(100)
+  ditt_pada          DateTime? @db.DateTime(0)
+}
+
+model thsuratjalan {
+  nomor                Int       @id @default(autoincrement())
+  kode                 String    @unique(map: "kode") @db.VarChar(50)
+  tanggal              DateTime  @db.Date
+  keterangan           String?   @db.Text
+  gudang               String?   @db.VarChar(100)
+  nomor_kendaraan      String?   @db.VarChar(50)
+  sopir                String?   @db.VarChar(100)
+  nomormhcustomer      Int?
+  customer             String?   @db.VarChar(100)
+  nomormhsales         Int?
+  sales                String?   @db.VarChar(100)
+  kode_order_jual      String?   @db.VarChar(50)
+  nomorthjualorder     Int?
+  kode_delivery_order  String?   @db.VarChar(50)
+  nomorthdeliveryorder Int?
+  subtotal             Decimal?  @default(0.00) @db.Decimal(15, 2)
+  diskon_prosentase    Decimal?  @default(0.00) @db.Decimal(5, 2)
+  diskon_nominal       Decimal?  @default(0.00) @db.Decimal(15, 2)
+  dpp                  Decimal?  @default(0.00) @db.Decimal(15, 2)
+  ppn_prosentase       Decimal?  @default(0.00) @db.Decimal(5, 2)
+  ppn_nominal          Decimal?  @default(0.00) @db.Decimal(15, 2)
+  total                Decimal?  @default(0.00) @db.Decimal(15, 2)
+  total_idr            Decimal?  @default(0.00) @db.Decimal(15, 2)
+  valuta               String?   @default("IDR") @db.VarChar(10)
+  nomormhvaluta        Int?
+  kurs                 Decimal?  @default(1.00) @db.Decimal(10, 2)
+  status_aktif         Boolean?  @default(true)
+  dibuat_oleh          String?   @db.VarChar(50)
+  dibuat_pada          DateTime  @default(now()) @db.Timestamp(0)
+  dibatalkan_oleh      String?   @db.VarChar(50)
+  dibatalkan_pada      DateTime? @db.DateTime(0)
+  status_disetujui     Boolean?  @default(false)
+  disetujui_oleh       String?   @db.VarChar(50)
+  disetujui_pada       DateTime? @db.DateTime(0)
+  nomormhcabang        Int?      @default(0)
+  nomormhperusahaan    Int?      @default(0)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model thuangkeluar {
+  nomor                    Int       @id @default(autoincrement())
+  nomormhcabang            Int       @default(11)
+  nomormhperusahaan        Int?      @default(11)
+  nomormhaccount           Int       @default(1)
+  nomormhaccounttujuan     Int       @default(0)
+  nomormhaccountselisih    Int       @default(0)
+  nomorthpenagihanhutang   Int       @default(0)
+  nomormhvaluta            Int       @default(1)
+  nomormhcustomer          Int?      @default(0)
+  nomormhsupplier          Int?      @default(0)
+  account_kode             String?   @db.VarChar(100)
+  account_nama             String?   @db.VarChar(100)
+  valuta                   String?   @db.VarChar(30)
+  kode                     String    @db.VarChar(100)
+  tanggal                  DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal_kliring          DateTime? @db.Date
+  metode                   String    @db.VarChar(200)
+  kas                      Int       @default(0) @db.TinyInt
+  bank                     Int       @default(0) @db.TinyInt
+  giro                     Int       @default(0) @db.TinyInt
+  giro_tempo               DateTime? @db.Date
+  giro_ref                 String?   @db.VarChar(200)
+  jenis                    Int       @default(1) @db.TinyInt
+  relasinomor              Int?
+  relasitabel              String?   @db.VarChar(200)
+  relasikode               String?   @db.VarChar(200)
+  relasinama               String?   @db.VarChar(200)
+  bayar                    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  kurs                     Decimal   @default(1.00) @db.Decimal(30, 2)
+  total                    Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_idr                Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_bayar              Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_bayar_idr          Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih_bayar            Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih_bayar_idr        Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih                  Decimal?  @default(0.00) @db.Decimal(30, 2)
+  selisih_idr              Decimal?  @default(0.00) @db.Decimal(30, 2)
+  sisa_bayar               Decimal   @default(0.00) @db.Decimal(30, 2)
+  sisa_bayar_idr           Decimal   @default(0.00) @db.Decimal(30, 2)
+  keterangan               String?   @db.Text
+  catatan                  String?   @db.Text
+  status_aktif             Int       @default(1) @db.TinyInt
+  dibuat_oleh              Int       @default(0)
+  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh              Int       @default(0)
+  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh             Int       @default(0)
+  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui         Int       @default(0) @db.TinyInt
+  disetujui_oleh           Int       @default(0)
+  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh          Int       @default(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui_kliring Int       @default(0) @db.TinyInt
+  disetujui_kliring_oleh   Int       @default(0)
+  disetujui_kliring_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_kliring_oleh  Int       @default(0)
+  dibatalkan_kliring_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print             Int       @default(0) @db.TinyInt
+  diprint_oleh             Int       @default(0)
+  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                String?   @db.VarChar(200)
+  ditt_oleh                String?   @db.VarChar(100)
+  ditt_pada                DateTime? @db.DateTime(0)
+
+  @@index([nomormhcabang, nomormhaccount, nomormhaccounttujuan, nomormhaccountselisih, nomorthpenagihanhutang, nomormhvaluta, tanggal, kas, bank, jenis, relasinomor, relasitabel, relasikode, relasinama], map: "idx_1")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model thuangmasuk {
+  nomor                    Int       @id @default(autoincrement())
+  nomormhcabang            Int       @default(0)
+  nomormhperusahaan        Int?      @default(0)
+  nomormhaccount           Int       @default(0)
+  account_kode             String?   @db.VarChar(200)
+  account_nama             String?   @db.VarChar(200)
+  nomormhaccounttujuan     Int       @default(0)
+  nomormhaccountselisih    Int       @default(0)
+  nomormhvaluta            Int       @default(1)
+  valuta                   String?   @db.VarChar(50)
+  kode                     String    @db.VarChar(100)
+  tanggal                  DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal_kliring          DateTime? @db.Date
+  metode                   String    @db.VarChar(200)
+  kas                      Int       @default(0) @db.TinyInt
+  bank                     Int       @default(0) @db.TinyInt
+  giro                     Int       @default(0) @db.TinyInt
+  giro_tempo               DateTime? @db.Date
+  giro_ref                 String?   @db.VarChar(200)
+  jenis                    Int       @default(1) @db.TinyInt
+  jenis_detail             String?   @db.VarChar(50)
+  relasinomor              Int?
+  relasitabel              String?   @db.VarChar(200)
+  relasikode               String?   @db.VarChar(200)
+  relasinama               String?   @db.VarChar(200)
+  bayar                    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  kurs                     Decimal   @default(1.00) @db.Decimal(30, 2)
+  total                    Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_idr                Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_terbayar           Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_terbayar_idr       Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih                  Decimal   @default(0.00) @db.Decimal(30, 2)
+  selisih_idr              Decimal   @default(0.00) @db.Decimal(30, 2)
+  total_terpakai           Decimal   @default(0.00) @db.Decimal(30, 2)
+  keterangan               String?   @db.Text
+  catatan                  String?   @db.Text
+  status_aktif             Int       @default(1) @db.TinyInt
+  dibuat_oleh              Int       @default(0)
+  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh              Int       @default(0)
+  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh             Int       @default(0)
+  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui         Int       @default(0) @db.TinyInt
+  disetujui_oleh           Int       @default(0)
+  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh          Int       @default(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui_kliring Int       @default(0) @db.TinyInt
+  disetujui_kliring_oleh   Int       @default(0)
+  disetujui_kliring_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_kliring_oleh  Int       @default(0)
+  dibatalkan_kliring_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print             Int       @default(0) @db.TinyInt
+  diprint_oleh             Int       @default(0)
+  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt                String?   @db.VarChar(200)
+  ditt_oleh                String?   @db.VarChar(100)
+  ditt_pada                DateTime? @db.DateTime(0)
+  nomormhsupplier          Int?      @default(0)
+  nomormhcustomer          Int?      @default(0)
+
+  @@index([nomormhcabang, nomormhaccount, nomormhaccounttujuan, nomormhaccountselisih, nomormhvaluta, tanggal, kas, bank, relasinomor, relasitabel, relasikode, relasinama], map: "idx_1")
+}
+
+model thuangtitipan {
+  nomor             Int       @id @default(autoincrement())
+  nomormhcabang     Int?      @default(0)
+  nomormhperusahaan Int?      @default(0)
+  nomormhrelasi     Int?      @default(0)
+  nomormhaccount    Int?      @default(0)
+  nomormhvaluta     Int?      @default(0)
+  kode              String    @unique(map: "uq_thuangtitipan_kode") @db.VarChar(100)
+  nomor_ums         String?   @db.VarChar(100)
+  nomor_umc         String?   @db.VarChar(100)
+  tanggal           DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  jenis             String    @db.VarChar(100)
+  saldo_awal        Int?      @default(0) @db.TinyInt
+  ppn               Int?      @default(1) @db.TinyInt
+  kurs              Decimal?  @default(0.00) @db.Decimal(30, 2)
+  subtotal          Decimal?  @default(0.00) @db.Decimal(30, 2)
+  nominal           Decimal?  @default(0.00) @db.Decimal(30, 2)
+  ppn_prosentase    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  ppn_nominal       Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total             Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_idr         Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_terbayar    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_terpakai    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  keterangan        String?   @db.Text
+  catatan           String?   @db.Text
+  alasan_validasi   String?   @db.Text
+  alasan_unvalidasi String?   @db.Text
+  validasi_oleh     Int?      @default(0)
+  validasi_pada     DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  unvalidasi_oleh   Int?      @default(0)
+  unvalidasi_pada   DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_selesai    Int?      @default(0) @db.TinyInt
+  status_aktif      Int?      @default(1) @db.TinyInt
+  dibuat_oleh       Int?      @default(0)
+  dibuat_pada       DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh       Int?      @default(0)
+  diubah_pada       DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh      Int?      @default(0)
+  dihapus_pada      DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui  Int?      @default(0) @db.TinyInt
+  disetujui_oleh    Int?      @default(0)
+  disetujui_pada    DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh   Int?      @default(0)
+  dibatalkan_pada   DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print      Int?      @default(0) @db.TinyInt
+  diprint_oleh      Int?      @default(0)
+  diprint_pada      DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt         String?   @db.VarChar(200)
+  ditt_oleh         String?   @db.VarChar(100)
+  ditt_pada         DateTime? @db.DateTime(0)
+  nomorthbeliorder  Int?      @default(0)
+  is_ikan           Int?      @default(0)
+  nomorthjualorder  Int?      @default(0)
+  pph               Decimal?  @default(0.00) @db.Decimal(10, 2)
+  pphnominal        Decimal?  @default(0.00) @db.Decimal(30, 2)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model thubahbentuk {
+  nomor                 Int       @id @default(autoincrement())
+  nomormhcabang         Int       @default(1)
+  nomormhgudang         Int       @default(1)
+  nomormhjenispemakaian Int       @default(1)
+  nomormhbarang         Int?      @default(0)
+  tipe                  Int?      @default(0) @db.TinyInt
+  kode                  String    @db.VarChar(100)
+  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  komoditi              Int       @default(1) @db.TinyInt
+  hpp                   Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  jumlah                Decimal?  @default(0.000000) @db.Decimal(30, 6)
+  jenis                 String?   @db.VarChar(200)
+  keterangan            String?   @db.Text
+  catatan               String?   @db.Text
+  status_aktif          Int       @default(1) @db.TinyInt
+  dibuat_oleh           Int       @default(0)
+  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh           Int       @default(0)
+  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh          Int       @default(0)
+  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui      Int       @default(0) @db.TinyInt
+  disetujui_oleh        Int       @default(0)
+  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh       Int       @default(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print          Int       @default(0) @db.TinyInt
+  diprint_oleh          Int       @default(0)
+  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt             String?   @db.VarChar(200)
+  ditt_oleh             String?   @db.VarChar(100)
+  ditt_pada             DateTime? @db.DateTime(0)
+
+  @@index([nomormhgudang, nomormhbarang, tanggal, status_aktif], map: "idx_1")
+}
+
+model thworkorder {
+  nomor             Int                 @id @default(autoincrement())
+  nomormhperusahaan Int
+  nomormhcabang     Int
+  nomorthprodplan   Int?
+  kode              String              @unique(map: "kode") @db.VarChar(50)
+  tanggal           DateTime            @db.Date
+  item_id           Int
+  qty               Decimal             @db.Decimal(18, 4)
+  status            thworkorder_status? @default(Draft)
+  keterangan        String?             @db.Text
+  dibuat_oleh       String?             @db.VarChar(50)
+  dibuat_pada       DateTime?           @default(now()) @db.DateTime(0)
+}
+
+model tloghistory {
+  nomor           Int       @id @default(autoincrement())
+  menu            String    @db.VarChar(100)
+  nomor_transaksi Int
+  aksi            String    @db.VarChar(50)
+  user            String?   @db.VarChar(100)
+  waktu           DateTime? @default(now()) @db.DateTime(0)
+  keterangan      String?   @db.Text
+
+  @@index([aksi], map: "aksi")
+  @@index([keterangan(length: 1024)], map: "keterangan")
+  @@index([menu], map: "menu")
+  @@index([nomor_transaksi], map: "nomor_transaksi")
+  @@index([user], map: "user")
+  @@index([waktu], map: "waktu")
+}
+
+model tmusuaraccount {
+  nomor          Int       @id @default(autoincrement())
+  nomormhuser    Int
+  nomormhaccount Int
+  dibuat_pada    DateTime? @default(now()) @db.DateTime(0)
+
+  @@index([nomormhuser, nomormhaccount], map: "idx_user_account")
+}
+
+model tmusuargudang {
+  nomor         Int       @id @default(autoincrement())
+  nomormhuser   Int
+  nomormhgudang Int
+  dibuat_pada   DateTime? @default(now()) @db.DateTime(0)
+
+  @@index([nomormhuser, nomormhgudang], map: "idx_user_gudang")
+}
+
+model tpos_settlement {
+  id                Int      @id @default(autoincrement())
+  nomormhcabang     Int?     @default(0)
+  nomormhperusahaan Int?     @default(0)
+  tanggal           DateTime @db.Date
+  dibuat_oleh       String   @db.VarChar(100)
+  waktu_closing     DateTime @db.DateTime(0)
+  expected_cash     Decimal? @default(0.00) @db.Decimal(15, 2)
+  expected_transfer Decimal? @default(0.00) @db.Decimal(15, 2)
+  expected_qris     Decimal? @default(0.00) @db.Decimal(15, 2)
+  actual_cash       Decimal? @default(0.00) @db.Decimal(15, 2)
+  actual_transfer   Decimal? @default(0.00) @db.Decimal(15, 2)
+  actual_qris       Decimal? @default(0.00) @db.Decimal(15, 2)
+  selisih_cash      Decimal? @default(0.00) @db.Decimal(15, 2)
+  selisih_transfer  Decimal? @default(0.00) @db.Decimal(15, 2)
+  selisih_qris      Decimal? @default(0.00) @db.Decimal(15, 2)
+  total_penjualan   Decimal? @default(0.00) @db.Decimal(15, 2)
+  jumlah_transaksi  Int?     @default(0)
+  catatan           String?  @db.Text
+  created_at        DateTime @default(now()) @db.Timestamp(0)
+
+  @@unique([tanggal, dibuat_oleh], map: "idx_tanggal_kasir")
+}
+
+model tsaldoawalaccount {
+  nomor              BigInt    @id @default(autoincrement())
+  nomormhaccount     Int?      @default(0)
+  nomormhcabang      Int?      @default(0)
+  kode               String    @db.VarChar(100)
+  tanggal            DateTime? @db.Date
+  total_debet        Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_kredit       Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_debet_valas  Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_kredit_valas Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_debet_ori    Decimal?  @default(0.00) @db.Decimal(30, 2)
+  total_kredit_ori   Decimal?  @default(0.00) @db.Decimal(30, 2)
+  keterangan         String?   @db.Text
+  catatan            String?   @db.Text
+  status_aktif       Int       @default(1) @db.TinyInt
+  dibuat_oleh        Int       @default(0)
+  dibuat_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_oleh        Int       @default(0)
+  diubah_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_oleh       Int       @default(0)
+  dihapus_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_disetujui   Int       @default(0) @db.TinyInt
+  disetujui_oleh     Int       @default(0)
+  disetujui_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_oleh    Int       @default(0)
+  dibatalkan_pada    DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_print       Int       @default(0) @db.TinyInt
+  diprint_oleh       Int       @default(0)
+  diprint_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  status_tt          String?   @db.VarChar(200)
+  ditt_oleh          String?   @db.VarChar(100)
+  ditt_pada          DateTime? @db.DateTime(0)
+
+  @@index([kode], map: "kode")
+  @@index([nomormhaccount], map: "nomormhaccount")
+  @@index([nomormhcabang], map: "nomormhcabang")
+  @@index([status_aktif], map: "status_aktif")
+  @@index([tanggal], map: "tanggal")
+  @@index([total_debet], map: "total_debet")
+  @@index([total_debet_ori], map: "total_debet_ori")
+  @@index([total_kredit], map: "total_kredit")
+  @@index([total_kredit_ori], map: "total_kredit_ori")
+}
+
+enum rab_items_category {
+  material
+  tenaga
+  alat
+  pekerjaan_subkon
+}
+
+enum tdhasilproduksi_jenis {
+  FG
+  Afalan
+}
+
+enum quotations_status {
+  draft
+  sent
+  deal
+  rejected
+}
+
+enum rabs_status {
+  draft
+  approved
+  history
+}
+
+enum thprodplan_status {
+  Backlog
+  Ongoing
+  Finished
+}
+
+enum thmatcheck_status_order {
+  Pending
+  Generated_PR @map("Generated PR")
+  Generated_PO @map("Generated PO")
+}
+
+enum thworkorder_status {
+  Draft
+  Released
+  Completed
+  Cancelled
+}
+
+enum tduangmasuk_jenis {
+  FAKTUR_JUAL         @map("FAKTUR JUAL")
+  RETUR_BELI_SUPPLIER @map("RETUR BELI SUPPLIER")
+  UANG_MUKA_CUSTOMER  @map("UANG MUKA CUSTOMER")
+  NOTA_DEBET_CUSTOMER @map("NOTA DEBET CUSTOMER")
+  UANG_MUKA_SUPPLIER  @map("UANG MUKA SUPPLIER")
+  JUAL_NOTA
+  LAIN_LAIN
+}
+
+//////////////////////
+// TRAVEL MANAGEMENT SYSTEM (TMS)
+//////////////////////
+
+enum TravelBookingStatus {
+  HOLD
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  EXPIRED
+  FAILED
+  REFUNDED
+}
+
+enum TravelPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum TravelVehicleStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+model TravelRoute {
+  nomor       Int      @id @default(autoincrement())
+  origin      String
+  destination String
+  createdAt   DateTime @default(now())
+
+  schedules   TravelSchedule[]
+}
+
+model TravelSchedule {
+  nomor       Int      @id @default(autoincrement())
+  routeId     Int
+  vehicleId   Int
+  driverId    Int
+  departure   DateTime
+  price       Int
+  createdAt   DateTime @default(now())
+
+  route       TravelRoute    @relation(fields: [routeId], references: [nomor])
+  vehicle     TravelVehicle  @relation(fields: [vehicleId], references: [nomor])
+  driver      TravelDriver   @relation(fields: [driverId], references: [nomor])
+
+  bookings    TravelBooking[]
+
+  @@index([routeId])
+}
+
+model TravelVehicle {
+  nomor       Int      @id @default(autoincrement())
+  name        String
+  plateNumber String   @unique
+  capacity    Int
+  status      TravelVehicleStatus @default(ACTIVE)
+  currentKm   Int      @default(0)
+  layout      Json?
+
+  schedules   TravelSchedule[]
+  services    TravelVehicleService[]
+  serviceLogs TravelServiceLog[]
+}
+
+model TravelDriver {
+  nomor     Int      @id @default(autoincrement())
+  name      String
+  phone     String
+  createdAt DateTime @default(now())
+
+  schedules TravelSchedule[]
+}
+
+model TravelBooking {
+  nomor       Int        @id @default(autoincrement())
+  code        String     @unique
+  customerId  Int
+  scheduleId  Int
+  userId      Int?
+  status      TravelBookingStatus @default(HOLD)
+  expiredAt   DateTime?
+  createdAt   DateTime   @default(now())
+
+  customer    mhcustomer @relation(fields: [customerId], references: [nomor])
+  schedule    TravelSchedule @relation(fields: [scheduleId], references: [nomor])
+  user        mhuser?    @relation(fields: [userId], references: [nomor])
+
+  details     TravelBookingDetail[]
+  payment     TravelPayment?
+
+  @@index([scheduleId])
+}
+
+model TravelBookingDetail {
+  nomor       Int  @id @default(autoincrement())
+  bookingId   Int
+  seatNumber  Int
+  scheduleId  Int
+
+  booking     TravelBooking @relation(fields: [bookingId], references: [nomor])
+
+  @@unique([scheduleId, seatNumber])
+}
+
+model TravelPayment {
+  nomor       Int        @id @default(autoincrement())
+  bookingId   Int        @unique
+  amount      Int
+  method      String     
+  status      TravelPaymentStatus @default(PENDING)
+  paidAt      DateTime?
+  createdAt   DateTime   @default(now())
+  proofImage  String?
+
+  booking     TravelBooking @relation(fields: [bookingId], references: [nomor])
+}
+
+model TravelServiceType {
+  nomor        Int @id @default(autoincrement())
+  name         String
+  intervalKm   Int?
+  intervalDays Int?
+
+  services     TravelVehicleService[]
+  logs         TravelServiceLog[]
+}
+
+model TravelVehicleService {
+  nomor            Int   @id @default(autoincrement())
+  vehicleId        Int
+  serviceTypeId    Int
+  lastServiceKm    Int
+  lastServiceDate  DateTime
+  nextServiceKm    Int?
+  nextServiceDate  DateTime?
+
+  vehicle          TravelVehicle     @relation(fields: [vehicleId], references: [nomor])
+  serviceType      TravelServiceType @relation(fields: [serviceTypeId], references: [nomor])
+}
+
+model TravelServiceLog {
+  nomor         Int   @id @default(autoincrement())
+  vehicleId     Int
+  serviceTypeId Int
+  date          DateTime
+  km            Int
+  cost          Int
+  notes         String?
+
+  vehicle          TravelVehicle     @relation(fields: [vehicleId], references: [nomor])
+  serviceType      TravelServiceType @relation(fields: [serviceTypeId], references: [nomor])
+}
