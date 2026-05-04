@@ -595,13 +595,11 @@ function SidebarContent({ user, onClose }: { user?: any; onClose?: () => void })
       const filteredItems = section.items.map(item => {
         if (item.subItems) {
           const filteredSubItems = item.subItems.filter(sub => {
-            const alwaysShow = ["Daftar Proyek", "Timeline", "Progress Report", "Dokumentasi Lapangan", "Subkontraktor"].includes(sub.title);
-            return alwaysShow || user.hak_akses.includes(sub.title);
+            return user.hak_akses.includes(sub.title);
           });
           return { ...item, subItems: filteredSubItems };
         } else {
-          const alwaysShow = ["Daftar Proyek", "Timeline", "Progress Report", "Dokumentasi Lapangan", "Subkontraktor"].includes(item.title);
-          if (user.hak_akses.includes(item.title) || item.title === "Dashboard" || alwaysShow) return item;
+          if (user.hak_akses.includes(item.title)) return item;
           return null;
         }
       }).filter(Boolean) as MenuItem[];
