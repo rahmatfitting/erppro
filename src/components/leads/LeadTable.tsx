@@ -73,7 +73,7 @@ export function LeadTable({ leads, onAudit }: LeadTableProps) {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Leads");
-    XLSX.utils.writeFile(wb, `prospects_leads_${new Date().getTime()}.xlsx`);
+    XLSX.writeFile(wb, `prospects_leads_${new Date().getTime()}.xlsx`);
   };
 
   if (leads.length === 0) return null;

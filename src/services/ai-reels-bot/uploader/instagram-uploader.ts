@@ -73,7 +73,7 @@ export class InstagramUploader {
         await postBtn.first().click({ force: true });
         console.log('[IG] Post menu clicked.');
         await page.waitForTimeout(4000); // Tunggu modal muncul
-      } catch (e) {
+      } catch (e: any) {
         console.log('[IG] Post menu click failed or not found:', e.message);
       }
       

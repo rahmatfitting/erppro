@@ -70,7 +70,7 @@ export async function POST(request: Request) {
 
       // Check if user is asking about stock or specific items
       const words = query.replace(/(stok|ada berapa|barang|cek|tolong|berapa|status|pr|po|pb|nota)/gi, "").trim().split(" ");
-      const keywordTerm = words.find(w => w.length > 2);
+      const keywordTerm = words.find((w: string) => w.length > 2);
       if (keywordTerm) {
         const itemSearch: any = await executeQuery(`SELECT nomor, nama FROM mhbarang WHERE nama LIKE ? AND status_aktif = 1 LIMIT 5`, [`%${keywordTerm}%`]);
         if (itemSearch?.length > 0) {

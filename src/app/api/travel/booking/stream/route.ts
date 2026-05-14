@@ -20,10 +20,10 @@ export async function GET(request: Request) {
       // Poll for changes every 2 seconds (simple version of "real-time")
       const interval = setInterval(async () => {
         try {
-          const bookings = await prisma.travelBookingDetail.findMany({
+          const bookings = await prisma.travelbookingdetail.findMany({
             where: {
               scheduleId,
-              booking: {
+              travelbooking: {
                 status: {
                   in: ["HOLD", "PAID", "CONFIRMED"]
                 },

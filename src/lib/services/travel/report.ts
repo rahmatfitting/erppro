@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 
 export const TravelReportService = {
   async getRevenueReport(startDate: Date, endDate: Date) {
-    const bookings = await prisma.travelBooking.findMany({
+    const bookings = await prisma.travelbooking.findMany({
       where: {
         status: 'PAID',
         createdAt: {
@@ -11,12 +11,12 @@ export const TravelReportService = {
         }
       },
       include: {
-        payment: true,
-        schedule: {
+        travelpayment: true,
+        travelschedule: {
           include: {
-            route: true,
-            vehicle: true,
-            driver: true
+            travelroute: true,
+            travelvehicle: true,
+            traveldriver: true
           }
         }
       }
@@ -27,10 +27,10 @@ export const TravelReportService = {
     const byDriver: Record<string, number> = {};
     let totalRevenue = 0;
 
-    bookings.forEach(b => {
-      const amount = b.payment?.amount || 0;
-      const routeName = `${b.schedule.route.origin} - ${b.schedule.route.destination}`;
-      const driverName = b.schedule.driver.name;
+    bookings.forEach((b: any) => {
+      const amount = b.travelpayment?.amount || 0;
+      const routeName = `${b.travelschedule.travelroute.origin} - ${b.travelschedule.travelroute.destination}`;
+      const driverName = b.travelschedule.traveldriver.name;
 
       byRoute[routeName] = (byRoute[routeName] || 0) + amount;
       byDriver[driverName] = (byDriver[driverName] || 0) + amount;

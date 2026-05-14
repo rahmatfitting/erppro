@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 
 export const ScheduleService = {
   async getAllRoutes() {
-    return await prisma.travelRoute.findMany({
+    return await prisma.travelroute.findMany({
       orderBy: [
         { origin: 'asc' },
         { destination: 'asc' }
@@ -11,20 +11,20 @@ export const ScheduleService = {
   },
 
   async createRoute(origin: string, destination: string) {
-    return await prisma.travelRoute.create({
+    return await prisma.travelroute.create({
       data: { origin, destination }
     });
   },
 
   async updateRoute(nomor: number, data: { origin: string, destination: string }) {
-    return await prisma.travelRoute.update({
+    return await prisma.travelroute.update({
       where: { nomor },
       data
     });
   },
 
   async deleteRoute(nomor: number) {
-    return await prisma.travelRoute.delete({
+    return await prisma.travelroute.delete({
       where: { nomor }
     });
   },
@@ -37,7 +37,7 @@ export const ScheduleService = {
     const where: any = {};
     
     if (filters.origin || filters.destination) {
-      where.route = {
+      where.travelroute = {
         origin: filters.origin,
         destination: filters.destination,
       };
@@ -54,15 +54,15 @@ export const ScheduleService = {
       };
     }
 
-    return await prisma.travelSchedule.findMany({
+    const schedules = await prisma.travelschedule.findMany({
       where,
       include: {
-        route: true,
-        vehicle: true,
-        driver: true,
+        travelroute: true,
+        travelvehicle: true,
+        traveldriver: true,
         _count: {
           select: {
-            bookings: {
+            travelbooking: {
               where: {
                 status: {
                   in: ['PAID', 'CONFIRMED', 'CHECKED_IN', 'COMPLETED']
@@ -74,6 +74,16 @@ export const ScheduleService = {
       },
       orderBy: { departure: 'asc' }
     });
+
+    return schedules.map((s: any) => ({
+      ...s,
+      route: s.travelroute,
+      vehicle: s.travelvehicle,
+      driver: s.traveldriver,
+      _count: {
+        bookings: s._count?.travelbooking || 0
+      }
+    }));
   },
 
   async createSchedule(data: {
@@ -83,13 +93,13 @@ export const ScheduleService = {
     departure: Date;
     price: number;
   }) {
-    return await prisma.travelSchedule.create({
+    return await prisma.travelschedule.create({
       data
     });
   },
 
   async deleteSchedule(nomor: number) {
-    return await prisma.travelSchedule.delete({
+    return await prisma.travelschedule.delete({
       where: { nomor }
     });
   }

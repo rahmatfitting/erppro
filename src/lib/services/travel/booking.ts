@@ -44,19 +44,19 @@ export const BookingService = {
 
     return await prisma.$transaction(async (tx) => {
       // 2. Check for ANY existing records for these seats in this schedule
-      const existingDetails = await tx.travelBookingDetail.findMany({
+      const existingDetails = await tx.travelbookingdetail.findMany({
         where: {
           scheduleId,
           seatNumber: { in: seats }
         },
         include: {
-          booking: true
+          travelbooking: true
         }
       });
 
-      for (const detail of existingDetails) {
-        const isHoldActive = detail.booking.status === "HOLD" && detail.booking.expiredAt && detail.booking.expiredAt > new Date();
-        const isConfirmed = ["PAID", "CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(detail.booking.status);
+      for (const detail of existingDetails as any[]) {
+        const isHoldActive = detail.travelbooking.status === "HOLD" && detail.travelbooking.expiredAt && detail.travelbooking.expiredAt > new Date();
+        const isConfirmed = ["PAID", "CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(detail.travelbooking.status);
 
         if (isHoldActive || isConfirmed) {
           throw new Error(`Seat #${detail.seatNumber} is already taken or being held.`);
@@ -64,7 +64,7 @@ export const BookingService = {
 
         // If we reach here, it means the existing detail belongs to an EXPIRED or CANCELLED booking.
         // We MUST delete it to satisfy the unique constraint [scheduleId, seatNumber]
-        await tx.travelBookingDetail.delete({
+        await tx.travelbookingdetail.delete({
           where: { nomor: detail.nomor }
         });
       }
@@ -73,7 +73,7 @@ export const BookingService = {
       const code = `TRV-${new Date().getTime()}-${Math.floor(Math.random() * 1000)}`;
 
       // 4. Create Booking
-      const booking = await tx.travelBooking.create({
+      const booking = await tx.travelbooking.create({
         data: {
           code,
           customerId: customer.nomor,
@@ -81,7 +81,7 @@ export const BookingService = {
           userId,
           status: 'HOLD',
           expiredAt: addMinutes(new Date(), 15),
-          details: {
+          travelbookingdetail: {
             create: seats.map(seat => ({
               seatNumber: seat,
               scheduleId
@@ -89,15 +89,15 @@ export const BookingService = {
           }
         },
         include: {
-          details: true
+          travelbookingdetail: true
         }
       });
 
       // 5. Create initial Payment record
-      const schedule = await tx.travelSchedule.findUnique({ where: { nomor: scheduleId } });
+      const schedule = await tx.travelschedule.findUnique({ where: { nomor: scheduleId } });
       const totalAmount = (schedule?.price || 0) * seats.length;
 
-      await tx.travelPayment.create({
+      await tx.travelpayment.create({
         data: {
           bookingId: booking.nomor,
           amount: totalAmount,
@@ -112,14 +112,14 @@ export const BookingService = {
 
   async confirmPayment(bookingId: number, proofImage?: string) {
     return await prisma.$transaction(async (tx) => {
-      const booking = await tx.travelBooking.update({
+      const booking = await tx.travelbooking.update({
         where: { nomor: bookingId },
         data: {
           status: 'PAID'
         }
       });
 
-      await tx.travelPayment.update({
+      await tx.travelpayment.update({
         where: { bookingId },
         data: {
           status: 'SUCCESS',
@@ -137,7 +137,7 @@ export const BookingService = {
    * Should be called by a cron job or background process
    */
   async releaseExpiredBookings() {
-    const expired = await prisma.travelBooking.findMany({
+    const expired = await prisma.travelbooking.findMany({
       where: {
         status: 'HOLD',
         expiredAt: { lt: new Date() }
@@ -150,12 +150,12 @@ export const BookingService = {
     const ids = expired.map(b => b.nomor);
 
     // Delete details first due to foreign key
-    await prisma.travelBookingDetail.deleteMany({
+    await prisma.travelbookingdetail.deleteMany({
       where: { bookingId: { in: ids } }
     });
 
     // Update status to EXPIRED (or delete if you want to keep DB clean)
-    const result = await prisma.travelBooking.updateMany({
+    const result = await prisma.travelbooking.updateMany({
       where: { nomor: { in: ids } },
       data: { status: 'EXPIRED' }
     });
@@ -164,10 +164,10 @@ export const BookingService = {
   },
 
   async getManifest(scheduleId: number) {
-    const details = await prisma.travelBookingDetail.findMany({
+    const details = await prisma.travelbookingdetail.findMany({
       where: {
         scheduleId,
-        booking: {
+        travelbooking: {
           status: {
             in: ["HOLD", "PAID", "CONFIRMED", "CHECKED_IN", "COMPLETED"]
           },
@@ -179,34 +179,34 @@ export const BookingService = {
         }
       },
       include: {
-        booking: {
+        travelbooking: {
           include: {
-            customer: true
+            mhcustomer: true
           }
         }
       },
       orderBy: { seatNumber: 'asc' }
     });
 
-    return details.map(d => ({
+    return details.map((d: any) => ({
       nomor: d.nomor,
       seatNumber: d.seatNumber,
-      customerName: d.booking.customer.nama,
-      customerPhone: d.booking.customer.telepon,
-      status: d.booking.status,
-      bookingCode: d.booking.code
+      customerName: d.travelbooking.mhcustomer.nama,
+      customerPhone: d.travelbooking.mhcustomer.telepon,
+      status: d.travelbooking.status,
+      bookingCode: d.travelbooking.code
     }));
   },
 
   async getPayments() {
-    return await prisma.travelPayment.findMany({
+    const payments = await prisma.travelpayment.findMany({
       include: {
-        booking: {
+        travelbooking: {
           include: {
-            customer: true,
-            schedule: {
+            mhcustomer: true,
+            travelschedule: {
               include: {
-                route: true
+                travelroute: true
               }
             }
           }
@@ -214,20 +214,42 @@ export const BookingService = {
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    return payments.map((p: any) => ({
+      ...p,
+      booking: p.travelbooking ? {
+        ...p.travelbooking,
+        customer: p.travelbooking.mhcustomer,
+        schedule: p.travelbooking.travelschedule ? {
+          ...p.travelbooking.travelschedule,
+          route: p.travelbooking.travelschedule.travelroute
+        } : null
+      } : null
+    }));
   },
 
   async getBookings() {
-    return await prisma.travelBooking.findMany({
+    const bookings = await prisma.travelbooking.findMany({
       include: {
-        customer: true,
-        schedule: {
+        mhcustomer: true,
+        travelschedule: {
           include: {
-            route: true
+            travelroute: true
           }
         },
-        payment: true
+        travelpayment: true
       },
       orderBy: { createdAt: 'desc' }
     });
+
+    return bookings.map((b: any) => ({
+      ...b,
+      customer: b.mhcustomer,
+      schedule: b.travelschedule ? {
+        ...b.travelschedule,
+        route: b.travelschedule.travelroute
+      } : null,
+      payment: b.travelpayment
+    }));
   }
 };

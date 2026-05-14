@@ -3,32 +3,51 @@ import { prisma } from "@/lib/prisma";
 export const FleetService = {
   // --- Vehicles ---
   async getAllVehicles() {
-    return await prisma.travelVehicle.findMany({
+    const vehicles = await prisma.travelvehicle.findMany({
       include: {
         _count: {
-          select: { schedules: true }
+          select: { travelschedule: true }
         }
       },
       orderBy: { name: 'asc' }
     });
+
+    return vehicles.map((v: any) => ({
+      ...v,
+      _count: {
+        schedules: v._count?.travelschedule || 0
+      }
+    }));
   },
 
   async getVehicleById(nomor: number) {
-    return await prisma.travelVehicle.findUnique({
+    const v = await prisma.travelvehicle.findUnique({
       where: { nomor },
       include: {
-        schedules: {
+        travelschedule: {
           take: 5,
           orderBy: { departure: 'desc' },
-          include: { route: true }
+          include: { travelroute: true }
         },
-        services: true,
-        serviceLogs: {
+        travelvehicleservice: true,
+        travelservicelog: {
           take: 10,
           orderBy: { date: 'desc' }
         }
       }
     });
+
+    if (!v) return null;
+
+    return {
+      ...v,
+      schedules: v.travelschedule?.map((s: any) => ({
+        ...s,
+        route: s.travelroute
+      })) || [],
+      services: v.travelvehicleservice || [],
+      serviceLogs: v.travelservicelog || []
+    };
   },
 
   async createVehicle(data: {
@@ -37,7 +56,7 @@ export const FleetService = {
     capacity: number;
     layout?: any;
   }) {
-    return await prisma.travelVehicle.create({
+    return await prisma.travelvehicle.create({
       data: {
         ...data,
         status: 'ACTIVE'
@@ -46,40 +65,40 @@ export const FleetService = {
   },
 
   async updateVehicle(nomor: number, data: any) {
-    return await prisma.travelVehicle.update({
+    return await prisma.travelvehicle.update({
       where: { nomor },
       data
     });
   },
 
   async deleteVehicle(nomor: number) {
-    return await prisma.travelVehicle.delete({
+    return await prisma.travelvehicle.delete({
       where: { nomor }
     });
   },
 
   // --- Drivers ---
   async getAllDrivers() {
-    return await prisma.travelDriver.findMany({
+    return await prisma.traveldriver.findMany({
       orderBy: { name: 'asc' }
     });
   },
 
   async createDriver(data: { name: string; phone: string }) {
-    return await prisma.travelDriver.create({
+    return await prisma.traveldriver.create({
       data
     });
   },
 
   async updateDriver(nomor: number, data: any) {
-    return await prisma.travelDriver.update({
+    return await prisma.traveldriver.update({
       where: { nomor },
       data
     });
   },
 
   async deleteDriver(nomor: number) {
-    return await prisma.travelDriver.delete({
+    return await prisma.traveldriver.delete({
       where: { nomor }
     });
   }
