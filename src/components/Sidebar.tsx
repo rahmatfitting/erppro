@@ -487,6 +487,31 @@ export const menuData: MenuSection[] = [
     ],
   },
   {
+    title: "Marketing AI",
+    items: [
+      {
+        title: "Lead Finder AI",
+        href: "/leads",
+        icon: SearchCheck,
+      },
+      {
+        title: "CRM Pipeline",
+        href: "/crm",
+        icon: GitMerge,
+      },
+      {
+        title: "Shopee Auto Bot",
+        href: "/shopee-bot",
+        icon: Bot,
+      },
+      {
+        title: "AI Affiliate Bot",
+        href: "/ai-reels",
+        icon: Camera,
+      },
+    ],
+  },
+  {
     title: "Sistem",
     items: [
       {

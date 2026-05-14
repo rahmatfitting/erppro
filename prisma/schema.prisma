@@ -231,7 +231,7 @@ model mdbom {
   satuan_id  Int
   mhbom      mhbom   @relation(fields: [nomormhbom], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "mdbom_ibfk_1")
 
-  @@index([nomormhbom], map: "nomormhbom")
+  @@index([nomormhbom], map: "mdbom_ibfk_1")
 }
 
 model mhaccount {
@@ -250,19 +250,19 @@ model mhaccount {
   catatan          String?   @db.Text
   status_aktif     Int       @default(1) @db.TinyInt
   dibuat_oleh      Int       @default(0)
-  dibuat_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh      Int       @default(0)
-  diubah_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh     Int       @default(0)
-  dihapus_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui Int       @default(0) @db.TinyInt
   disetujui_oleh   Int       @default(0)
-  disetujui_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh  Int       @default(0)
-  dibatalkan_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print     Int       @default(0) @db.TinyInt
   diprint_oleh     Int       @default(0)
-  diprint_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt        String?   @db.VarChar(200)
   ditt_oleh        String?   @db.VarChar(100)
   ditt_pada        DateTime? @db.DateTime(0)
@@ -284,7 +284,7 @@ model mhaset {
   nomorthbelinota          Int       @default(0)
   nomormhsatuan            Int       @default(0)
   kode                     String    @db.VarChar(100)
-  tanggal                  DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal                  DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   tanggal_mulai_penyusutan DateTime? @db.Date
   nama                     String    @db.VarChar(200)
   perolehan                Decimal   @default(0.000000) @db.Decimal(30, 6)
@@ -297,24 +297,24 @@ model mhaset {
   utama                    Int?      @default(0) @db.TinyInt
   status_aktif             Int       @default(1) @db.TinyInt
   dibuat_oleh              Int       @default(0)
-  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh              Int       @default(0)
-  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh             Int       @default(0)
-  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui         Int       @default(0) @db.TinyInt
   disetujui_oleh           Int       @default(0)
-  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh          Int       @default(0)
-  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print             Int       @default(0) @db.TinyInt
   diprint_oleh             Int       @default(0)
-  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                String?   @db.VarChar(200)
   ditt_oleh                String?   @db.VarChar(100)
   ditt_pada                DateTime? @db.DateTime(0)
   tarif                    Decimal?  @default(0.00) @db.Decimal(30, 2)
-  tanggal_jual             DateTime? @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal_jual             DateTime? @default(dbgenerated("('2000-01-01')")) @db.Date
 
   @@index([kode], map: "kode")
   @@index([nama], map: "nama")
@@ -338,7 +338,7 @@ model mhbarang {
   mhsatuan        mhsatuan?   @relation(fields: [nomormhsatuan], references: [nomor], onUpdate: NoAction, map: "mhbarang_ibfk_1")
   rab_items       rab_items[]
 
-  @@index([nomormhsatuan], map: "nomormhsatuan")
+  @@index([nomormhsatuan], map: "mhbarang_ibfk_1")
 }
 
 model mhbom {
@@ -367,24 +367,23 @@ model mhcabang {
   dibuat_pada       DateTime?    @default(now()) @db.DateTime(0)
   mhperusahaan      mhperusahaan @relation(fields: [nomormhperusahaan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "mhcabang_ibfk_1")
 
-  @@index([nomormhperusahaan], map: "nomormhperusahaan")
+  @@index([nomormhperusahaan], map: "mhcabang_ibfk_1")
 }
 
 model mhcustomer {
-  nomor         Int      @id @default(autoincrement())
-  kode          String   @unique(map: "kode") @db.VarChar(50)
-  nama          String   @db.VarChar(100)
-  alamat        String?  @db.Text
-  telepon       String?  @db.VarChar(20)
-  email         String?  @db.VarChar(100)
-  kontak_person String?  @db.VarChar(100)
-  status_aktif  Boolean? @default(true)
-  dibuat_oleh   String?  @db.VarChar(50)
-  dibuat_pada   DateTime @default(now()) @db.Timestamp(0)
-  diubah_oleh   String?  @db.VarChar(50)
-  diubah_pada   DateTime @default(now()) @db.Timestamp(0)
-
-  travel_bookings TravelBooking[]
+  nomor         Int             @id @default(autoincrement())
+  kode          String          @unique(map: "kode") @db.VarChar(50)
+  nama          String          @db.VarChar(100)
+  alamat        String?         @db.Text
+  telepon       String?         @db.VarChar(20)
+  email         String?         @db.VarChar(100)
+  kontak_person String?         @db.VarChar(100)
+  status_aktif  Boolean?        @default(true)
+  dibuat_oleh   String?         @db.VarChar(50)
+  dibuat_pada   DateTime        @default(now()) @db.Timestamp(0)
+  diubah_oleh   String?         @db.VarChar(50)
+  diubah_pada   DateTime        @default(now()) @db.Timestamp(0)
+  travelbooking travelbooking[]
 }
 
 model mhgudang {
@@ -425,19 +424,19 @@ model mhkategoriaset {
   catatan                 String?   @db.Text
   status_aktif            Int       @default(1) @db.TinyInt
   dibuat_oleh             Int       @default(0)
-  dibuat_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh             Int       @default(0)
-  diubah_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh            Int       @default(0)
-  dihapus_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui        Int       @default(0) @db.TinyInt
   disetujui_oleh          Int       @default(0)
-  disetujui_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh         Int       @default(0)
-  dibatalkan_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada         DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print            Int       @default(0) @db.TinyInt
   diprint_oleh            Int       @default(0)
-  diprint_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt               String?   @db.VarChar(200)
   ditt_oleh               String?   @db.VarChar(100)
   ditt_pada               DateTime? @db.DateTime(0)
@@ -491,19 +490,19 @@ model mhpenyesuaian {
   catatan          String?   @db.Text
   status_aktif     Int       @default(1) @db.TinyInt
   dibuat_oleh      Int       @default(0)
-  dibuat_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh      Int       @default(0)
-  diubah_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh     Int       @default(0)
-  dihapus_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui Int       @default(0) @db.TinyInt
   disetujui_oleh   Int       @default(0)
-  disetujui_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh  Int       @default(0)
-  dibatalkan_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print     Int       @default(0) @db.TinyInt
   diprint_oleh     Int       @default(0)
-  diprint_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt        String?   @db.VarChar(200)
   ditt_oleh        String?   @db.VarChar(200)
   ditt_pada        DateTime? @db.DateTime(0)
@@ -552,7 +551,7 @@ model mhsetting_notifikasi_wa {
   gateway_url     String?   @default("https://api.fonnte.com/send") @db.VarChar(255)
   gateway_token   String?   @db.VarChar(255)
   is_enabled      Boolean?  @default(true)
-  send_time       DateTime? @default(dbgenerated("'20:00:00'")) @db.Time(0)
+  send_time       DateTime? @default(dbgenerated("('20:00:00')")) @db.Time(0)
   dibuat_pada     DateTime? @default(now()) @db.DateTime(0)
   diperbarui_pada DateTime? @default(now()) @db.DateTime(0)
 }
@@ -571,20 +570,19 @@ model mhsupplier {
 }
 
 model mhuser {
-  nomor        Int         @id @default(autoincrement())
-  username     String      @unique(map: "username") @db.VarChar(100)
-  password     String      @db.VarChar(255)
-  nama         String?     @db.VarChar(200)
-  email        String?     @db.VarChar(200)
-  no_hp        String?     @db.VarChar(20)
-  grup_id      Int?
-  status_aktif Boolean?    @default(true)
-  last_login   DateTime?   @db.DateTime(0)
-  dibuat_oleh  String?     @db.VarChar(100)
-  dibuat_pada  DateTime?   @default(now()) @db.DateTime(0)
-  mhusergrup   mhusergrup? @relation(fields: [grup_id], references: [nomor], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_grup")
-
-  travel_bookings TravelBooking[]
+  nomor         Int             @id @default(autoincrement())
+  username      String          @unique(map: "username") @db.VarChar(100)
+  password      String          @db.VarChar(255)
+  nama          String?         @db.VarChar(200)
+  email         String?         @db.VarChar(200)
+  no_hp         String?         @db.VarChar(20)
+  grup_id       Int?
+  status_aktif  Boolean?        @default(true)
+  last_login    DateTime?       @db.DateTime(0)
+  dibuat_oleh   String?         @db.VarChar(100)
+  dibuat_pada   DateTime?       @default(now()) @db.DateTime(0)
+  mhusergrup    mhusergrup?     @relation(fields: [grup_id], references: [nomor], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_grup")
+  travelbooking travelbooking[]
 
   @@index([grup_id], map: "grup_id")
 }
@@ -646,19 +644,19 @@ model mhvaluta {
   catatan          String?   @db.Text
   status_aktif     Int       @default(1) @db.TinyInt
   dibuat_oleh      Int       @default(0)
-  dibuat_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh      Int       @default(0)
-  diubah_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh     Int       @default(0)
-  dihapus_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui Int       @default(0) @db.TinyInt
   disetujui_oleh   Int       @default(0)
-  disetujui_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh  Int       @default(0)
-  dibatalkan_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print     Int       @default(0) @db.TinyInt
   diprint_oleh     Int       @default(0)
-  diprint_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt        String?   @db.VarChar(200)
   ditt_oleh        String?   @db.VarChar(100)
   ditt_pada        DateTime? @db.DateTime(0)
@@ -764,7 +762,7 @@ model rab_items {
   mhbarang     mhbarang?           @relation(fields: [mhbarang_id], references: [nomor], onUpdate: NoAction, map: "rab_items_ibfk_2")
 
   @@index([section_id], map: "idx_rab_items_section")
-  @@index([mhbarang_id], map: "mhbarang_id")
+  @@index([mhbarang_id], map: "rab_items_ibfk_2")
 }
 
 model rab_sections {
@@ -832,11 +830,11 @@ model rhlaporanhutang {
   nomormhtransaksi  Int      @default(0)
   biaya             Int      @default(0) @db.TinyInt
   jenis             String   @db.VarChar(200)
-  tanggal           DateTime @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal           DateTime @default(dbgenerated("('2000-01-01')")) @db.Date
   transaksi_nomor   Int      @default(0)
   transaksi_kode    String   @db.VarChar(200)
-  transaksi_tanggal DateTime @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
-  jatuh_tempo       DateTime @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  transaksi_tanggal DateTime @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
+  jatuh_tempo       DateTime @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   kurs              Decimal  @default(0.00) @db.Decimal(30, 2)
   total             Decimal  @default(0.00) @db.Decimal(30, 2)
   total_idr         Decimal  @default(0.00) @db.Decimal(30, 2)
@@ -868,10 +866,10 @@ model rhlaporanpiutang {
   nomormhtransaksi  Int      @default(0)
   umc               Int      @default(0) @db.TinyInt
   jenis             String   @db.VarChar(200)
-  tanggal           DateTime @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal           DateTime @default(dbgenerated("('2000-01-01')")) @db.Date
   transaksi_nomor   Int      @default(0)
   transaksi_kode    String   @db.VarChar(200)
-  transaksi_tanggal DateTime @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  transaksi_tanggal DateTime @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   jatuh_tempo       DateTime @default(now()) @db.Timestamp(0)
   kurs              Decimal  @default(0.00) @db.Decimal(30, 2)
   total             Decimal  @default(0.00) @db.Decimal(30, 2)
@@ -912,7 +910,7 @@ model rhlaporanstok {
   jenis             String?   @db.VarChar(200)
   inthitung         Int?      @default(0)
   inthitung_old     Int?      @default(0)
-  tanggal           DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  tanggal           DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   transaksi_nomor   Int?      @default(0)
   transaksi_kode    String?   @db.VarChar(200)
   jumlah            Decimal?  @default(0.000000) @db.Decimal(30, 6)
@@ -979,7 +977,7 @@ model tdbelinota {
   thbelinota            thbelinota @relation(fields: [nomorthbelinota], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbelinota_ibfk_1")
 
   @@index([nomorthbelipenerimaan, nomortdbelipenerimaan], map: "idx_tdbelinota_pb")
-  @@index([nomorthbelinota], map: "nomorthbelinota")
+  @@index([nomorthbelinota], map: "tdbelinota_ibfk_1")
 }
 
 model tdbeliorder {
@@ -1009,7 +1007,7 @@ model tdbeliorder {
   thbeliorder           thbeliorder @relation(fields: [nomorthbeliorder], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbeliorder_ibfk_1")
 
   @@index([nomorthbelipermintaan, nomortdbelipermintaan], map: "idx_tdbeliorder_pr")
-  @@index([nomorthbeliorder], map: "nomorthbeliorder")
+  @@index([nomorthbeliorder], map: "tdbeliorder_ibfk_1")
 }
 
 model tdbelipenerimaan {
@@ -1039,7 +1037,7 @@ model tdbelipenerimaan {
   thbelipenerimaan      thbelipenerimaan @relation(fields: [nomorthbelipenerimaan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbelipenerimaan_ibfk_1")
 
   @@index([nomortdbeliorder], map: "idx_tdbelipenerimaan_po")
-  @@index([nomorthbelipenerimaan], map: "nomorthbelipenerimaan")
+  @@index([nomorthbelipenerimaan], map: "tdbelipenerimaan_ibfk_1")
 }
 
 model tdbelipermintaan {
@@ -1060,7 +1058,7 @@ model tdbelipermintaan {
   jumlah_ter_po         Decimal?         @default(0.00) @db.Decimal(15, 2)
   thbelipermintaan      thbelipermintaan @relation(fields: [nomorthbelipermintaan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbelipermintaan_ibfk_1")
 
-  @@index([nomorthbelipermintaan], map: "nomorthbelipermintaan")
+  @@index([nomorthbelipermintaan], map: "tdbelipermintaan_ibfk_1")
 }
 
 model tdbeliretur {
@@ -1096,7 +1094,7 @@ model tdbonbahan {
   keterangan      String?    @db.Text
   thbonbahan      thbonbahan @relation(fields: [nomorthbonbahan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdbonbahan_ibfk_1")
 
-  @@index([nomorthbonbahan], map: "nomorthbonbahan")
+  @@index([nomorthbonbahan], map: "tdbonbahan_ibfk_1")
 }
 
 model tddeliveryorder {
@@ -1130,7 +1128,7 @@ model tdhasilproduksi {
   jenis                tdhasilproduksi_jenis? @default(FG)
   thhasilproduksi      thhasilproduksi        @relation(fields: [nomorthhasilproduksi], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdhasilproduksi_ibfk_1")
 
-  @@index([nomorthhasilproduksi], map: "nomorthhasilproduksi")
+  @@index([nomorthhasilproduksi], map: "tdhasilproduksi_ibfk_1")
 }
 
 model tdjualnota {
@@ -1203,19 +1201,19 @@ model tdjualretur {
   catatan           String?   @db.Text
   status_aktif      Int       @default(1) @db.TinyInt
   dibuat_oleh       Int       @default(0)
-  dibuat_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh       Int       @default(0)
-  diubah_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh      Int       @default(0)
-  dihapus_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui  Int       @default(0) @db.TinyInt
   disetujui_oleh    Int       @default(0)
-  disetujui_pada    DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada    DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh   Int       @default(0)
-  dibatalkan_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print      Int       @default(0) @db.TinyInt
   diprint_oleh      Int       @default(0)
-  diprint_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt         String?   @db.VarChar(200)
   ditt_oleh         String?   @db.VarChar(100)
   ditt_pada         DateTime? @db.DateTime(0)
@@ -1229,7 +1227,7 @@ model tdkembalibahan {
   satuan_id           Int?
   thkembalibahan      thkembalibahan @relation(fields: [nomorthkembalibahan], references: [nomor], onDelete: Cascade, onUpdate: NoAction, map: "tdkembalibahan_ibfk_1")
 
-  @@index([nomorthkembalibahan], map: "nomorthkembalibahan")
+  @@index([nomorthkembalibahan], map: "tdkembalibahan_ibfk_1")
 }
 
 model tdpelunasanpiutang {
@@ -1238,7 +1236,7 @@ model tdpelunasanpiutang {
   nomormhaccount          Int       @default(1)
   nomormhvaluta           Int?      @default(0)
   tipe                    Int       @default(0) @db.TinyInt
-  tanggal                 DateTime? @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal                 DateTime? @default(dbgenerated("('2000-01-01')")) @db.Date
   jenis                   String    @db.VarChar(200)
   transaksinomor          Int?      @default(0)
   transaksitabel          String?   @db.VarChar(200)
@@ -1253,19 +1251,19 @@ model tdpelunasanpiutang {
   catatan                 String?   @db.Text
   status_aktif            Int       @default(1) @db.TinyInt
   dibuat_oleh             Int       @default(0)
-  dibuat_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh             Int       @default(0)
-  diubah_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh            Int       @default(0)
-  dihapus_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui        Int       @default(0) @db.TinyInt
   disetujui_oleh          Int       @default(0)
-  disetujui_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh         Int       @default(0)
-  dibatalkan_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada         DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print            Int       @default(0) @db.TinyInt
   diprint_oleh            Int       @default(0)
-  diprint_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt               String?   @db.VarChar(200)
   ditt_oleh               String?   @db.VarChar(100)
   ditt_pada               DateTime? @db.DateTime(0)
@@ -1288,19 +1286,19 @@ model tdpelunasanpiutangselisih {
   catatan                       String?   @db.Text
   status_aktif                  Int       @default(1) @db.TinyInt
   dibuat_oleh                   Int       @default(0)
-  dibuat_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada                   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh                   Int       @default(0)
-  diubah_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada                   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh                  Int       @default(0)
-  dihapus_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada                  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui              Int       @default(0) @db.TinyInt
   disetujui_oleh                Int       @default(0)
-  disetujui_pada                DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada                DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh               Int       @default(0)
-  dibatalkan_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada               DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print                  Int       @default(0) @db.TinyInt
   diprint_oleh                  Int       @default(0)
-  diprint_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada                  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                     String?   @db.VarChar(200)
   ditt_oleh                     String?   @db.VarChar(100)
   ditt_pada                     DateTime? @db.DateTime(0)
@@ -1335,19 +1333,19 @@ model tdpemakaianinternal {
   catatan                  String?   @db.Text
   status_aktif             Int       @default(1) @db.TinyInt
   dibuat_oleh              Int       @default(0)
-  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh              Int       @default(0)
-  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh             Int       @default(0)
-  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui         Int       @default(0) @db.TinyInt
   disetujui_oleh           Int       @default(0)
-  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh          Int       @default(0)
-  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print             Int       @default(0) @db.TinyInt
   diprint_oleh             Int       @default(0)
-  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                String?   @db.VarChar(200)
   ditt_oleh                String?   @db.VarChar(100)
   ditt_pada                DateTime? @db.DateTime(0)
@@ -1374,19 +1372,19 @@ model tdpenagihanhutang {
   finish                   Int       @default(0)
   status_aktif             Int       @default(1) @db.TinyInt
   dibuat_oleh              Int       @default(0)
-  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh              Int       @default(0)
-  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh             Int       @default(0)
-  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui         Int       @default(0) @db.TinyInt
   disetujui_oleh           Int       @default(0)
-  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh          Int       @default(0)
-  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print             Int       @default(0) @db.TinyInt
   diprint_oleh             Int       @default(0)
-  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                String?   @db.VarChar(200)
   ditt_oleh                String?   @db.VarChar(100)
   ditt_pada                DateTime? @db.DateTime(0)
@@ -1447,19 +1445,19 @@ model tdstokpengiriman {
   catatan                   String?   @db.Text
   status_aktif              Int       @default(1) @db.TinyInt
   dibuat_oleh               Int       @default(0)
-  dibuat_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada               DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh               Int       @default(0)
-  diubah_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada               DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh              Int       @default(0)
-  dihapus_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui          Int       @default(0) @db.TinyInt
   disetujui_oleh            Int       @default(0)
-  disetujui_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh           Int       @default(0)
-  dibatalkan_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print              Int       @default(0) @db.TinyInt
   diprint_oleh              Int       @default(0)
-  diprint_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                 String?   @db.VarChar(200)
   ditt_oleh                 String?   @db.VarChar(100)
   ditt_pada                 DateTime? @db.DateTime(0)
@@ -1499,19 +1497,19 @@ model tdstokpenyesuaian {
   catatan                String?   @db.Text
   status_aktif           Int       @default(1) @db.TinyInt
   dibuat_oleh            Int       @default(0)
-  dibuat_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh            Int       @default(0)
-  diubah_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh           Int       @default(0)
-  dihapus_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui       Int       @default(0) @db.TinyInt
   disetujui_oleh         Int       @default(0)
-  disetujui_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada         DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh        Int       @default(0)
-  dibatalkan_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print           Int       @default(0) @db.TinyInt
   diprint_oleh           Int       @default(0)
-  diprint_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt              String?   @db.VarChar(200)
   ditt_oleh              String?   @db.VarChar(100)
   ditt_pada              DateTime? @db.DateTime(0)
@@ -1570,19 +1568,19 @@ model tduangkeluar {
   catatan                String?   @db.Text
   status_aktif           Int       @default(1) @db.TinyInt
   dibuat_oleh            Int       @default(0)
-  dibuat_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh            Int       @default(0)
-  diubah_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh           Int       @default(0)
-  dihapus_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui       Int       @default(0) @db.TinyInt
   disetujui_oleh         Int       @default(0)
-  disetujui_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada         DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh        Int       @default(0)
-  dibatalkan_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print           Int       @default(0) @db.TinyInt
   diprint_oleh           Int       @default(0)
-  diprint_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt              String?   @db.VarChar(200)
   ditt_oleh              String?   @db.VarChar(100)
   ditt_pada              DateTime? @db.DateTime(0)
@@ -1604,19 +1602,19 @@ model tduangkeluarselisih {
   catatan                       String?   @db.Text
   status_aktif                  Int       @default(1) @db.TinyInt
   dibuat_oleh                   Int       @default(0)
-  dibuat_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada                   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh                   Int       @default(0)
-  diubah_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada                   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh                  Int       @default(0)
-  dihapus_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada                  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui              Int       @default(0) @db.TinyInt
   disetujui_oleh                Int       @default(0)
-  disetujui_pada                DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada                DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh               Int       @default(0)
-  dibatalkan_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada               DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print                  Int       @default(0) @db.TinyInt
   diprint_oleh                  Int       @default(0)
-  diprint_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada                  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                     String?   @db.VarChar(200)
   ditt_oleh                     String?   @db.VarChar(100)
   ditt_pada                     DateTime? @db.DateTime(0)
@@ -1646,19 +1644,19 @@ model tduangmasuk {
   catatan            String?            @db.Text
   status_aktif       Int                @default(1) @db.TinyInt
   dibuat_oleh        Int                @default(0)
-  dibuat_pada        DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada        DateTime           @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh        Int                @default(0)
-  diubah_pada        DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada        DateTime           @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh       Int                @default(0)
-  dihapus_pada       DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada       DateTime           @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui   Int                @default(0) @db.TinyInt
   disetujui_oleh     Int                @default(0)
-  disetujui_pada     DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada     DateTime           @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh    Int                @default(0)
-  dibatalkan_pada    DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada    DateTime           @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print       Int                @default(0) @db.TinyInt
   diprint_oleh       Int                @default(0)
-  diprint_pada       DateTime           @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada       DateTime           @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt          String?            @db.VarChar(200)
   ditt_oleh          String?            @db.VarChar(100)
   ditt_pada          DateTime?          @db.DateTime(0)
@@ -1677,19 +1675,19 @@ model tduangmasukselisih {
   catatan                       String?   @db.Text
   status_aktif                  Int       @default(1) @db.TinyInt
   dibuat_oleh                   Int       @default(0)
-  dibuat_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada                   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh                   Int       @default(0)
-  diubah_pada                   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada                   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh                  Int       @default(0)
-  dihapus_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada                  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui              Int       @default(0) @db.TinyInt
   disetujui_oleh                Int       @default(0)
-  disetujui_pada                DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada                DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh               Int       @default(0)
-  dibatalkan_pada               DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada               DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print                  Int       @default(0) @db.TinyInt
   diprint_oleh                  Int       @default(0)
-  diprint_pada                  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada                  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                     String?   @db.VarChar(200)
   ditt_oleh                     String?   @db.VarChar(100)
   ditt_pada                     DateTime? @db.DateTime(0)
@@ -1724,19 +1722,19 @@ model tdubahbentuk {
   catatan             String?   @db.Text
   status_aktif        Int       @default(1) @db.TinyInt
   dibuat_oleh         Int       @default(0)
-  dibuat_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada         DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh         Int       @default(0)
-  diubah_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada         DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh        Int       @default(0)
-  dihapus_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui    Int       @default(0) @db.TinyInt
   disetujui_oleh      Int       @default(0)
-  disetujui_pada      DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada      DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh     Int       @default(0)
-  dibatalkan_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print        Int       @default(0) @db.TinyInt
   diprint_oleh        Int       @default(0)
-  diprint_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt           String?   @db.VarChar(200)
   ditt_oleh           String?   @db.VarChar(100)
   ditt_pada           DateTime? @db.DateTime(0)
@@ -2079,7 +2077,7 @@ model thjualretur {
   nomormhvaluta           Int       @default(0)
   nomormhaccount          Int?      @default(0)
   kode                    String    @db.VarChar(100)
-  tanggal                 DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal                 DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   tipe                    Int       @default(0) @db.TinyInt
   jenis                   String?   @db.VarChar(50)
   ppn                     Int       @default(1) @db.TinyInt
@@ -2109,19 +2107,19 @@ model thjualretur {
   catatan                 String?   @db.Text
   status_aktif            Int       @default(1) @db.TinyInt
   dibuat_oleh             Int       @default(0)
-  dibuat_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh             Int       @default(0)
-  diubah_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh            Int       @default(0)
-  dihapus_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui        Int       @default(0) @db.TinyInt
   disetujui_oleh          Int       @default(0)
-  disetujui_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh         Int       @default(0)
-  dibatalkan_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada         DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print            Int       @default(0) @db.TinyInt
   diprint_oleh            Int       @default(0)
-  diprint_pada            DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada            DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt               String?   @db.VarChar(200)
   ditt_oleh               String?   @db.VarChar(100)
   ditt_pada               DateTime? @db.DateTime(0)
@@ -2166,7 +2164,7 @@ model thpelunasanpiutang {
   nomormhaccountselisih Int       @default(1)
   nomormhvaluta         Int       @default(1)
   kode                  String    @db.VarChar(100)
-  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal               DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   relasinomor           Int?      @default(0)
   relasitabel           String?   @db.VarChar(200)
   relasikode            String?   @db.VarChar(200)
@@ -2186,19 +2184,19 @@ model thpelunasanpiutang {
   catatan               String?   @db.Text
   status_aktif          Int       @default(1) @db.TinyInt
   dibuat_oleh           Int       @default(0)
-  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh           Int       @default(0)
-  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh          Int       @default(0)
-  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui      Int       @default(0) @db.TinyInt
   disetujui_oleh        Int       @default(0)
-  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh       Int       @default(0)
-  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print          Int       @default(0) @db.TinyInt
   diprint_oleh          Int       @default(0)
-  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt             String?   @db.VarChar(200)
   ditt_oleh             String?   @db.VarChar(100)
   ditt_pada             DateTime? @db.DateTime(0)
@@ -2212,26 +2210,26 @@ model thpemakaianinternal {
   nomormhgudang         Int       @default(1)
   nomormhjenispemakaian Int       @default(1)
   kode                  String    @db.VarChar(100)
-  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal               DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   komoditi              Int       @default(1) @db.TinyInt
   jenis                 String?   @db.VarChar(200)
   keterangan            String?   @db.Text
   catatan               String?   @db.Text
   status_aktif          Int       @default(1) @db.TinyInt
   dibuat_oleh           Int       @default(0)
-  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh           Int       @default(0)
-  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh          Int       @default(0)
-  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui      Int       @default(0) @db.TinyInt
   disetujui_oleh        Int       @default(0)
-  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh       Int       @default(0)
-  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print          Int       @default(0) @db.TinyInt
   diprint_oleh          Int       @default(0)
-  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt             String?   @db.VarChar(200)
   ditt_oleh             String?   @db.VarChar(100)
   ditt_pada             DateTime? @db.DateTime(0)
@@ -2244,7 +2242,7 @@ model thpenagihanhutang {
   nomormhaccountselisih Int       @default(0)
   nomormhvaluta         Int?      @default(0)
   kode                  String?   @db.VarChar(100)
-  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal               DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   relasinomor           Int?      @default(0)
   relasitabel           String?   @db.VarChar(200)
   relasikode            String?   @db.VarChar(200)
@@ -2261,19 +2259,19 @@ model thpenagihanhutang {
   catatan               String?   @db.Text
   status_aktif          Int       @default(1) @db.TinyInt
   dibuat_oleh           Int       @default(0)
-  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh           Int       @default(0)
-  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh          Int       @default(0)
-  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui      Int       @default(0) @db.TinyInt
   disetujui_oleh        Int       @default(0)
-  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh       Int       @default(0)
-  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print          Int       @default(0) @db.TinyInt
   diprint_oleh          Int       @default(0)
-  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt             String?   @db.VarChar(200)
   ditt_oleh             String?   @db.VarChar(100)
   ditt_pada             DateTime? @db.DateTime(0)
@@ -2327,7 +2325,7 @@ model thstokpengiriman {
   nomormhgudangasal     Int       @default(1)
   nomormhgudangtujuan   Int       @default(1)
   kode                  String    @db.VarChar(100)
-  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal               DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   komoditi              Int       @default(0) @db.TinyInt
   transfer              Int       @default(0) @db.TinyInt
   total_jumlah_unit     Decimal   @default(0.000000) @db.Decimal(30, 6)
@@ -2338,24 +2336,24 @@ model thstokpengiriman {
   alasan_validasi       String?   @db.Text
   alasan_unvalidasi     String?   @db.Text
   validasi_oleh         Int       @default(0)
-  validasi_pada         DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  validasi_pada         DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   unvalidasi_oleh       Int       @default(0)
-  unvalidasi_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  unvalidasi_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_aktif          Int       @default(1) @db.TinyInt
   dibuat_oleh           Int       @default(0)
-  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh           Int       @default(0)
-  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh          Int       @default(0)
-  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui      Int       @default(0) @db.TinyInt
   disetujui_oleh        Int       @default(0)
-  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh       Int       @default(0)
-  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print          Int       @default(0) @db.TinyInt
   diprint_oleh          Int       @default(0)
-  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt             String?   @db.VarChar(200)
   ditt_oleh             String?   @db.VarChar(100)
   ditt_pada             DateTime? @db.DateTime(0)
@@ -2369,26 +2367,26 @@ model thstokpenyesuaian {
   nomormhpenyesuaian Int       @default(1)
   penyesuaian_nama   String?   @db.VarChar(200)
   kode               String    @db.VarChar(100)
-  tanggal            DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal            DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   komoditi           Int       @default(1) @db.TinyInt
   jenis              String?   @db.VarChar(200)
   keterangan         String?   @db.Text
   catatan            String?   @db.Text
   status_aktif       Int       @default(1) @db.TinyInt
   dibuat_oleh        Int       @default(0)
-  dibuat_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh        Int       @default(0)
-  diubah_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh       Int       @default(0)
-  dihapus_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui   Int       @default(0) @db.TinyInt
   disetujui_oleh     Int       @default(0)
-  disetujui_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh    Int       @default(0)
-  dibatalkan_pada    DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada    DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print       Int       @default(0) @db.TinyInt
   diprint_oleh       Int       @default(0)
-  diprint_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt          String?   @db.VarChar(200)
   ditt_oleh          String?   @db.VarChar(100)
   ditt_pada          DateTime? @db.DateTime(0)
@@ -2449,7 +2447,7 @@ model thuangkeluar {
   account_nama             String?   @db.VarChar(100)
   valuta                   String?   @db.VarChar(30)
   kode                     String    @db.VarChar(100)
-  tanggal                  DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal                  DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   tanggal_kliring          DateTime? @db.Date
   metode                   String    @db.VarChar(200)
   kas                      Int       @default(0) @db.TinyInt
@@ -2478,24 +2476,24 @@ model thuangkeluar {
   catatan                  String?   @db.Text
   status_aktif             Int       @default(1) @db.TinyInt
   dibuat_oleh              Int       @default(0)
-  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh              Int       @default(0)
-  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh             Int       @default(0)
-  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui         Int       @default(0) @db.TinyInt
   disetujui_oleh           Int       @default(0)
-  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh          Int       @default(0)
-  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui_kliring Int       @default(0) @db.TinyInt
   disetujui_kliring_oleh   Int       @default(0)
-  disetujui_kliring_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_kliring_pada   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_kliring_oleh  Int       @default(0)
-  dibatalkan_kliring_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_kliring_pada  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print             Int       @default(0) @db.TinyInt
   diprint_oleh             Int       @default(0)
-  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                String?   @db.VarChar(200)
   ditt_oleh                String?   @db.VarChar(100)
   ditt_pada                DateTime? @db.DateTime(0)
@@ -2516,7 +2514,7 @@ model thuangmasuk {
   nomormhvaluta            Int       @default(1)
   valuta                   String?   @db.VarChar(50)
   kode                     String    @db.VarChar(100)
-  tanggal                  DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal                  DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   tanggal_kliring          DateTime? @db.Date
   metode                   String    @db.VarChar(200)
   kas                      Int       @default(0) @db.TinyInt
@@ -2543,24 +2541,24 @@ model thuangmasuk {
   catatan                  String?   @db.Text
   status_aktif             Int       @default(1) @db.TinyInt
   dibuat_oleh              Int       @default(0)
-  dibuat_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh              Int       @default(0)
-  diubah_pada              DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada              DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh             Int       @default(0)
-  dihapus_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui         Int       @default(0) @db.TinyInt
   disetujui_oleh           Int       @default(0)
-  disetujui_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh          Int       @default(0)
-  dibatalkan_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui_kliring Int       @default(0) @db.TinyInt
   disetujui_kliring_oleh   Int       @default(0)
-  disetujui_kliring_pada   DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_kliring_pada   DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_kliring_oleh  Int       @default(0)
-  dibatalkan_kliring_pada  DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_kliring_pada  DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print             Int       @default(0) @db.TinyInt
   diprint_oleh             Int       @default(0)
-  diprint_pada             DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada             DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt                String?   @db.VarChar(200)
   ditt_oleh                String?   @db.VarChar(100)
   ditt_pada                DateTime? @db.DateTime(0)
@@ -2580,7 +2578,7 @@ model thuangtitipan {
   kode              String    @unique(map: "uq_thuangtitipan_kode") @db.VarChar(100)
   nomor_ums         String?   @db.VarChar(100)
   nomor_umc         String?   @db.VarChar(100)
-  tanggal           DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal           DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   jenis             String    @db.VarChar(100)
   saldo_awal        Int?      @default(0) @db.TinyInt
   ppn               Int?      @default(1) @db.TinyInt
@@ -2598,25 +2596,25 @@ model thuangtitipan {
   alasan_validasi   String?   @db.Text
   alasan_unvalidasi String?   @db.Text
   validasi_oleh     Int?      @default(0)
-  validasi_pada     DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  validasi_pada     DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   unvalidasi_oleh   Int?      @default(0)
-  unvalidasi_pada   DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  unvalidasi_pada   DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_selesai    Int?      @default(0) @db.TinyInt
   status_aktif      Int?      @default(1) @db.TinyInt
   dibuat_oleh       Int?      @default(0)
-  dibuat_pada       DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada       DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh       Int?      @default(0)
-  diubah_pada       DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada       DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh      Int?      @default(0)
-  dihapus_pada      DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada      DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui  Int?      @default(0) @db.TinyInt
   disetujui_oleh    Int?      @default(0)
-  disetujui_pada    DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada    DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh   Int?      @default(0)
-  dibatalkan_pada   DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada   DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print      Int?      @default(0) @db.TinyInt
   diprint_oleh      Int?      @default(0)
-  diprint_pada      DateTime? @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada      DateTime? @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt         String?   @db.VarChar(200)
   ditt_oleh         String?   @db.VarChar(100)
   ditt_pada         DateTime? @db.DateTime(0)
@@ -2636,7 +2634,7 @@ model thubahbentuk {
   nomormhbarang         Int?      @default(0)
   tipe                  Int?      @default(0) @db.TinyInt
   kode                  String    @db.VarChar(100)
-  tanggal               DateTime  @default(dbgenerated("'2000-01-01'")) @db.Date
+  tanggal               DateTime  @default(dbgenerated("('2000-01-01')")) @db.Date
   komoditi              Int       @default(1) @db.TinyInt
   hpp                   Decimal?  @default(0.000000) @db.Decimal(30, 6)
   jumlah                Decimal?  @default(0.000000) @db.Decimal(30, 6)
@@ -2645,19 +2643,19 @@ model thubahbentuk {
   catatan               String?   @db.Text
   status_aktif          Int       @default(1) @db.TinyInt
   dibuat_oleh           Int       @default(0)
-  dibuat_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh           Int       @default(0)
-  diubah_pada           DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada           DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh          Int       @default(0)
-  dihapus_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui      Int       @default(0) @db.TinyInt
   disetujui_oleh        Int       @default(0)
-  disetujui_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh       Int       @default(0)
-  dibatalkan_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print          Int       @default(0) @db.TinyInt
   diprint_oleh          Int       @default(0)
-  diprint_pada          DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada          DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt             String?   @db.VarChar(200)
   ditt_oleh             String?   @db.VarChar(100)
   ditt_pada             DateTime? @db.DateTime(0)
@@ -2755,19 +2753,19 @@ model tsaldoawalaccount {
   catatan            String?   @db.Text
   status_aktif       Int       @default(1) @db.TinyInt
   dibuat_oleh        Int       @default(0)
-  dibuat_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibuat_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   diubah_oleh        Int       @default(0)
-  diubah_pada        DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diubah_pada        DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dihapus_oleh       Int       @default(0)
-  dihapus_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dihapus_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_disetujui   Int       @default(0) @db.TinyInt
   disetujui_oleh     Int       @default(0)
-  disetujui_pada     DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  disetujui_pada     DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   dibatalkan_oleh    Int       @default(0)
-  dibatalkan_pada    DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  dibatalkan_pada    DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_print       Int       @default(0) @db.TinyInt
   diprint_oleh       Int       @default(0)
-  diprint_pada       DateTime  @default(dbgenerated("'2000-01-01 00:00:00'")) @db.DateTime(0)
+  diprint_pada       DateTime  @default(dbgenerated("('2000-01-01 00:00:00')")) @db.DateTime(0)
   status_tt          String?   @db.VarChar(200)
   ditt_oleh          String?   @db.VarChar(100)
   ditt_pada          DateTime? @db.DateTime(0)
@@ -2781,6 +2779,157 @@ model tsaldoawalaccount {
   @@index([total_debet_ori], map: "total_debet_ori")
   @@index([total_kredit], map: "total_kredit")
   @@index([total_kredit_ori], map: "total_kredit_ori")
+}
+
+model Business {
+  id         String   @id @default(uuid())
+  place_id   String?  @unique
+  name       String
+  category   String?
+  city       String?
+  rating     Float?
+  reviews    Int?
+  website    String?
+  phone      String?
+  address    String?  @db.Text
+  maps_url   String?  @db.Text
+  hot_score  Int      @default(0)
+  status     String   @default("new")
+  audit_data Json?
+  ai_notes   String?  @db.Text
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("businesses")
+}
+
+model travelbooking {
+  nomor               Int                   @id @default(autoincrement())
+  code                String                @unique(map: "TravelBooking_code_key")
+  customerId          Int
+  scheduleId          Int
+  userId              Int?
+  status              travelbooking_status  @default(HOLD)
+  expiredAt           DateTime?
+  createdAt           DateTime              @default(now())
+  mhcustomer          mhcustomer            @relation(fields: [customerId], references: [nomor], map: "TravelBooking_customerId_fkey")
+  travelschedule      travelschedule        @relation(fields: [scheduleId], references: [nomor], map: "TravelBooking_scheduleId_fkey")
+  mhuser              mhuser?               @relation(fields: [userId], references: [nomor], map: "TravelBooking_userId_fkey")
+  travelbookingdetail travelbookingdetail[]
+  travelpayment       travelpayment?
+
+  @@index([customerId], map: "TravelBooking_customerId_fkey")
+  @@index([scheduleId], map: "TravelBooking_scheduleId_idx")
+  @@index([userId], map: "TravelBooking_userId_fkey")
+}
+
+model travelbookingdetail {
+  nomor         Int           @id @default(autoincrement())
+  bookingId     Int
+  seatNumber    Int
+  scheduleId    Int
+  travelbooking travelbooking @relation(fields: [bookingId], references: [nomor], map: "TravelBookingDetail_bookingId_fkey")
+
+  @@unique([scheduleId, seatNumber], map: "TravelBookingDetail_scheduleId_seatNumber_key")
+  @@index([bookingId], map: "TravelBookingDetail_bookingId_fkey")
+}
+
+model traveldriver {
+  nomor          Int              @id @default(autoincrement())
+  name           String
+  phone          String
+  createdAt      DateTime         @default(now())
+  travelschedule travelschedule[]
+}
+
+model travelpayment {
+  nomor         Int                  @id @default(autoincrement())
+  bookingId     Int                  @unique(map: "TravelPayment_bookingId_key")
+  amount        Int
+  method        String
+  status        travelpayment_status @default(PENDING)
+  paidAt        DateTime?
+  createdAt     DateTime             @default(now())
+  proofImage    String?
+  travelbooking travelbooking        @relation(fields: [bookingId], references: [nomor], map: "TravelPayment_bookingId_fkey")
+}
+
+model travelroute {
+  nomor          Int              @id @default(autoincrement())
+  origin         String
+  destination    String
+  createdAt      DateTime         @default(now())
+  travelschedule travelschedule[]
+}
+
+model travelschedule {
+  nomor         Int             @id @default(autoincrement())
+  routeId       Int
+  vehicleId     Int
+  driverId      Int
+  departure     DateTime
+  price         Int
+  createdAt     DateTime        @default(now())
+  travelbooking travelbooking[]
+  traveldriver  traveldriver    @relation(fields: [driverId], references: [nomor], map: "TravelSchedule_driverId_fkey")
+  travelroute   travelroute     @relation(fields: [routeId], references: [nomor], map: "TravelSchedule_routeId_fkey")
+  travelvehicle travelvehicle   @relation(fields: [vehicleId], references: [nomor], map: "TravelSchedule_vehicleId_fkey")
+
+  @@index([driverId], map: "TravelSchedule_driverId_fkey")
+  @@index([routeId], map: "TravelSchedule_routeId_idx")
+  @@index([vehicleId], map: "TravelSchedule_vehicleId_fkey")
+}
+
+model travelservicelog {
+  nomor             Int               @id @default(autoincrement())
+  vehicleId         Int
+  serviceTypeId     Int
+  date              DateTime
+  km                Int
+  cost              Int
+  notes             String?
+  travelservicetype travelservicetype @relation(fields: [serviceTypeId], references: [nomor], map: "TravelServiceLog_serviceTypeId_fkey")
+  travelvehicle     travelvehicle     @relation(fields: [vehicleId], references: [nomor], map: "TravelServiceLog_vehicleId_fkey")
+
+  @@index([serviceTypeId], map: "TravelServiceLog_serviceTypeId_fkey")
+  @@index([vehicleId], map: "TravelServiceLog_vehicleId_fkey")
+}
+
+model travelservicetype {
+  nomor                Int                    @id @default(autoincrement())
+  name                 String
+  intervalKm           Int?
+  intervalDays         Int?
+  travelservicelog     travelservicelog[]
+  travelvehicleservice travelvehicleservice[]
+}
+
+model travelvehicle {
+  nomor                Int                    @id @default(autoincrement())
+  name                 String
+  plateNumber          String                 @unique(map: "TravelVehicle_plateNumber_key")
+  capacity             Int
+  status               travelvehicle_status   @default(ACTIVE)
+  currentKm            Int                    @default(0)
+  layout               String?                @db.LongText
+  travelschedule       travelschedule[]
+  travelservicelog     travelservicelog[]
+  travelvehicleservice travelvehicleservice[]
+}
+
+model travelvehicleservice {
+  nomor             Int               @id @default(autoincrement())
+  vehicleId         Int
+  serviceTypeId     Int
+  lastServiceKm     Int
+  lastServiceDate   DateTime
+  nextServiceKm     Int?
+  nextServiceDate   DateTime?
+  travelservicetype travelservicetype @relation(fields: [serviceTypeId], references: [nomor], map: "TravelVehicleService_serviceTypeId_fkey")
+  travelvehicle     travelvehicle     @relation(fields: [vehicleId], references: [nomor], map: "TravelVehicleService_vehicleId_fkey")
+
+  @@index([serviceTypeId], map: "TravelVehicleService_serviceTypeId_fkey")
+  @@index([vehicleId], map: "TravelVehicleService_vehicleId_fkey")
 }
 
 enum rab_items_category {
@@ -2837,11 +2986,20 @@ enum tduangmasuk_jenis {
   LAIN_LAIN
 }
 
-//////////////////////
-// TRAVEL MANAGEMENT SYSTEM (TMS)
-//////////////////////
+enum travelpayment_status {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
 
-enum TravelBookingStatus {
+enum travelvehicle_status {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum travelbooking_status {
   HOLD
   PENDING_PAYMENT
   PAID
@@ -2854,145 +3012,9 @@ enum TravelBookingStatus {
   REFUNDED
 }
 
-enum TravelPaymentStatus {
-  PENDING
-  SUCCESS
-  FAILED
-  REFUNDED
-}
-
-enum TravelVehicleStatus {
-  ACTIVE
-  MAINTENANCE
-  INACTIVE
-}
-
-model TravelRoute {
-  nomor       Int      @id @default(autoincrement())
-  origin      String
-  destination String
-  createdAt   DateTime @default(now())
-
-  schedules   TravelSchedule[]
-}
-
-model TravelSchedule {
-  nomor       Int      @id @default(autoincrement())
-  routeId     Int
-  vehicleId   Int
-  driverId    Int
-  departure   DateTime
-  price       Int
-  createdAt   DateTime @default(now())
-
-  route       TravelRoute    @relation(fields: [routeId], references: [nomor])
-  vehicle     TravelVehicle  @relation(fields: [vehicleId], references: [nomor])
-  driver      TravelDriver   @relation(fields: [driverId], references: [nomor])
-
-  bookings    TravelBooking[]
-
-  @@index([routeId])
-}
-
-model TravelVehicle {
-  nomor       Int      @id @default(autoincrement())
-  name        String
-  plateNumber String   @unique
-  capacity    Int
-  status      TravelVehicleStatus @default(ACTIVE)
-  currentKm   Int      @default(0)
-  layout      Json?
-
-  schedules   TravelSchedule[]
-  services    TravelVehicleService[]
-  serviceLogs TravelServiceLog[]
-}
-
-model TravelDriver {
-  nomor     Int      @id @default(autoincrement())
-  name      String
-  phone     String
-  createdAt DateTime @default(now())
-
-  schedules TravelSchedule[]
-}
-
-model TravelBooking {
-  nomor       Int        @id @default(autoincrement())
-  code        String     @unique
-  customerId  Int
-  scheduleId  Int
-  userId      Int?
-  status      TravelBookingStatus @default(HOLD)
-  expiredAt   DateTime?
-  createdAt   DateTime   @default(now())
-
-  customer    mhcustomer @relation(fields: [customerId], references: [nomor])
-  schedule    TravelSchedule @relation(fields: [scheduleId], references: [nomor])
-  user        mhuser?    @relation(fields: [userId], references: [nomor])
-
-  details     TravelBookingDetail[]
-  payment     TravelPayment?
-
-  @@index([scheduleId])
-}
-
-model TravelBookingDetail {
-  nomor       Int  @id @default(autoincrement())
-  bookingId   Int
-  seatNumber  Int
-  scheduleId  Int
-
-  booking     TravelBooking @relation(fields: [bookingId], references: [nomor])
-
-  @@unique([scheduleId, seatNumber])
-}
-
-model TravelPayment {
-  nomor       Int        @id @default(autoincrement())
-  bookingId   Int        @unique
-  amount      Int
-  method      String     
-  status      TravelPaymentStatus @default(PENDING)
-  paidAt      DateTime?
-  createdAt   DateTime   @default(now())
-  proofImage  String?
-
-  booking     TravelBooking @relation(fields: [bookingId], references: [nomor])
-}
-
-model TravelServiceType {
-  nomor        Int @id @default(autoincrement())
-  name         String
-  intervalKm   Int?
-  intervalDays Int?
-
-  services     TravelVehicleService[]
-  logs         TravelServiceLog[]
-}
-
-model TravelVehicleService {
-  nomor            Int   @id @default(autoincrement())
-  vehicleId        Int
-  serviceTypeId    Int
-  lastServiceKm    Int
-  lastServiceDate  DateTime
-  nextServiceKm    Int?
-  nextServiceDate  DateTime?
-
-  vehicle          TravelVehicle     @relation(fields: [vehicleId], references: [nomor])
-  serviceType      TravelServiceType @relation(fields: [serviceTypeId], references: [nomor])
-}
-
-model TravelServiceLog {
-  nomor         Int   @id @default(autoincrement())
-  vehicleId     Int
-  serviceTypeId Int
-  date          DateTime
-  km            Int
-  cost          Int
-  notes         String?
-
-  vehicle          TravelVehicle     @relation(fields: [vehicleId], references: [nomor])
-  serviceType      TravelServiceType @relation(fields: [serviceTypeId], references: [nomor])
+model ai_reels_settings {
+  id         Int      @id @default(autoincrement())
+  key        String   @unique(map: "key") @db.VarChar(100)
+  value      String?  @db.LongText
+  updated_at DateTime @updatedAt @db.Timestamp(0)
 }

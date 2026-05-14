@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Bot, User, Sparkles, Minus, Maximize2 } from "lucide-react";
+import { MessageCircle, X, Send, Bot, User, Sparkles, Minus, Maximize2, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -13,6 +13,9 @@ interface Message {
 
 export function ChatAssistant() {
   const [isOpen, setIsOpen] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [engine, setEngine] = useState<"native" | "chatgpt">("native");
+  const [apiKey, setApiKey] = useState("");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -26,10 +29,34 @@ export function ChatAssistant() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
+    const savedEngine = localStorage.getItem("erp_chat_engine") as "native" | "chatgpt";
+    const savedKey = localStorage.getItem("erp_chat_apikey");
+    if (savedEngine) setEngine(savedEngine);
+    if (savedKey) setApiKey(savedKey);
+  }, []);
+
+  const handleSaveSettings = () => {
+    localStorage.setItem("erp_chat_engine", engine);
+    localStorage.setItem("erp_chat_apikey", apiKey);
+    setShowSettings(false);
+    
+    // Add info message
+    setMessages(prev => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: `⚙️ Pengaturan Engine diperbarui ke **${engine === "chatgpt" ? "ChatGPT Engine" : "ERP Native Engine"}**.${engine === "chatgpt" ? " Sistem kini siap membaca database dan menyampaikannya lewat pemrosesan OpenAI." : ""}`,
+        timestamp: new Date()
+      }
+    ]);
+  };
+
+  useEffect(() => {
+    if (scrollRef.current && !showSettings) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isTyping]);
+  }, [messages, isTyping, showSettings]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -50,7 +77,11 @@ export function ChatAssistant() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: currentInput }),
+        body: JSON.stringify({ 
+          message: currentInput,
+          engine,
+          apiKey 
+        }),
       });
       const data = await res.json();
       
@@ -65,11 +96,13 @@ export function ChatAssistant() {
       } else {
         throw new Error(data.error || "Gagal mendapatkan respon");
       }
-    } catch (err) {
+    } catch (err: any) {
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "Maaf, terjadi gangguan koneksi. Silakan coba lagi nanti.",
+        content: err.message?.includes("OpenAI") || err.message?.includes("API Key") 
+          ? `⚠️ **Error Engine ChatGPT:** ${err.message}` 
+          : "Maaf, terjadi gangguan koneksi. Silakan coba lagi nanti.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -105,14 +138,20 @@ export function ChatAssistant() {
                    <div>
                       <h3 className="font-bold text-sm tracking-tight">ERP AI Assistant</h3>
                       <div className="flex items-center gap-1.5">
-                         <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                         <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">Online & Active</span>
+                         <div className={cn("h-1.5 w-1.5 rounded-full animate-pulse", engine === "chatgpt" ? "bg-violet-300" : "bg-emerald-400")} />
+                         <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">
+                           {engine === "chatgpt" ? "ChatGPT Mode" : "Native Mode"}
+                         </span>
                       </div>
                    </div>
                 </div>
                 <div className="flex items-center gap-1">
-                   <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
-                      <Minus className="h-4 w-4" />
+                   <button 
+                     onClick={() => setShowSettings(!showSettings)} 
+                     className={cn("p-2 hover:bg-white/10 rounded-xl transition-colors relative", showSettings && "bg-white/20")}
+                     title="Pengaturan Otak AI"
+                   >
+                      <Settings className="h-4 w-4" />
                    </button>
                    <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
                       <X className="h-4 w-4" />
@@ -121,33 +160,97 @@ export function ChatAssistant() {
              </div>
           </div>
 
-          {/* Messages Area */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth custom-scrollbar">
-             {messages.map((msg) => (
-               <div key={msg.id} className={cn("flex flex-col", msg.role === "user" ? "items-end" : "items-start")}>
-                  <div className={cn(
-                    "max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed",
-                    msg.role === "user" 
-                      ? "bg-indigo-600 text-white rounded-tr-none shadow-lg shadow-indigo-500/20" 
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-none border border-slate-200 dark:border-slate-700 shadow-sm"
-                  )}>
-                    {msg.content}
-                  </div>
-                  <span className="text-[9px] text-slate-400 mt-1.5 font-bold uppercase tracking-tighter">
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+          {/* Settings / Messages Area Switch */}
+          {showSettings ? (
+            <div className="flex-1 p-6 overflow-y-auto space-y-6 animate-in fade-in duration-200 custom-scrollbar">
+               <div>
+                  <h4 className="font-bold text-sm text-slate-900 dark:text-white mb-1">Pengaturan Otak AI</h4>
+                  <p className="text-xs text-slate-500">Pilih pemroses kecerdasan untuk merespon kueri database Anda.</p>
                </div>
-             ))}
-             {isTyping && (
-               <div className="flex items-start gap-2">
-                  <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl rounded-tl-none border border-slate-200 dark:border-slate-700 flex gap-1">
-                     <div className="h-1 w-1 bg-slate-400 rounded-full animate-bounce" />
-                     <div className="h-1 w-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                     <div className="h-1 w-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]" />
-                  </div>
+
+               <div className="space-y-3">
+                  <label 
+                    onClick={() => setEngine("native")}
+                    className={cn(
+                      "flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all",
+                      engine === "native" 
+                        ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20 ring-2 ring-indigo-600/20" 
+                        : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                    )}
+                  >
+                     <input type="radio" name="engine" checked={engine === "native"} onChange={() => {}} className="mt-1" />
+                     <div>
+                        <span className="text-xs font-bold block text-slate-900 dark:text-white">Program Langsung (Native)</span>
+                        <span className="text-[11px] text-slate-500 block mt-0.5">Membaca program database secara instan dengan aturan terstruktur & terprogram.</span>
+                     </div>
+                  </label>
+
+                  <label 
+                    onClick={() => setEngine("chatgpt")}
+                    className={cn(
+                      "flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all",
+                      engine === "chatgpt" 
+                        ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20 ring-2 ring-indigo-600/20" 
+                        : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                    )}
+                  >
+                     <input type="radio" name="engine" checked={engine === "chatgpt"} onChange={() => {}} className="mt-1" />
+                     <div>
+                        <span className="text-xs font-bold block text-slate-900 dark:text-white">ChatGPT Engine (OpenAI)</span>
+                        <span className="text-[11px] text-slate-500 block mt-0.5">Kecerdasan bahasa alami tingkat lanjut yang diinjeksi dengan skema & data live database.</span>
+                     </div>
+                  </label>
                </div>
-             )}
-          </div>
+
+               {engine === "chatgpt" && (
+                 <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
+                    <label className="text-xs font-bold block text-slate-700 dark:text-slate-300">OpenAI API Key</label>
+                    <input 
+                      type="password" 
+                      value={apiKey} 
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="sk-proj-..." 
+                      className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white font-mono"
+                    />
+                    <span className="text-[10px] text-slate-400 block">Kunci API disimpan aman di browser lokal Anda.</span>
+                 </div>
+               )}
+
+               <button 
+                 onClick={handleSaveSettings}
+                 className="w-full py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-bold text-xs hover:opacity-90 transition-opacity shadow-sm"
+               >
+                 Simpan Pengaturan
+               </button>
+            </div>
+          ) : (
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth custom-scrollbar">
+               {messages.map((msg) => (
+                 <div key={msg.id} className={cn("flex flex-col", msg.role === "user" ? "items-end" : "items-start")}>
+                    <div className={cn(
+                      "max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap",
+                      msg.role === "user" 
+                        ? "bg-indigo-600 text-white rounded-tr-none shadow-lg shadow-indigo-500/20" 
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-none border border-slate-200 dark:border-slate-700 shadow-sm"
+                    )}>
+                      {msg.content}
+                    </div>
+                    <span className="text-[9px] text-slate-400 mt-1.5 font-bold uppercase tracking-tighter">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                 </div>
+               ))}
+               {isTyping && (
+                 <div className="flex items-start gap-2">
+                    <div className="bg-slate-100 dark:bg-slate-800 p-3 rounded-2xl rounded-tl-none border border-slate-200 dark:border-slate-700 flex gap-1">
+                       <div className="h-1 w-1 bg-slate-400 rounded-full animate-bounce" />
+                       <div className="h-1 w-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                       <div className="h-1 w-1 bg-slate-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                 </div>
+               )}
+            </div>
+          )}
 
           {/* Input Area */}
           <div className="p-5 bg-slate-50 dark:bg-slate-950/50 border-t border-slate-100 dark:border-slate-800 shrink-0">
@@ -156,20 +259,21 @@ export function ChatAssistant() {
                   type="text" 
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSend()}
-                  placeholder="Tanyakan stok, penjualan, atau bantuan..."
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-12 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium dark:text-white placeholder:text-slate-400"
+                  onKeyDown={(e) => e.key === "Enter" && !showSettings && handleSend()}
+                  placeholder={showSettings ? "Tutup pengaturan untuk chat..." : "Tanyakan stok, penjualan, atau bantuan..."}
+                  disabled={showSettings}
+                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl pl-4 pr-12 py-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-medium dark:text-white placeholder:text-slate-400 disabled:opacity-50 disabled:bg-slate-100 dark:disabled:bg-slate-950"
                 />
                 <button 
                   onClick={handleSend}
-                  disabled={!input.trim() || isTyping}
+                  disabled={!input.trim() || isTyping || showSettings}
                   className="absolute right-1.5 p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
                 >
                   <Send className="h-4 w-4" />
                 </button>
              </div>
              <p className="text-center text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-3 flex items-center justify-center gap-1">
-                <Sparkles className="h-2.5 w-2.5 text-indigo-500" /> Powered by ERP Intelligence Engine
+                <Sparkles className="h-2.5 w-2.5 text-indigo-500" /> Powered by {engine === "chatgpt" ? "OpenAI DB-Context Engine" : "ERP Intelligence Engine"}
              </p>
           </div>
         </div>

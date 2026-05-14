@@ -52,7 +52,7 @@ export async function GET(request: Request) {
 
       // 3. Process with Running Balance, Debet, and Kredit
       let currentBalance = openingBalance;
-      data = transactions.map((t: any) => {
+      const parsedTransactions = transactions.map((t: any) => {
         const val = parseFloat(t.mutasi || 0);
         currentBalance += val;
         return {
@@ -65,6 +65,19 @@ export async function GET(request: Request) {
           saldo: currentBalance
         };
       });
+
+      data = [
+        {
+          tanggal: '-',
+          transaksi_kode: '-',
+          keterangan: 'SALDO AWAL',
+          jatuh_tempo: '-',
+          debet: 0,
+          kredit: 0,
+          saldo: openingBalance
+        },
+        ...parsedTransactions
+      ];
 
       extra = { openingBalance };
 

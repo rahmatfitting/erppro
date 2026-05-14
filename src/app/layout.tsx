@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { Header } from "@/components/Header";
 import { ChatAssistant } from "@/components/ChatAssistant";
 import { getSession } from "@/lib/auth";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,6 +24,7 @@ export default async function RootLayout({
   return (
     <html lang="en" className="h-full bg-slate-50 dark:bg-slate-950">
       <body className={`${inter.className} h-full ${session ? 'overflow-hidden' : 'overflow-y-auto'} text-slate-900 dark:text-slate-50 antialiased`}>
+        <Toaster richColors position="top-right" />
         {session && (
            <script dangerouslySetInnerHTML={{
              __html: `window.__USER__ = ${JSON.stringify(session)};`

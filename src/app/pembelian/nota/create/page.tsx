@@ -64,21 +64,29 @@ export default function NotaBeli() {
       const res = await fetch(`/api/pembelian/penerimaan/${pb.nomor}`);
       const json = await res.json();
       if (json.success && json.data.items) {
-        const newItems = json.data.items.map((item: any) => ({
-          id: Date.now() + Math.random(),
-          nomorthbelipenerimaan: pb.nomor,
-          nomortdbelipenerimaan: item.id,
-          nomormhbarang: item.nomormhbarang,
-          nomormhsatuan: item.nomormhsatuan,
-          kodePenerimaan: pb.kode,
-          kode_barang: item.kode_barang,
-          barang: item.barang,
-          satuan: item.satuan,
-          jumlah: item.jumlahDiterima,
-          harga: item.harga || 0,
-          diskonPersen: item.diskon_prosentase || 0
-        }));
-        setItems(prev => [...prev, ...newItems]);
+        const newItemsFiltered = json.data.items.filter((item: any) => 
+          !items.some((p) => p.nomorthbelipenerimaan === pb.nomor && p.nomormhbarang === item.nomormhbarang)
+        );
+
+        if (newItemsFiltered.length === 0) {
+          alert("Semua barang dari PB ini sudah ditambahkan ke dalam detail tagihan!");
+        } else {
+          const newItems = newItemsFiltered.map((item: any) => ({
+            id: Date.now() + Math.random(),
+            nomorthbelipenerimaan: pb.nomor,
+            nomortdbelipenerimaan: item.id,
+            nomormhbarang: item.nomormhbarang,
+            nomormhsatuan: item.nomormhsatuan,
+            kodePenerimaan: pb.kode,
+            kode_barang: item.kode_barang,
+            barang: item.barang,
+            satuan: item.satuan,
+            jumlah: item.jumlahDiterima,
+            harga: item.harga || 0,
+            diskonPersen: item.diskon_prosentase || 0
+          }));
+          setItems(prev => [...prev, ...newItems]);
+        }
       }
     } catch (err) {
       console.error("Error fetching PB items:", err);
@@ -439,7 +447,7 @@ export default function NotaBeli() {
                       <td className="px-6 py-3 text-center">
                         <button
                           onClick={() => removeItem(item.id)}
-                          className="hidden rounded-full p-2 text-slate-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-20 dark:hover:bg-red-500/10 dark:hover:text-red-400 transition-all active:scale-95"
+                          className="rounded-full p-2 text-slate-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-20 dark:hover:bg-red-500/10 dark:hover:text-red-400 transition-all active:scale-95"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

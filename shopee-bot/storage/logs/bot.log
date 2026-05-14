@@ -1,0 +1,4 @@
+{"level":30,"time":"2026-05-09T04:23:04.370Z","pid":false,"msg":"Launching browser..."}
+{"level":30,"time":"2026-05-09T04:23:05.925Z","pid":false,"msg":"Please login manually in the browser window..."}
+{"level":30,"time":"2026-05-09T04:23:18.955Z","pid":false,"msg":"Waiting for you to complete login..."}
+{"level":30,"time":"2026-05-09T04:23:24.091Z","pid":false,"msg":"Login successful! Session saved to D:\\rahmat\\belajar next js\\erp_nextjs\\frontend\\shopee-bot\\storage\\state.json"}

@@ -118,14 +118,6 @@ export default function ReportHutangPage() {
                 <span className="text-sm font-medium text-slate-500">{reportData.length} records found</span>
             </div>
 
-            {selectedReport?.id === 'kartu' && extraInfo?.openingBalance !== undefined && (
-              <div className="p-4 rounded-xl bg-slate-100 dark:bg-slate-800 flex justify-between items-center border border-slate-200 dark:border-slate-700">
-                <span className="text-sm font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">Saldo Awal :</span>
-                <span className="text-lg font-mono font-bold text-indigo-600">
-                  {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(extraInfo.openingBalance)}
-                </span>
-              </div>
-            )}
 
             {reportData.length === 0 && (
               <div className="p-8 text-center border border-dashed border-slate-300 dark:border-slate-700 rounded-xl">
