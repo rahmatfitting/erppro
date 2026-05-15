@@ -1,8 +1,5 @@
 import { executeQuery } from './db';
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-
 // Binance hosts (try in order — some are blocked on Vercel, others aren't)
 const SPOT_HOSTS = [
   'https://api.binance.com',
@@ -308,21 +305,24 @@ export function detectBulishFVG(symbol: string, candles: any[]): FVGSignal | nul
 }
 
 export async function sendTelegramNotification(msg: string) {
-  if (!TELEGRAM_BOT_TOKEN) {
-    console.warn("Telegram Notification skipped: TELEGRAM_BOT_TOKEN is missing.");
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+
+  if (!token) {
+    console.warn("Telegram Notification skipped: TELEGRAM_BOT_TOKEN is missing in process.env.");
     return;
   }
-  if (!TELEGRAM_CHAT_ID) {
-    console.warn("Telegram Notification skipped: TELEGRAM_CHAT_ID is missing.");
+  if (!chatId) {
+    console.warn("Telegram Notification skipped: TELEGRAM_CHAT_ID is missing in process.env.");
     return;
   }
 
   try {
-    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: chatId,
         text: msg,
         parse_mode: 'Markdown'
       })

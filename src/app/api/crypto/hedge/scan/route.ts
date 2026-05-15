@@ -13,8 +13,8 @@ export async function GET() {
     const existingSignals: any = await executeQuery(`SELECT symbol FROM crypto_hedge_signals`);
     const existingSymbols = new Set(existingSignals.map((s: any) => s.symbol));
     
-    // 2. Run scan
-    const top10 = await runHedgeScan(50);
+    // 2. Run scan (Use 150 to match Cronjob for consistency)
+    const top10 = await runHedgeScan(150);
 
     // 3. Clear and Update DB
     await executeQuery(`DELETE FROM crypto_hedge_signals`);
