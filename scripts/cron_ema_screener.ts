@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { runScreenerCore, getScreenerResultsFromDB } from '../src/lib/emaEngine';
 import { sendTelegramNotification } from '../src/lib/binance';
 

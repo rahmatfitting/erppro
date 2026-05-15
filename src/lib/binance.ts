@@ -308,9 +308,17 @@ export function detectBulishFVG(symbol: string, candles: any[]): FVGSignal | nul
 }
 
 export async function sendTelegramNotification(msg: string) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) return;
+  if (!TELEGRAM_BOT_TOKEN) {
+    console.warn("Telegram Notification skipped: TELEGRAM_BOT_TOKEN is missing.");
+    return;
+  }
+  if (!TELEGRAM_CHAT_ID) {
+    console.warn("Telegram Notification skipped: TELEGRAM_CHAT_ID is missing.");
+    return;
+  }
+
   try {
-    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -319,7 +327,14 @@ export async function sendTelegramNotification(msg: string) {
         parse_mode: 'Markdown'
       })
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error("Telegram API Error:", errorData);
+    } else {
+      console.log("Telegram Notification sent successfully.");
+    }
   } catch (err) {
-    console.error("Telegram error:", err);
+    console.error("Telegram network error:", err);
   }
 }

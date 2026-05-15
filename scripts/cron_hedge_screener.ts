@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { executeQuery } from '../src/lib/db';
 import { sendTelegramNotification } from '../src/lib/binance';
 import { runHedgeScan, ensureHedgeTable } from '../src/lib/hedgeEngine';
