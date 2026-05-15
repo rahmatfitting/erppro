@@ -5,22 +5,44 @@ const globalForMySQL = global as unknown as {
   mysqlPool: mysql.Pool | undefined;
 };
 
-export const pool =
-  globalForMySQL.mysqlPool ??
-  mysql.createPool({
+let config: mysql.PoolOptions = {
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  timezone: 'Z',
+  dateStrings: true
+};
+
+if (process.env.DATABASE_URL) {
+  try {
+    const dbUrl = new URL(process.env.DATABASE_URL);
+    config = {
+      ...config,
+      host: dbUrl.hostname,
+      user: decodeURIComponent(dbUrl.username),
+      password: decodeURIComponent(dbUrl.password),
+      database: dbUrl.pathname.slice(1),
+      port: parseInt(dbUrl.port || '3306', 10),
+    };
+  } catch (err) {
+    console.error("Error parsing DATABASE_URL:", err);
+  }
+}
+
+if (!config.host) {
+  config = {
+    ...config,
     host: process.env.DB_HOST || '127.0.0.1',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || '',
     database: process.env.DB_NAME || 'erp_db',
     port: parseInt(process.env.DB_PORT || '3306', 10),
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-    // Helps avoid timezone issues between JS and MySQL
-    timezone: 'Z',
-    // Date strings are easier to handle in Next.js serialization
-    dateStrings: true 
-  });
+  };
+}
+
+export const pool =
+  globalForMySQL.mysqlPool ??
+  mysql.createPool(config);
 
 if (process.env.NODE_ENV !== 'production') globalForMySQL.mysqlPool = pool;
 
