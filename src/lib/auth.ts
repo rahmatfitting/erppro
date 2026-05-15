@@ -34,7 +34,7 @@ export async function login(user: { id: number; email: string; username: string;
   cookieStore.set("session", session, {
     expires,
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_APP_URL?.startsWith("https"),
     sameSite: "lax",
     path: "/",
   });
@@ -66,7 +66,7 @@ export async function updateSession(request: NextRequest) {
     value: await encrypt(parsed),
     httpOnly: true,
     expires: parsed.expires,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_APP_URL?.startsWith("https"),
     sameSite: "lax",
     path: "/",
   });
