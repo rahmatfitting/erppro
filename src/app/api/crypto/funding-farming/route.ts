@@ -42,8 +42,12 @@ function analyzeMarketCondition(candles: any[]) {
   return 'TRENDING';
 }
 
-export async function GET() {
+import { sendTelegramNotification } from '@/lib/binance';
+
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const isCron = searchParams.get('cron') === 'true';
     // 1. Fetch Premium Index (Funding Rates) using fallback hosts
     const data = await fetchFapiWithFallback('/fapi/v1/premiumIndex');
     if (!data) {
@@ -80,6 +84,26 @@ export async function GET() {
         recommendation: opp.fundingRate > 0 ? 'SHORT' : 'LONG',
         isExtreme: Math.abs(opp.fundingRate) >= 0.005, // The 0.5% threshold requested by user
       });
+    }
+
+    if (isCron) {
+      const extremeResults = results.filter(r => r.isExtreme);
+      let msg = `💰 *HOURLY FUNDING FARMING UPDATE* 💰\n\n`;
+      
+      if (extremeResults.length > 0) {
+        msg += `🚨 *${extremeResults.length} EXTREME FUNDING RATE(S)* 🚨\n\n`;
+        extremeResults.forEach((r) => {
+          msg += `🪙 *${r.symbol}*\n`;
+          msg += `   Rate: ${(r.fundingRate * 100).toFixed(4)}%\n`;
+          msg += `   Action: ${r.recommendation}\n`;
+          msg += `   Market: ${r.marketCondition}\n\n`;
+        });
+      } else {
+        msg += `ℹ️ No extreme funding rates (>0.5%) detected this hour.\n\n`;
+      }
+      
+      msg += `Total High Funding Pairs: ${filtered.length}`;
+      await sendTelegramNotification(msg);
     }
 
     return NextResponse.json({

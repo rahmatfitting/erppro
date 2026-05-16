@@ -39,6 +39,7 @@ export async function GET() {
 
     const pairs = await fetchTopFuturesPairs(30); // top 30 by volume for speed
     let saved = 0;
+    let strongSignals: any[] = [];
 
     for (const pair of pairs) {
       const [longRatio, topTraderRatio, oiData] = await Promise.all([
@@ -76,13 +77,29 @@ export async function GET() {
         saved++;
 
         if (sig.signal === 'STRONG LONG' || sig.signal === 'STRONG SHORT') {
-          const icon = sig.signal === 'STRONG LONG' ? '🔥🟢' : '🔥🔴';
-          await sendTelegramNotification(
-            `${icon} *TOP TRADER SIGNAL*\nSymbol: ${sig.symbol}\nScore: ${sig.score}/100\nSignal: ${sig.signal}\n${sig.reason.join('\n')}`
-          );
+          strongSignals.push(sig);
         }
       } catch (_) {}
     }
+
+    // Always send an hourly Telegram report
+    let msg = `📊 *HOURLY TRADER UPDATE* 📊\n\n`;
+    
+    if (strongSignals.length > 0) {
+      msg += `🚨 *${strongSignals.length} STRONG SIGNAL(S) DETECTED!* 🚨\n\n`;
+      strongSignals.forEach((sig) => {
+        const icon = sig.signal === 'STRONG LONG' ? '🔥🟢' : '🔥🔴';
+        msg += `${icon} *${sig.symbol}* - ${sig.signal}\n`;
+        msg += `   Score: ${sig.score}/100\n`;
+        msg += `   Bias: ${sig.contrarianBias} | Whale: ${sig.whaleBias}\n`;
+        msg += `   [View Chart](https://www.tradingview.com/chart/?symbol=BINANCE:${sig.symbol})\n\n`;
+      });
+    } else {
+      msg += `ℹ️ No strong signals detected this hour.\n\n`;
+    }
+    
+    msg += `Total Non-Neutral setups saved: ${saved}`;
+    await sendTelegramNotification(msg);
 
     // Data already reset at start of scan (line 38)
     // If no signals found, table stays empty (reset state)

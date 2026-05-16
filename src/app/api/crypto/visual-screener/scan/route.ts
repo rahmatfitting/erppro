@@ -39,9 +39,10 @@ export async function GET() {
       } catch (dbErr) { }
     }
 
-    // 5. Telegram Notification
+    // 5. Telegram Notification (Selalu kirim setiap jam)
+    let msg = `👁️ *HOURLY VISUAL SCREENER* 👁️\n\n`;
+
     if (newEntries.length > 0) {
-      let msg = `🔥 *NEW VISUAL SIGNALS (High Potential)* 🔥\n\n`;
       newEntries.forEach(s => {
         const icon = s.sentiment === 'LONG_ENTERING' ? '📈' : '📉';
         msg += `${icon} *${s.symbol}* (${s.sentiment})\n`;
@@ -51,8 +52,12 @@ export async function GET() {
         msg += `Entry: ${s.entry}\n`;
         msg += `Chart: [TradingView](https://www.tradingview.com/chart/?symbol=BINANCE:${s.symbol})\n\n`;
       });
-      await sendTelegramNotification(msg);
+    } else {
+      msg += `ℹ️ No new high-potential signals (>10%) entering this hour.\n\n`;
     }
+    
+    msg += `Total Signals Monitored: ${detectedCount}`;
+    await sendTelegramNotification(msg);
 
     return NextResponse.json({ 
       success: true, 
