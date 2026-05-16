@@ -54,6 +54,9 @@ export async function GET(request: Request) {
     }
     const active  = symbols.slice(0, 50);
 
+    // Clear old data for this timeframe so we only show the latest scan results
+    await executeQuery(`DELETE FROM crypto_ict_signals WHERE timeframe = ?`, [interval]);
+
     let saved = 0;
     for (const symbol of active) {
       const candles = await fetchKlines(symbol, interval, 150);
@@ -112,10 +115,7 @@ export async function GET(request: Request) {
       } catch (_) {}
     }
 
-    // Reset data if no signals detected
-    if (saved === 0) {
-      await executeQuery(`DELETE FROM crypto_ict_signals WHERE timeframe = ?`, [interval]);
-    }
+
 
     return NextResponse.json({ success: true, message: `ICT Scan [${interval}] selesai. ${saved} sinyal ditemukan.` });
   } catch (error: any) {

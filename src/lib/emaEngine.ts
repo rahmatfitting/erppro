@@ -1,6 +1,31 @@
 import { executeQuery } from './db';
 import { fetchKlines, fetchBinancePairs } from './binance';
 
+export async function ensureEmaTables() {
+  await executeQuery(`
+    CREATE TABLE IF NOT EXISTS coins (
+      symbol VARCHAR(20) PRIMARY KEY,
+      name VARCHAR(50)
+    )
+  `);
+  
+  await executeQuery(`
+    CREATE TABLE IF NOT EXISTS ema_results (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      symbol VARCHAR(20) NOT NULL,
+      timeframe VARCHAR(10) NOT NULL,
+      ema20 DECIMAL(20, 8),
+      ema50 DECIMAL(20, 8),
+      ema100 DECIMAL(20, 8),
+      ema200 DECIMAL(20, 8),
+      trend VARCHAR(20),
+      timestamp DATETIME,
+      UNIQUE KEY unique_symbol_timeframe (symbol, timeframe),
+      FOREIGN KEY (symbol) REFERENCES coins(symbol) ON DELETE CASCADE
+    )
+  `);
+}
+
 // EMA calculation logic
 export function calcEMA(closes: number[], period: number): number {
   if (closes.length < period) return 0;
@@ -108,6 +133,7 @@ export async function saveEmaResults(symbol: string, results: Record<string, EMA
 }
 
 export async function runScreenerCore(topN: number = 100) {
+  await ensureEmaTables();
   const pairs = await fetchBinancePairs();
   const targetPairs = pairs.slice(0, topN);
   
@@ -134,6 +160,7 @@ export async function runScreenerCore(topN: number = 100) {
 }
 
 export async function getScreenerResultsFromDB() {
+  await ensureEmaTables();
   const data = await executeQuery<any[]>(`
     SELECT c.symbol, c.name, e.timeframe, e.ema20, e.ema50, e.ema100, e.ema200, e.trend, e.timestamp 
     FROM coins c
