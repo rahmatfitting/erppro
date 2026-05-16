@@ -36,21 +36,24 @@ export async function GET() {
       } catch (dbErr) {}
     }
 
-    // 5. Telegram Alert for NEW entries (or high score if preferred)
+    // 5. Telegram Alert (Selalu kirim setiap jam)
+    let msg = `💎 *HOURLY HEDGE FUND UPDATE* 💎\n\n`;
+    
     if (newEntries.length > 0) {
-      let msg = `💎 *NEW HEDGE FUND SETUP DETECTED* 💎\n\n`;
-      msg += `The following coins have newly entered the Top 10 Screening:\n\n`;
-      
-      newEntries.forEach((s) => {
-        msg += `🚀 *${s.symbol}*\n`;
-        msg += `Score: ${s.score}/100\n`;
-        msg += `Setup: ${s.setup}\n`;
-        msg += `Status: ${s.score >= 80 ? '🔥 HIGH PROB' : '⚡ MEDIUM'}\n`;
-        msg += `Chart: [TradingView](https://www.tradingview.com/chart/?symbol=BINANCE:${s.symbol})\n\n`;
-      });
-      
-      await sendTelegramNotification(msg);
+      msg += `🚨 *${newEntries.length} NEW SETUP(S) DETECTED!* 🚨\n\n`;
+    } else {
+      msg += `📊 *Current Top 10 Setups:*\n\n`;
     }
+    
+    top10.forEach((s: any, index: number) => {
+      const isNew = newEntries.some(n => n.symbol === s.symbol);
+      msg += `${index + 1}. ${isNew ? '🆕 ' : ''}*${s.symbol}*\n`;
+      msg += `   Score: ${s.score}/100 | ${s.score >= 80 ? '🔥 HIGH' : '⚡ MED'}\n`;
+      msg += `   Setup: ${s.setup}\n`;
+      msg += `   [View Chart](https://www.tradingview.com/chart/?symbol=BINANCE:${s.symbol})\n\n`;
+    });
+    
+    await sendTelegramNotification(msg);
 
     return NextResponse.json({ 
       success: true, 

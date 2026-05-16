@@ -15,7 +15,7 @@ export async function middleware(request: NextRequest) {
   const session = await decrypt(cookie || "");
   const isPublicRoute = publicRoutes.includes(path);
   const isApiRoute = path.startsWith("/api/");
-  const isAuthApi = path.startsWith("/api/auth") || path.includes("/api/migrate") || path.startsWith("/api/gold-prices/sync") || path.startsWith("/api/buyback-prices/sync") || path.startsWith("/api/debug");
+  const isAuthApi = path.startsWith("/api/auth") || path.includes("/api/migrate") || path.startsWith("/api/gold-prices/sync") || path.startsWith("/api/buyback-prices/sync") || path.startsWith("/api/debug") || path.startsWith("/api/crypto/hedge/scan") || path.startsWith("/api/crypto/bot/scan");
 
   // Not logged in -> handle based on type
   if (!session && !isPublicRoute && !isAuthApi) {
