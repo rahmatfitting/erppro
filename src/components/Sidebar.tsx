@@ -117,6 +117,11 @@ export const menuData: MenuSection[] = [
         icon: LayoutDashboard,
       },
       {
+        title: "Home",
+        href: "/home",
+        icon: LayoutDashboard,
+      },
+      {
         title: "Dashboard V2",
         href: "/v2",
         icon: Activity,

@@ -34,9 +34,9 @@ export default function Login() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ branchId: data.singleBranch.nomor })
           });
-          window.location.href = "/";
+          window.location.href = "/home";
         } else {
-          window.location.href = "/";
+          window.location.href = "/home";
         }
       } else {
         setError(data.error || "Login failed. Please check your credentials.");

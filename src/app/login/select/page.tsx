@@ -65,7 +65,7 @@ export default function SelectBranch() {
         const channel = new BroadcastChannel('erp-session-sync');
         channel.postMessage('REFRESH_SESSION');
         channel.close();
-        window.location.href = "/";
+        window.location.href = "/home";
       } else {
         alert(json.error);
         setSubmitting("");
