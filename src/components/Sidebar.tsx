@@ -57,7 +57,8 @@ import {
   Camera,
   HardHat,
   Briefcase,
-  PlusCircle
+  PlusCircle,
+  Home
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -114,7 +115,7 @@ export const menuData: MenuSection[] = [
       {
         title: "Home",
         href: "/home",
-        icon: LayoutDashboard,
+        icon: Home,
       },
       {
         title: "Dashboard",

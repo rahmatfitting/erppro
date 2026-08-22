@@ -1,6 +1,5 @@
 import { executeQuery } from './db';
-import { fetchTopFuturesPairs, fetchOIChange, classifySentiment } from './futures';
-import { fetchKlines } from './binance';
+import { fetchTopFuturesPairs, fetchOIChange, classifySentiment, fetchFuturesKlines } from './futures';
 
 export async function ensureVisualTable() {
   await executeQuery(`
@@ -24,48 +23,69 @@ export async function runVisualScan(limit: number = 50) {
   await ensureVisualTable();
   
   const pairs = await fetchTopFuturesPairs(limit);
-  let results = [];
+  if (!pairs || pairs.length === 0) {
+    return [];
+  }
 
-  for (const pair of pairs) {
-    const oiChange = await fetchOIChange(pair.symbol);
-    const sentiment = classifySentiment(pair.priceChangePercent, oiChange);
-    const potential = Math.abs(pair.priceChangePercent) + Math.abs(oiChange);
+  const results: any[] = [];
+  const BATCH_SIZE = 10;
 
-    // ATR Recommendations
-    const candles = await fetchKlines(pair.symbol, '1h', 30);
-    let entry = pair.lastPrice;
-    let sl = 0;
-    let tp1 = 0;
+  for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
+    const batch = pairs.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (pair) => {
+        try {
+          const [oiChange, candles] = await Promise.all([
+            fetchOIChange(pair.symbol),
+            fetchFuturesKlines(pair.symbol, '1h', 30)
+          ]);
 
-    if (candles.length >= 14) {
-      const trs: number[] = [];
-      for (let i = 1; i < candles.length; i++) {
-        const h = candles[i].high;
-        const l = candles[i].low;
-        const pc = candles[i - 1].close;
-        trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
-      }
-      const atr = trs.slice(-14).reduce((a, b) => a + b, 0) / 14;
+          const sentiment = classifySentiment(pair.priceChangePercent, oiChange);
+          const potential = Math.abs(pair.priceChangePercent) + Math.abs(oiChange);
 
-      if (sentiment === 'LONG_ENTERING') {
-        sl = entry - (atr * 1.5);
-        tp1 = entry + (atr * 3.0);
-      } else if (sentiment === 'SHORT_ENTERING') {
-        sl = entry + (atr * 1.5);
-        tp1 = entry - (atr * 3.0);
-      }
+          // ATR Recommendations
+          let entry = pair.lastPrice;
+          let sl = 0;
+          let tp1 = 0;
+
+          if (candles.length >= 14) {
+            const trs: number[] = [];
+            for (let k = 1; k < candles.length; k++) {
+              const h = candles[k].high;
+              const l = candles[k].low;
+              const pc = candles[k - 1].close;
+              trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+            }
+            const atr = trs.slice(-14).reduce((a, b) => a + b, 0) / 14;
+
+            if (sentiment === 'LONG_ENTERING') {
+              sl = entry - (atr * 1.5);
+              tp1 = entry + (atr * 3.0);
+            } else if (sentiment === 'SHORT_ENTERING') {
+              sl = entry + (atr * 1.5);
+              tp1 = entry - (atr * 3.0);
+            }
+          }
+
+          return {
+            symbol: pair.symbol,
+            priceChange: pair.priceChangePercent,
+            oiChange,
+            sentiment,
+            potential,
+            entry,
+            stop_loss: sl,
+            tp1
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    for (const res of batchResults) {
+      if (res) results.push(res);
     }
-
-    results.push({
-      symbol: pair.symbol,
-      priceChange: pair.priceChangePercent,
-      oiChange,
-      sentiment,
-      potential,
-      entry,
-      stop_loss: sl,
-      tp1
-    });
   }
 
   return results;

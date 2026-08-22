@@ -61,7 +61,7 @@ export async function fetchOITrend(symbol: string): Promise<{
 }> {
   try {
     const data = await fetchFapiWithFallback(
-      `/fapi/v1/openInterestHist?symbol=${symbol}&period=1h&limit=25`
+      `/futures/data/openInterestHist?symbol=${symbol}&period=1h&limit=25`
     );
     if (!Array.isArray(data) || data.length < 2) return { oiChange: 0, trend: 'flat' };
 

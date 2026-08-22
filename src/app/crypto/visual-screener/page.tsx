@@ -39,15 +39,19 @@ export default function VisualScreenerPage() {
   useEffect(() => { fetchSignals(); }, []);
 
   const handleScan = async () => {
-    if (!confirm("Scanning Top 30 Futures Pairs untuk deteksi OI & Price Sentiment (±20 detik)?")) return;
+    if (!confirm("Scanning Top 50 Futures Pairs untuk deteksi OI & Price Sentiment (±3-5 detik)?")) return;
     setScanning(true);
     try {
       const res = await fetch('/api/crypto/visual-screener/scan');
       const data = await res.json();
-      alert(data.message || "Scan selesai");
-      fetchSignals();
-    } catch (err) {
-      alert("Scan gagal");
+      if (res.ok && data.success) {
+        alert(data.message || "Scan selesai");
+        fetchSignals();
+      } else {
+        alert(data.message || data.error || "Scan gagal");
+      }
+    } catch (err: any) {
+      alert("Scan gagal: " + (err?.message || "Koneksi terputus"));
     } finally {
       setScanning(false);
     }

@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/db';
+import { ensureVisualTable } from '@/lib/visualEngine';
 
 export async function GET() {
   try {
+    await ensureVisualTable();
     const signals: any = await executeQuery(`
       SELECT * FROM crypto_visual_signals 
       WHERE (sentiment = 'LONG_ENTERING' OR sentiment = 'SHORT_ENTERING')

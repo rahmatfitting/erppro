@@ -1,20 +1,35 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/db';
 import { sendTelegramNotification } from '@/lib/binance';
 import { runVisualScan, ensureVisualTable } from '@/lib/visualEngine';
 
 export const maxDuration = 300;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     await ensureVisualTable();
     
+    const { searchParams } = new URL(req.url);
+    const limit = parseInt(searchParams.get('limit') || '50', 10);
+
     // 1. Get existing symbols to detect new ones
-    const existingSignals: any = await executeQuery(`SELECT symbol FROM crypto_visual_signals`);
-    const existingSymbols = new Set(existingSignals.map((s: any) => s.symbol));
+    let existingSymbols = new Set<string>();
+    try {
+      const existingSignals: any = await executeQuery(`SELECT symbol FROM crypto_visual_signals`);
+      if (Array.isArray(existingSignals)) {
+        existingSymbols = new Set(existingSignals.map((s: any) => s.symbol));
+      }
+    } catch (_) {}
 
     // 2. Run Scan
-    const results = await runVisualScan(100); // Scan top 100 for better coverage
+    const results = await runVisualScan(limit);
+
+    if (!results || results.length === 0) {
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Gagal mengambil data dari Binance Futures. Silakan coba beberapa saat lagi.' 
+      }, { status: 502 });
+    }
 
     // 3. Clear and Update DB
     await executeQuery(`DELETE FROM crypto_visual_signals`);
@@ -39,25 +54,27 @@ export async function GET() {
       } catch (dbErr) { }
     }
 
-    // 5. Telegram Notification (Selalu kirim setiap jam)
-    let msg = `👁️ *HOURLY VISUAL SCREENER* 👁️\n\n`;
+    // 5. Telegram Notification (Optional / hourly)
+    if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
+      let msg = `👁️ *VISUAL SCREENER* 👁️\n\n`;
 
-    if (newEntries.length > 0) {
-      newEntries.forEach(s => {
-        const icon = s.sentiment === 'LONG_ENTERING' ? '📈' : '📉';
-        msg += `${icon} *${s.symbol}* (${s.sentiment})\n`;
-        msg += `Price Change: ${s.priceChange.toFixed(2)}%\n`;
-        msg += `OI Change: ${s.oiChange.toFixed(2)}%\n`;
-        msg += `Potential: ${s.potential.toFixed(2)}%\n`;
-        msg += `Entry: ${s.entry}\n`;
-        msg += `Chart: [TradingView](https://www.tradingview.com/chart/?symbol=BINANCE:${s.symbol})\n\n`;
-      });
-    } else {
-      msg += `ℹ️ No new high-potential signals (>10%) entering this hour.\n\n`;
+      if (newEntries.length > 0) {
+        newEntries.forEach(s => {
+          const icon = s.sentiment === 'LONG_ENTERING' ? '📈' : '📉';
+          msg += `${icon} *${s.symbol}* (${s.sentiment})\n`;
+          msg += `Price Change: ${s.priceChange.toFixed(2)}%\n`;
+          msg += `OI Change: ${s.oiChange.toFixed(2)}%\n`;
+          msg += `Potential: ${s.potential.toFixed(2)}%\n`;
+          msg += `Entry: ${s.entry}\n`;
+          msg += `Chart: [TradingView](https://www.tradingview.com/chart/?symbol=BINANCE:${s.symbol})\n\n`;
+        });
+      } else {
+        msg += `ℹ️ No new high-potential signals (>10%) entering this scan.\n\n`;
+      }
+      
+      msg += `Total Signals Monitored: ${detectedCount}`;
+      await sendTelegramNotification(msg);
     }
-    
-    msg += `Total Signals Monitored: ${detectedCount}`;
-    await sendTelegramNotification(msg);
 
     return NextResponse.json({ 
       success: true, 
@@ -65,6 +82,7 @@ export async function GET() {
       new_signals: newEntries.map(e => e.symbol)
     });
   } catch (error: any) {
+    console.error("Visual Screener Scan Error:", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

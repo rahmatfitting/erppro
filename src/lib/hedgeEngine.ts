@@ -1,6 +1,6 @@
 import { executeQuery } from './db';
-import { fetchKlines, sendTelegramNotification } from './binance';
-import { fetchTopFuturesPairs } from './futures';
+import { sendTelegramNotification } from './binance';
+import { fetchTopFuturesPairs, fetchFuturesKlines } from './futures';
 import { calculateHedgeScore, HedgeSignal } from './hedge';
 
 export async function ensureHedgeTable() {
@@ -25,21 +25,29 @@ export async function runHedgeScan(limit: number = 50) {
   
   // Fetch Top Futures Pairs by Volume
   const pairs = await fetchTopFuturesPairs(limit);
+  if (!pairs || pairs.length === 0) return [];
   
   let allHedgeSignals: HedgeSignal[] = [];
+  const BATCH_SIZE = 10;
 
-  for (const pair of pairs) {
-    // Hedge Fund Standard: 4h Timeframe
-    const candles = await fetchKlines(pair.symbol, '4h', 100);
-    
-    // Calculate probability score
-    const signal = calculateHedgeScore(pair.symbol, candles, {
-      volume: pair.quoteVolume || 0,
-      priceChange: pair.priceChangePercent
-    });
+  for (let i = 0; i < pairs.length; i += BATCH_SIZE) {
+    const batch = pairs.slice(i, i + BATCH_SIZE);
+    const batchSignals = await Promise.all(
+      batch.map(async (pair) => {
+        try {
+          const candles = await fetchFuturesKlines(pair.symbol, '4h', 100);
+          return calculateHedgeScore(pair.symbol, candles, {
+            volume: pair.quoteVolume || 0,
+            priceChange: pair.priceChangePercent
+          });
+        } catch {
+          return null;
+        }
+      })
+    );
 
-    if (signal) {
-      allHedgeSignals.push(signal);
+    for (const sig of batchSignals) {
+      if (sig) allHedgeSignals.push(sig);
     }
   }
 

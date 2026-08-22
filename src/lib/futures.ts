@@ -20,7 +20,7 @@ export async function fetchFapiWithFallback(path: string): Promise<any | null> {
   for (const host of FAPI_HOSTS) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 15000); // 15s
+      const timer = setTimeout(() => controller.abort(), 5000); // 5s timeout
       const res = await fetch(`${host}${path}`, {
         headers: HEADERS,
         signal: controller.signal,
@@ -29,13 +29,13 @@ export async function fetchFapiWithFallback(path: string): Promise<any | null> {
       clearTimeout(timer);
       
       if (!res.ok) {
-        console.error(`fetchFapi: ${host}${path} returned Status ${res.status}`);
+        // If 400 (Bad Request) or 404 (Not Found), the endpoint/symbol is invalid, no need to retry mirror hosts
+        if (res.status === 400 || res.status === 404) return null;
         continue;
       }
       
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        console.error(`fetchFapi: ${host}${path} returned non-JSON content: ${contentType}`);
         continue;
       }
 
@@ -43,15 +43,10 @@ export async function fetchFapiWithFallback(path: string): Promise<any | null> {
         const data = await res.json();
         if (data && !data.code) return data;
       } catch (jsonErr) {
-        console.error(`fetchFapi: ${host}${path} JSON parse error`);
         continue;
       }
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.error(`fetchFapi: ${host}${path} timeout`);
-      } else {
-        console.error(`fetchFapi: ${host}${path} error: ${err.message}`);
-      }
+      // Host network issue or timeout, continue to next host
     }
   }
   return null;
@@ -75,16 +70,36 @@ export async function fetchTopFuturesPairs(limit: number = 50) {
     }));
 }
 
+export async function fetchFuturesKlines(symbol: string, interval: string = '1h', limit: number = 30) {
+  try {
+    const data = await fetchFapiWithFallback(`/fapi/v1/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`);
+    if (!Array.isArray(data)) return [];
+    
+    return data.map((d: any) => ({
+      time: d[0],
+      open: parseFloat(d[1]),
+      high: parseFloat(d[2]),
+      low: parseFloat(d[3]),
+      close: parseFloat(d[4]),
+      volume: parseFloat(d[5]),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchOIChange(symbol: string) {
   try {
-    const currentData = await fetchFapiWithFallback(`/fapi/v1/openInterest?symbol=${symbol}`);
-    if (!currentData) return 0;
-    const currentOI = parseFloat(currentData.openInterest);
+    const [currentData, histData] = await Promise.all([
+      fetchFapiWithFallback(`/fapi/v1/openInterest?symbol=${symbol}`),
+      fetchFapiWithFallback(`/futures/data/openInterestHist?symbol=${symbol}&period=1d&limit=2`)
+    ]);
 
-    const histData = await fetchFapiWithFallback(`/fapi/v1/openInterestHist?symbol=${symbol}&period=1d&limit=2`);
-    if (!Array.isArray(histData) || histData.length < 2) return 0;
-    
+    if (!currentData || !Array.isArray(histData) || histData.length < 2) return 0;
+    const currentOI = parseFloat(currentData.openInterest);
     const prevOI = parseFloat(histData[0].sumOpenInterest);
+    if (!prevOI) return 0;
+    
     const change = ((currentOI - prevOI) / prevOI) * 100;
     return change;
   } catch {
