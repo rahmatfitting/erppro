@@ -1,13 +1,5 @@
 const FAPI_HOSTS = [
   'https://fapi.binance.com',
-  'https://fapi.binance.me',
-  'https://fapi.binance.info',
-  'https://fapi.binance.org',
-  'https://fapi1.binance.com',
-  'https://fapi2.binance.com',
-  'https://fapi3.binance.com',
-  'https://fapi4.binance.com',
-  'https://fapi5.binance.com',
 ];
 
 const HEADERS = {
@@ -15,12 +7,12 @@ const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
 };
 
-/** Try a Futures path on multiple hosts until one succeeds */
+/** Try a Futures path on Binance host */
 export async function fetchFapiWithFallback(path: string): Promise<any | null> {
   for (const host of FAPI_HOSTS) {
     try {
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      const timer = setTimeout(() => controller.abort(), 4000); // 4s timeout
       const res = await fetch(`${host}${path}`, {
         headers: HEADERS,
         signal: controller.signal,
@@ -29,24 +21,18 @@ export async function fetchFapiWithFallback(path: string): Promise<any | null> {
       clearTimeout(timer);
       
       if (!res.ok) {
-        // If 400 (Bad Request) or 404 (Not Found), the endpoint/symbol is invalid, no need to retry mirror hosts
-        if (res.status === 400 || res.status === 404) return null;
-        continue;
+        return null;
       }
       
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        continue;
+        return null;
       }
 
-      try {
-        const data = await res.json();
-        if (data && !data.code) return data;
-      } catch (jsonErr) {
-        continue;
-      }
+      const data = await res.json();
+      if (data && !data.code) return data;
     } catch (err: any) {
-      // Host network issue or timeout, continue to next host
+      // network/timeout error
     }
   }
   return null;

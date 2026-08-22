@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     await ensureVisualTable();
     
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const limit = parseInt(searchParams.get('limit') || '30', 10);
 
     // 1. Get existing symbols to detect new ones
     let existingSymbols = new Set<string>();
