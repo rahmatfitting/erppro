@@ -19,7 +19,7 @@ export async function ensureVisualTable() {
   `);
 }
 
-export async function runVisualScan(limit: number = 50) {
+export async function runVisualScan(limit: number = 30) {
   await ensureVisualTable();
   
   const pairs = await fetchTopFuturesPairs(limit);
@@ -35,36 +35,37 @@ export async function runVisualScan(limit: number = 50) {
     const batchResults = await Promise.all(
       batch.map(async (pair) => {
         try {
-          const [oiChange, candles] = await Promise.all([
-            fetchOIChange(pair.symbol),
-            fetchFuturesKlines(pair.symbol, '1h', 30)
-          ]);
-
+          const oiChange = await fetchOIChange(pair.symbol);
           const sentiment = classifySentiment(pair.priceChangePercent, oiChange);
           const potential = Math.abs(pair.priceChangePercent) + Math.abs(oiChange);
 
-          // ATR Recommendations
           let entry = pair.lastPrice;
           let sl = 0;
           let tp1 = 0;
 
-          if (candles.length >= 14) {
-            const trs: number[] = [];
-            for (let k = 1; k < candles.length; k++) {
-              const h = candles[k].high;
-              const l = candles[k].low;
-              const pc = candles[k - 1].close;
-              trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
-            }
-            const atr = trs.slice(-14).reduce((a, b) => a + b, 0) / 14;
+          // Only fetch ATR klines if setup is actionable (LONG_ENTERING or SHORT_ENTERING)
+          if (sentiment === 'LONG_ENTERING' || sentiment === 'SHORT_ENTERING') {
+            try {
+              const candles = await fetchFuturesKlines(pair.symbol, '1h', 20);
+              if (candles.length >= 14) {
+                const trs: number[] = [];
+                for (let k = 1; k < candles.length; k++) {
+                  const h = candles[k].high;
+                  const l = candles[k].low;
+                  const pc = candles[k - 1].close;
+                  trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
+                }
+                const atr = trs.slice(-14).reduce((a, b) => a + b, 0) / 14;
 
-            if (sentiment === 'LONG_ENTERING') {
-              sl = entry - (atr * 1.5);
-              tp1 = entry + (atr * 3.0);
-            } else if (sentiment === 'SHORT_ENTERING') {
-              sl = entry + (atr * 1.5);
-              tp1 = entry - (atr * 3.0);
-            }
+                if (sentiment === 'LONG_ENTERING') {
+                  sl = entry - (atr * 1.5);
+                  tp1 = entry + (atr * 3.0);
+                } else if (sentiment === 'SHORT_ENTERING') {
+                  sl = entry + (atr * 1.5);
+                  tp1 = entry - (atr * 3.0);
+                }
+              }
+            } catch (_) {}
           }
 
           return {
