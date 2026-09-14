@@ -28,7 +28,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   SlidersHorizontal,
-  Compass
+  Compass,
+  Send,
+  Bell
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -172,6 +174,11 @@ export default function HedgeFundBuyPage() {
   const [orderSuccessResult, setOrderSuccessResult] = useState<any>(null);
   const [orderErrorMessage, setOrderErrorMessage] = useState<string | null>(null);
 
+  // Telegram auto-send state & schedule tracking
+  const [sendingTelegram, setSendingTelegram] = useState(false);
+  const [telegramStatusMsg, setTelegramStatusMsg] = useState<string | null>(null);
+  const [nextTelegramSession, setNextTelegramSession] = useState<{ label: string; text: string }>({ label: '', text: '' });
+
   const openOrderModal = (signal: SignalItem) => {
     setOrderSignal(signal);
     setOrderType('MARKET');
@@ -296,6 +303,100 @@ export default function HedgeFundBuyPage() {
     }
   };
 
+  // Telegram Scheduler Session Calculator (07:00, 13:00, 20:00 WIB)
+  useEffect(() => {
+    const calculateNextSession = () => {
+      const now = new Date();
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const wib = new Date(utc + (3600000 * 7));
+      const curHour = wib.getHours();
+      const curMin = wib.getMinutes();
+
+      const targets = [
+        { hour: 7, label: '07:00 WIB (Sesi Pagi)' },
+        { hour: 13, label: '13:00 WIB (Sesi Siang)' },
+        { hour: 20, label: '20:00 WIB (Sesi Malam)' }
+      ];
+
+      for (const t of targets) {
+        if (t.hour > curHour || (t.hour === curHour && curMin === 0)) {
+          const diffMin = (t.hour - curHour) * 60 - curMin;
+          const h = Math.floor(diffMin / 60);
+          const m = diffMin % 60;
+          return {
+            label: t.label,
+            text: h > 0 ? `${h} jam ${m} mnt lagi` : `${m} mnt lagi`
+          };
+        }
+      }
+
+      // Next day 07:00
+      const diffMin = ((24 - curHour) + 7) * 60 - curMin;
+      const h = Math.floor(diffMin / 60);
+      const m = diffMin % 60;
+      return {
+        label: '07:00 WIB (Besok Pagi)',
+        text: `${h} jam ${m} mnt lagi`
+      };
+    };
+
+    setNextTelegramSession(calculateNextSession());
+    const interval = setInterval(() => {
+      setNextTelegramSession(calculateNextSession());
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Manual Trigger Send to Telegram
+  const handleSendTelegram = async (customSession?: string) => {
+    setSendingTelegram(true);
+    setTelegramStatusMsg(null);
+    try {
+      const sessionParam = customSession ? `&session=${encodeURIComponent(customSession)}` : '';
+      const res = await fetch(`/api/crypto/hedgefund-buy/scan?limit=25&forceTelegram=true${sessionParam}`);
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTelegramStatusMsg(`✅ Sukses! Data terbaru berhasil dikirim ke Telegram (${data.session || 'Sesi Terkini'}).`);
+        fetchSignals();
+      } else {
+        setTelegramStatusMsg(`❌ Gagal: ${data.message || data.error || 'Terjadi kesalahan'}`);
+      }
+    } catch (err: any) {
+      setTelegramStatusMsg(`❌ Gagal: ${err?.message || 'Koneksi error'}`);
+    } finally {
+      setSendingTelegram(false);
+      setTimeout(() => setTelegramStatusMsg(null), 8000);
+    }
+  };
+
+  // Watchdog otomatis jika tab browser tetap terbuka di jam 07:00, 13:00, atau 20:00 WIB
+  useEffect(() => {
+    const watchdogInterval = setInterval(() => {
+      const now = new Date();
+      const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+      const wib = new Date(utc + (3600000 * 7));
+      const curHour = wib.getHours();
+      const curMin = wib.getMinutes();
+
+      // Cek apakah jam 7, 13, atau 20 pada menit 0..2
+      if ([7, 13, 20].includes(curHour) && curMin >= 0 && curMin <= 2) {
+        const slotKey = `hf_tg_sent_${wib.getFullYear()}-${wib.getMonth() + 1}-${wib.getDate()}-${curHour}`;
+        if (typeof window !== 'undefined' && !localStorage.getItem(slotKey)) {
+          localStorage.setItem(slotKey, 'true');
+          const labels: Record<number, string> = {
+            7: '07:00 WIB (Sesi Pagi)',
+            13: '13:00 WIB (Sesi Siang)',
+            20: '20:00 WIB (Sesi Malam)'
+          };
+          console.log(`[Watchdog] Memicu pengiriman Telegram otomatis jadwal ${labels[curHour]}...`);
+          handleSendTelegram(labels[curHour]);
+        }
+      }
+    }, 30000);
+
+    return () => clearInterval(watchdogInterval);
+  }, [handleSendTelegram]);
+
   // Fetch 8 charts for active symbol
   const fetchCharts = useCallback(async (symbol: string, timePeriod: string) => {
     setLoadingCharts(true);
@@ -418,35 +519,74 @@ export default function HedgeFundBuyPage() {
               Pertumbuhan Minat Terbuka (OI), Tarif Pendanaan negatif, dan Basis Futures.
             </p>
 
-            <div className="pt-2 flex flex-wrap items-center gap-4">
-              <button
-                onClick={handleScan}
-                disabled={scanning}
-                className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm md:text-base rounded-2xl shadow-[0_0_30px_rgba(245,158,11,0.25)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-              >
-                {scanning ? <RefreshCcw className="h-5 w-5 animate-spin" /> : <Zap className="h-5 w-5 fill-slate-950" />}
-                {scanning ? "Menganalisis 8 Derivatif..." : "Run Pro Deep Scan"}
-              </button>
+              <div className="pt-2 flex flex-wrap items-center gap-3">
+                <button
+                  onClick={handleScan}
+                  disabled={scanning}
+                  className="inline-flex items-center gap-3 px-7 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm md:text-base rounded-2xl shadow-[0_0_30px_rgba(245,158,11,0.25)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                >
+                  {scanning ? <RefreshCcw className="h-5 w-5 animate-spin" /> : <Zap className="h-5 w-5 fill-slate-950" />}
+                  {scanning ? "Menganalisis 8 Derivatif..." : "Run Pro Deep Scan"}
+                </button>
 
-              <button
-                onClick={fetchSignals}
-                disabled={loading}
-                className="inline-flex items-center gap-2 px-5 py-4 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-bold text-sm rounded-2xl border border-slate-700 transition-all"
-              >
-                <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                Refresh Data
-              </button>
+                <button
+                  onClick={() => handleSendTelegram()}
+                  disabled={sendingTelegram || scanning}
+                  className="inline-flex items-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white font-black text-sm rounded-2xl shadow-[0_0_20px_rgba(14,165,233,0.3)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                  title="Kirim snapshot data Hedge Fund Buy Radar terbaru langsung ke bot Telegram"
+                >
+                  {sendingTelegram ? (
+                    <RefreshCcw className="h-4 w-4 animate-spin text-white" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {sendingTelegram ? "Mengirim Telegram..." : "Kirim ke Telegram"}
+                </button>
 
-              <label className="flex items-center gap-2.5 px-4 py-3 bg-slate-900/80 border border-slate-800 rounded-2xl text-xs font-semibold text-slate-400 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  className="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-amber-500/20"
-                />
-                Auto-Refresh (60s)
-              </label>
-            </div>
+                <button
+                  onClick={fetchSignals}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 px-4 py-3.5 bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-bold text-sm rounded-2xl border border-slate-700 transition-all"
+                >
+                  <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                  Refresh
+                </button>
+
+                <label className="flex items-center gap-2 px-3.5 py-3 bg-slate-900/80 border border-slate-800 rounded-2xl text-xs font-semibold text-slate-400 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoRefresh}
+                    onChange={(e) => setAutoRefresh(e.target.checked)}
+                    className="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-amber-500/20"
+                  />
+                  Auto-Refresh (60s)
+                </label>
+              </div>
+
+              {/* Telegram Auto Scheduler Information Badge */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-sky-500/10 text-sky-300 border border-sky-500/20 backdrop-blur-sm">
+                  <Clock className="h-3.5 w-3.5 text-sky-400" />
+                  <span>Jadwal Auto Telegram: <strong className="text-white font-bold">07:00, 13:00, 20:00 WIB</strong></span>
+                </div>
+                {nextTelegramSession.label && (
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-900/90 text-slate-300 border border-slate-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Berikutnya: <strong className="text-emerald-400">{nextTelegramSession.label}</strong> ({nextTelegramSession.text})</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Status Banner when user clicks 'Kirim ke Telegram' */}
+              {telegramStatusMsg && (
+                <div className={`p-3 rounded-xl text-xs font-bold border transition-all animate-fadeIn ${
+                  telegramStatusMsg.includes('✅') 
+                    ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-300' 
+                    : 'bg-rose-950/70 border-rose-500/50 text-rose-300'
+                }`}>
+                  {telegramStatusMsg}
+                </div>
+              )}
           </div>
 
           {/* Quick Alpha Pick Widget */}
