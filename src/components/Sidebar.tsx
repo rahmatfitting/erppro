@@ -402,6 +402,11 @@ export const menuData: MenuSection[] = [
         icon: Crosshair,
       },
       {
+        title: "Hedge Fund Buy Radar",
+        href: "/crypto/hedgefund-buy",
+        icon: ShieldCheck,
+      },
+      {
         title: "Hedge Fund Screener",
         href: "/crypto/hedge",
         icon: Crown,
