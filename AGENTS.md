@@ -78,16 +78,50 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 - **Penyesuaian Sistem:**
   - File [binanceOrder.ts](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) & [route.ts](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/order/route.ts) menerima parameter `stopLoss` dan `takeProfit` bernilai `null`. Order pasar utama tetap tereksekusi instan di Binance tanpa mengirimkan Algo Order SL/TP yang dinonaktifkan.
 
+### [2026-09-14] - Pengiriman Data Terjadwal ke Telegram (07:00, 13:00, 20:00 WIB)
+
+#### 1. Format Laporan Kuantitatif Telegram Institusional
+- **Deskripsi:** Menghasilkan pesan berkala otomatis yang merangkum kondisi pasar derivatif koin teratas dari Hedge Fund Buy Radar.
+- **Isi Laporan Telegram:**
+  - **Identitas Sesi:** Penanda sesi spesifik (`07:00 WIB Sesi Pagi`, `13:00 WIB Sesi Siang`, `20:00 WIB Sesi Malam`, atau `Update Manual`).
+  - **Ringkasan Analisis:** Total koin dipindai dan jumlah koin berkonvinsi tinggi (*High Conviction* Skor ≥ 75).
+  - **Top 5 Rekomendasi Buy Smart Money:**
+    - Nama koin, skor alpha (0–100), dan status konvinsi (*High Conviction / Moderate Buy / Watchlist*).
+    - Setup institusional (*Whale Accumulation, Short Squeeze Trap, Smart Money Breakout, Stealth Dip Buying*).
+    - Harga terkini dan persentase perubahan 24 jam.
+    - Rasio posisi modal paus vs ritel (*Whale Pos Ratio* & *Whale Long %*).
+    - Rasio dominasi Taker Buy agresif (*Taker Buy/Sell Ratio*).
+    - Tarif pendanaan (*Funding Rate*) dan fluktuasi Minat Terbuka (*OI Change %*).
+    - Blueprint perdagangan terukur: Zona Masuk (*Entry Zone*), Stop Loss (-2.2%), Take Profit 1 (+4.5% 1:2 R:R), dan Take Profit 2 (+8.0% 1:3.5 R:R).
+  - **Fallback Pasar Konsolidasi:** Jika pasar sedang tenang (belum ada koin dengan skor ≥ 75), sistem tetap mengirimkan Top 5 ranking tertinggi saat itu disertai status konsolidasi pasar, sehingga pengguna tetap memperoleh data komprehensif pada setiap jam jadwal.
+
+#### 2. Background Cron Service (`cron_hedgefund_buy.js` & `run_hedgefund_buy_cron.bat`)
+- **Deskripsi:** Layanan background mandiri berbasis Node.js yang berjalan di Windows pengguna (mengikuti pola `cron_hedge.js` / `cron_trader.js`).
+- **Mekanisme Kerja:**
+  - Memantau jam lokal (WIB) setiap 30 detik.
+  - Saat waktu menunjukkan **07:00**, **13:00**, atau **20:00 WIB** (pada jendela menit 00–02), script memicu scan derivatif dan mengirimkan pesan laporan ke bot Telegram via API.
+  - Dilengkapi mekanisme *deduplication tracking* (`lastSentSlot`) untuk memastikan laporan hanya terkirim tepat 1 kali per slot sesi.
+  - Dilengkapi argumen baris perintah `--now` atau `--test` untuk pengujian langsung kapan saja.
+
+#### 3. Fitur Antarmuka UI (`/crypto/hedgefund-buy`)
+- **Tombol "Kirim ke Telegram":** Tombol aksi instan pada toolbar hero header untuk mengirimkan snapshot data radar terbaru ke bot Telegram kapan saja dengan satu klik.
+- **Badge Status Jadwal:** Menampilkan info jadwal aktif `07:00, 13:00, 20:00 WIB` beserta hitung mundur jadwal sesi berikutnya (*countdown timer*).
+- **Client-Side Watchdog:** Jika tab browser sedang dibuka oleh trader pada jam 07:00, 13:00, atau 20:00 WIB, browser akan otomatis memicu pengiriman data ke Telegram dengan sinkronisasi `localStorage` untuk mencegah pengiriman berulang.
+
 ---
 
 ## 🛠️ File-File Terkait
 
 | File Path | Peran & Tanggung Jawab |
 |-----------|------------------------|
-| [`src/app/crypto/hedgefund-buy/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/hedgefund-buy/page.tsx) | Halaman antarmuka Radar, Tabel Freeze Header, Terminal 8 Chart, dan Modal 1-Click Order. |
+| [`src/app/crypto/hedgefund-buy/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/hedgefund-buy/page.tsx) | Halaman antarmuka Radar, Tabel Freeze Header, Terminal 8 Chart, Tombol "Kirim ke Telegram", dan Watchdog Scheduler. |
+| [`src/app/api/crypto/hedgefund-buy/scan/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/scan/route.ts) | API Endpoint GET & POST untuk scan pasar, pembentukan format pesan Telegram institusional, dan dispatch notifikasi. |
+| [`cron_hedgefund_buy.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_hedgefund_buy.js) | Standalone Node.js background runner untuk pemantauan jadwal 07:00, 13:00, 20:00 WIB dan trigger API. |
+| [`run_hedgefund_buy_cron.bat`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/run_hedgefund_buy_cron.bat) | Windows Batch file untuk menjalankan cron scheduler Hedge Fund Buy dengan 1-click. |
 | [`src/lib/binanceOrder.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) | Core Engine eksekusi Binance Futures, sanitasi API Key, precision query, dan Algo Order SL/TP. |
 | [`src/app/api/crypto/hedgefund-buy/order/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/order/route.ts) | API Endpoint POST untuk validasi payload order (Notional USD, Leverage, Optional SL/TP). |
 | [`src/lib/hedgefundBuy.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/hedgefundBuy.ts) | Library kuantitatif scoring Alpha (0–100), setup classifier, dan builder 8 seri chart derivatif. |
 | [`src/app/api/crypto/hedgefund-buy/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/route.ts) | API Endpoint untuk mengambil daftar sinyal koin derivatif Binance. |
 | [`src/app/api/crypto/hedgefund-buy/detail/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/detail/route.ts) | API Endpoint untuk mengambil 8 seri data grafik historis Binance Futures. |
 | [`src/middleware.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/middleware.ts) | Whitelist rute API `/api/crypto/hedgefund-buy` agar dapat diakses tanpa hambatan sesi. |
+
