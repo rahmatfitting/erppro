@@ -58,6 +58,7 @@ import {
   HardHat,
   Briefcase,
   PlusCircle,
+  Repeat,
   Home
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -465,6 +466,11 @@ export const menuData: MenuSection[] = [
         title: "Auto FVG Trading Bot",
         href: "/crypto/bot",
         icon: Bot,
+      },
+      {
+        title: "Bot Compound Future",
+        href: "/crypto/compound-bot",
+        icon: Repeat,
       },
     ],
   },

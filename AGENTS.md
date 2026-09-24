@@ -108,20 +108,70 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 - **Badge Status Jadwal:** Menampilkan info jadwal aktif `07:00, 13:00, 20:00 WIB` beserta hitung mundur jadwal sesi berikutnya (*countdown timer*).
 - **Client-Side Watchdog:** Jika tab browser sedang dibuka oleh trader pada jam 07:00, 13:00, atau 20:00 WIB, browser akan otomatis memicu pengiriman data ke Telegram dengan sinkronisasi `localStorage` untuk mencegah pengiriman berulang.
 
+### [2026-09-24] - Bot Compound Future (BUY Only) Otomatis
+
+#### 1. Menu Baru: Bot Compound Future (`/crypto/compound-bot`)
+- **Deskripsi:** Menu otomasi akumulasi posisi beli (Long Only) di Binance Futures USDT-M dengan strategi reinvesting profit (*compounding*).
+- **Mekanisme Kerja:**
+  - Trader memilih pair futures (misal `BTCUSDT`, `ETHUSDT`, `SOLUSDT`).
+  - Fitur **Cek Pair**: Memvalidasi status kontrak di Binance Futures (`exchangeInfo`, filter `minNotional`, `stepSize`, `minQty`, ticker 24 jam).
+  - Trader menginput:
+    - **Ukuran Posisi Notional (USD):** Nilai kontrak total di pasar (misal `$100 USD`).
+    - **Leverage:** Pengungkit modal margin (misal `20x`, dengan margin terpakai hanya `100 / 20 = $5.00 USDT`).
+    - **Target Compound (%):** Target persentase kenaikan harga per siklus (misal `+1.0%`).
+    - **Stop Loss Opsional (%):** Proteksi modal jika harga turun tajam (dapat diaktifkan atau dinonaktifkan "Tanpa SL").
+  - **Siklus Compound Otomatis:**
+    1. Saat bot di-**START**, sistem mengeksekusi order MARKET BUY perdana di Binance.
+    2. Saat harga naik mencapai target (+1%): Sistem mengeksekusi MARKET SELL `reduceOnly: true` untuk menutup posisi dan mengunci profit.
+    3. Sistem menghitung nominal notional berikutnya:
+       $$\text{Next Notional} = \text{Current Notional} \times (1 + \frac{\text{compound\_percent}}{100})$$
+       *(Contoh: $100 USD ➔ $101.00 USD, siklus berikutnya $101.00 ➔ $102.01 USD).*
+    4. Langsung membuka order MARKET BUY baru dengan modal ter-compound tersebut pada harga pasar saat itu.
+    5. Siklus berulang secara berkesinambungan (`Cycle #1`, `Cycle #2`, `Cycle #3`, dst.).
+  - Saat tombol **STOP** ditekan:
+    - Status bot diubah menjadi `STOPPED`.
+    - Pilihan konfirmasi: Tutup posisi aktif sekarang di Binance via Market Sell atau biarkan posisi tetap terbuka.
+
+#### 2. Fitur Monitoring & Log Real-time
+- **Live Active Position Card:**
+  - Menampilkan Siklus aktif, Pair, Leverage, Entry Price, Live Market Price, Target Exit Price, dan Unrealized PnL ($ dan % ROE).
+  - Progress bar dinamis menuju target exit (+1.00%).
+- **Interactive Terminal Log Box:**
+  - Jendela konsol monospace auto-scroll dengan penanda kategori warna: `[START]`, `[BUY]`, `[TARGET_HIT]`, `[COMPOUND]`, `[CLOSE]`, `[STOP]`, `[ERROR]`.
+  - Tombol untuk membersihkan riwayat log (*Clear Logs*).
+- **Tabel Riwayat Siklus (Cycle History):**
+  - Merekam setiap siklus perdagangan: Siklus #, Pair, Status (`TARGET_HIT`, `STOPPED`, `SL_HIT`), Notional Masuk ➔ Keluar, Entry Price ➔ Exit Price, Realized PnL ($ dan %), dan Timestamp eksekusi.
+
+#### 3. Dual Execution Engine (Browser Poller & 24/7 Background Runner)
+- **Browser Poller:** Otomatis melakukan polling `/api/crypto/compound-bot/tick` setiap 3 detik selama tab browser dibuka oleh trader.
+- **Standalone Background Runner (`cron_compound_bot.js` & `run_compound_bot.bat`):**
+  - Menjalankan polling 24/7 di background terminal Windows tanpa perlu membuka browser secara terus-menerus.
+
 ---
 
 ## 🛠️ File-File Terkait
 
 | File Path | Peran & Tanggung Jawab |
 |-----------|------------------------|
+| [`src/app/crypto/compound-bot/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/compound-bot/page.tsx) | Antarmuka pengguna Bot Compound Future: Input parameter, Tombol Cek Pair, START & STOP, Card Monitoring Live, Terminal Log, dan Tabel Riwayat Siklus. |
+| [`src/lib/compoundBot.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/compoundBot.ts) | Core Engine Bot Compound: Inisialisasi tabel MySQL (`compound_bot_config`, `compound_bot_cycles`, `compound_bot_logs`), state management, kalkulasi compound, tick engine, dan validasi pair. |
+| [`src/app/api/crypto/compound-bot/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/route.ts) | API Endpoint GET status bot, konfigurasi, riwayat siklus, dan log eksekusi. |
+| [`src/app/api/crypto/compound-bot/validate/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/validate/route.ts) | API Endpoint GET untuk validasi pair ke Binance Futures USDT-M. |
+| [`src/app/api/crypto/compound-bot/start/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/start/route.ts) | API Endpoint POST untuk memulai bot dan mengeksekusi order BUY perdana di Binance. |
+| [`src/app/api/crypto/compound-bot/stop/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/stop/route.ts) | API Endpoint POST untuk menghentikan bot dan opsional menutup posisi pasar. |
+| [`src/app/api/crypto/compound-bot/tick/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/tick/route.ts) | API Endpoint GET & POST untuk evaluasi harga real-time, eksekusi close saat target hit, dan pembukaan order compound baru. |
+| [`src/app/api/crypto/compound-bot/clear-logs/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/clear-logs/route.ts) | API Endpoint POST untuk membersihkan tabel log aktivitas bot. |
+| [`cron_compound_bot.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_compound_bot.js) | Standalone Node.js background runner untuk eksekusi engine compound 24/7. |
+| [`run_compound_bot.bat`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/run_compound_bot.bat) | File batch Windows 1-click launcher untuk menjalankan daemon background compound bot. |
+| [`src/lib/binanceOrder.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) | Fungsi eksekusi order Binance Futures: `executeCompoundBuyOrder` dan `executeCompoundCloseOrder`. |
+| [`src/components/Sidebar.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/components/Sidebar.tsx) | Menu navigasi "Bot Compound Future" di bagian Crypto Intelligence. |
+| [`src/middleware.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/middleware.ts) | Whitelist rute `/api/crypto/compound-bot` agar dapat diakses tanpa hambatan sesi. |
 | [`src/app/crypto/hedgefund-buy/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/hedgefund-buy/page.tsx) | Halaman antarmuka Radar, Tabel Freeze Header, Terminal 8 Chart, Tombol "Kirim ke Telegram", dan Watchdog Scheduler. |
 | [`src/app/api/crypto/hedgefund-buy/scan/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/scan/route.ts) | API Endpoint GET & POST untuk scan pasar, pembentukan format pesan Telegram institusional, dan dispatch notifikasi. |
 | [`cron_hedgefund_buy.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_hedgefund_buy.js) | Standalone Node.js background runner untuk pemantauan jadwal 07:00, 13:00, 20:00 WIB dan trigger API. |
 | [`run_hedgefund_buy_cron.bat`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/run_hedgefund_buy_cron.bat) | Windows Batch file untuk menjalankan cron scheduler Hedge Fund Buy dengan 1-click. |
-| [`src/lib/binanceOrder.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) | Core Engine eksekusi Binance Futures, sanitasi API Key, precision query, dan Algo Order SL/TP. |
-| [`src/app/api/crypto/hedgefund-buy/order/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/order/route.ts) | API Endpoint POST untuk validasi payload order (Notional USD, Leverage, Optional SL/TP). |
 | [`src/lib/hedgefundBuy.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/hedgefundBuy.ts) | Library kuantitatif scoring Alpha (0–100), setup classifier, dan builder 8 seri chart derivatif. |
 | [`src/app/api/crypto/hedgefund-buy/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/route.ts) | API Endpoint untuk mengambil daftar sinyal koin derivatif Binance. |
 | [`src/app/api/crypto/hedgefund-buy/detail/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/detail/route.ts) | API Endpoint untuk mengambil 8 seri data grafik historis Binance Futures. |
-| [`src/middleware.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/middleware.ts) | Whitelist rute API `/api/crypto/hedgefund-buy` agar dapat diakses tanpa hambatan sesi. |
+
 
