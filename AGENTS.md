@@ -156,12 +156,68 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
   - Mengevaluasi seluruh koin aktif secara simultan setiap 3 detik.
   - Menampilkan ringkasan status masing-masing koin di terminal background.
 
+### [2026-09-24] - Crypto Narrative & On-Chain Opportunity Monitor
+
+#### 1. Menu Baru: Crypto Narrative & On-Chain Opportunity Monitor (`/crypto/narrative-onchain`)
+- **Deskripsi:** Sistem kuantitatif multi-layer untuk memindai pasar crypto secara otomatis, mengidentifikasi narasi yang sedang booming (*emerging/hot narratives*), menemukan koin di dalam narasi tersebut, memvalidasi dengan metrik on-chain, memvalidasi struktur pasar & derivatif, menghitung **Opportunity Score (0–100)**, mengklasifikasikan bukti sinyal (*evidence signal*), dan menyusun watchlist prioritas serta pengiriman alert.
+- **Tujuan Kunci:** Bukan meramal harga secara spekulatif, melainkan menemukan koin dengan perpaduan momentum perhatian pasar, lonjakan adopsi on-chain, akumulasi *smart money/whale*, ekspansi likuiditas & TVL, derivatif sehat (*non-crowded*), serta risiko unlock supply terkontrol.
+
+#### 2. Arsitektur Evaluasi 5 Layer Kuantitatif (Opportunity Score 0–100)
+- **Layer 1: On-Chain Adoption (Bobot 30%)**
+  - Pertumbuhan Alamat Aktif (*Active Address Growth 7D & 30D*).
+  - Pertumbuhan Alamat Baru (*New Address Growth 30D* - indikator inflow pengguna riil).
+  - Aktivitas & Net Flow Whale (*Whale Accumulation vs Distribution*).
+  - Aliran Bursa (*Exchange Netflow*: Net Outflow = akumulasi, Net Inflow = potensi tekanan jual).
+  - Distribusi & Konsentrasi Holder (*Top 10 Holder Concentration Risk*).
+  - Pertumbuhan TVL (*Total Value Locked*) dan Rasio TVL/Market Cap.
+  - Pendapatan Protokol (*Protocol Revenue & Fees Growth 30D* - pembeda hype vs penggunaan riil).
+- **Layer 2: Narrative & Social Attention (Bobot 20%)**
+  - Pertumbuhan Sosial 24 Jam (*Social Mention Growth*).
+  - Kecepatan Narasi (*Narrative Velocity %* - deteksi dini pergeseran atensi pasar).
+  - Frekuensi Berita & Liputan Media (*News Count & Media Momentum*).
+  - Tren Pencarian (*Search Trend Score*).
+- **Layer 3: Market Momentum (Bobot 15%) & Liquidity (Bobot 15%)**
+  - Volume Perdagangan 24 Jam dan Volume 7D.
+  - Kekuatan Tren Harga (1h, 24h, 7d, 30d) & Jarak dari ATH (*All-Time High*).
+  - Rasio Likuiditas: Volume / Market Cap untuk memastikan koin mudah diperdagangkan (*liquid*).
+- **Layer 4: Derivatives Health (Bobot 10%)**
+  - Pertumbuhan Minat Terbuka (*Open Interest / Market Cap*).
+  - Tarif Pendanaan (*Funding Rate*): Normal vs Crowded Long vs Negative Squeeze.
+  - Likuidasi 24 Jam (Dominasi Short Liquidation sebagai bukti *short squeeze*).
+  - Penalti Crowding: Jika Funding Rate > 0.05% atau OI naik jauh melebihi pergerakan spot, skor derivatif dipangkas.
+- **Layer 5: Tokenomics & Supply Unlock Risk (Bobot 10%)**
+  - Jadwal Unlock Terdekat (*Next Unlock Date*), Jumlah Koin (% Circulating Supply), dan Estimasi Nilai USD.
+  - Klasifikasi Risiko Unlock: `LOW` (< 5%), `MEDIUM` (5–15%), `HIGH` (> 15%).
+  - Rasio Sirkulasi dan Evaluasi Valuasi Terdilusi Penuh (*MC / FDV Ratio*).
+
+#### 3. Klasifikasi Sinyal Evidence (Evidence Classification)
+- 🟢 **`EARLY_ACCUMULATION`**: On-chain ↑, Whale Accumulation ↑, Volume ↑, Social ↑, namun harga masih relatif stabil (kondisi paling ideal untuk riset sebelum harga terbang).
+- 🔵 **`NARRATIVE_BREAKOUT`**: Social ↑↑, Media News ↑↑, Volume ↑↑, On-chain ↑, dan Harga telah mengonfirmasi breakout.
+- 🟠 **`CROWDED_RISK`**: Harga ↑↑, Social Hype ↑↑, OI ↑↑, Funding Rate ekstrem tinggi (risiko pembalikan arah / long squeeze).
+- 🔴 **`DISTRIBUTION_WARNING`**: Harga stagnan/naik, Exchange Inflow besar, Whale Net Outflow/Selling, OI turun (peringatan distribusi smart money).
+
+#### 4. Fitur Antarmuka UI Komprehensif (`/crypto/narrative-onchain`)
+- **Macro Market Regime Header:** Menampilkan Status Rezim Pasar (`SELECTIVE RISK-ON`, `BROAD RISK-ON`, `DEFENSIVE`), Dominasi BTC (%), Breadth Altcoin, Total Narasi Aktif, dan Jumlah Sinyal Akumulasi.
+- **4 Tab Sub-View Interaktif:**
+  1. *Opportunity Watchlist:* Tabel komprehensif peringkat koin dengan skor 0–100, badge sinyal, metrik on-chain, indikator unlock, dan tombol aksi detail/alert.
+  2. *Hot Narratives Leaderboard:* Pemetaan narasi crypto 2026 (AI Agents, RWA, Perp DEX, DePIN, BTCFi, Stablecoin, ZK/Privacy, Meme) dengan skor momentum, velocity, dan pertumbuhan sosial/volume.
+  3. *On-Chain Radar:* Matriks komparasi metrik on-chain mendalam: Active Address Growth, Whale Netflow, Exchange Netflow, TVL, dan Protocol Revenue.
+  4. *Unlock & Catalyst Calendar:* Kalender peristiwa katalis penting (Mainnet, Upgrade, Listing, Staking, Token Unlock) lengkap dengan tingkat urgensi (*CRITICAL / HIGH*).
+- **Drawer Filter Scanner Kustom:** Memungkinkan trader menyaring koin berdasarkan batasan Market Cap, Volume Minimal, Pertumbuhan Alamat Aktif, Batas Maksimal Funding Rate, dan Batas Risiko Unlock Supply.
+- **Modal Deep Dive 5 Layer:** Analisis rincian 5 layer per koin secara mendalam dengan visual progress bar skor, data finansial on-chain, status leverage derivatif, dan profil tokenomics.
+- **Integrasi Telegram Alert:** Tombol 1-click kirim alert laporan terstruktur ke bot Telegram atau webhook notifikasi.
+
 ---
 
 ## 🛠️ File-File Terkait
 
 | File Path | Peran & Tanggung Jawab |
 |-----------|------------------------|
+| [`src/app/crypto/narrative-onchain/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/narrative-onchain/page.tsx) | Antarmuka pengguna utama Dashboard Crypto Narrative & On-Chain Monitor: Regime Header, 4 Sub-View Tab, Modal Deep Dive 5 Layer, Filter Scanner Drawer, dan Alert Sender. |
+| [`src/lib/narrativeOnchain.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/narrativeOnchain.ts) | Core Engine Kuantitatif: Auto-migration tabel MySQL (`crypto_narratives`, `crypto_narrative_coins`, `crypto_narrative_catalysts`, `crypto_narrative_alerts`), formula Opportunity Score 5-layer, klasifikasi sinyal, sinkronisasi data Binance & DefiLlama, dan formatter pesan Telegram. |
+| [`src/app/api/crypto/narrative-onchain/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/narrative-onchain/route.ts) | API Endpoint GET untuk mengambil seluruh dataset monitor: makro rezim, leaderboard narasi, daftar koin ter-skor, kalender katalis, dan alert terbaru. |
+| [`src/app/api/crypto/narrative-onchain/scan/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/narrative-onchain/scan/route.ts) | API Endpoint POST untuk menjalankan scan ulang manual, refresh metrik pasar live Binance & DefiLlama, dan kalkulasi ulang skor. |
+| [`src/app/api/crypto/narrative-onchain/alert/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/narrative-onchain/alert/route.ts) | API Endpoint POST untuk menyiarkan sinyal koin terpilih atau ringkasan hot narrative langsung ke bot Telegram. |
 | [`src/app/crypto/compound-bot/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/compound-bot/page.tsx) | Antarmuka pengguna Bot Compound Future: Input parameter, Tombol Cek Pair, START & STOP, Card Monitoring Live, Terminal Log, dan Tabel Riwayat Siklus. |
 | [`src/lib/compoundBot.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/compoundBot.ts) | Core Engine Bot Compound: Inisialisasi tabel MySQL (`compound_bot_config`, `compound_bot_cycles`, `compound_bot_logs`), state management, kalkulasi compound, tick engine, dan validasi pair. |
 | [`src/app/api/crypto/compound-bot/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/route.ts) | API Endpoint GET status bot, konfigurasi, riwayat siklus, dan log eksekusi. |
@@ -173,8 +229,8 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 | [`cron_compound_bot.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_compound_bot.js) | Standalone Node.js background runner untuk eksekusi engine compound 24/7. |
 | [`run_compound_bot.bat`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/run_compound_bot.bat) | File batch Windows 1-click launcher untuk menjalankan daemon background compound bot. |
 | [`src/lib/binanceOrder.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) | Fungsi eksekusi order Binance Futures: `executeCompoundBuyOrder` dan `executeCompoundCloseOrder`. |
-| [`src/components/Sidebar.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/components/Sidebar.tsx) | Menu navigasi "Bot Compound Future" di bagian Crypto Intelligence. |
-| [`src/middleware.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/middleware.ts) | Whitelist rute `/api/crypto/compound-bot` agar dapat diakses tanpa hambatan sesi. |
+| [`src/components/Sidebar.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/components/Sidebar.tsx) | Menu navigasi "Bot Compound Future" & "Narrative & On-Chain Monitor" di bagian Crypto Intelligence. |
+| [`src/middleware.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/middleware.ts) | Whitelist rute `/api/crypto/compound-bot` dan `/api/crypto/narrative-onchain` agar dapat diakses tanpa hambatan sesi. |
 | [`src/app/crypto/hedgefund-buy/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/hedgefund-buy/page.tsx) | Halaman antarmuka Radar, Tabel Freeze Header, Terminal 8 Chart, Tombol "Kirim ke Telegram", dan Watchdog Scheduler. |
 | [`src/app/api/crypto/hedgefund-buy/scan/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/scan/route.ts) | API Endpoint GET & POST untuk scan pasar, pembentukan format pesan Telegram institusional, dan dispatch notifikasi. |
 | [`cron_hedgefund_buy.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_hedgefund_buy.js) | Standalone Node.js background runner untuk pemantauan jadwal 07:00, 13:00, 20:00 WIB dan trigger API. |
@@ -182,5 +238,6 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 | [`src/lib/hedgefundBuy.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/hedgefundBuy.ts) | Library kuantitatif scoring Alpha (0–100), setup classifier, dan builder 8 seri chart derivatif. |
 | [`src/app/api/crypto/hedgefund-buy/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/route.ts) | API Endpoint untuk mengambil daftar sinyal koin derivatif Binance. |
 | [`src/app/api/crypto/hedgefund-buy/detail/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/detail/route.ts) | API Endpoint untuk mengambil 8 seri data grafik historis Binance Futures. |
+
 
 

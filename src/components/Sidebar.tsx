@@ -59,6 +59,7 @@ import {
   Briefcase,
   PlusCircle,
   Repeat,
+  Flame,
   Home
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -471,6 +472,11 @@ export const menuData: MenuSection[] = [
         title: "Bot Compound Future",
         href: "/crypto/compound-bot",
         icon: Repeat,
+      },
+      {
+        title: "Narrative & On-Chain Monitor",
+        href: "/crypto/narrative-onchain",
+        icon: Flame,
       },
     ],
   },

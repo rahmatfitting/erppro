@@ -118,6 +118,19 @@ export async function ensureCompoundBotTables() {
     )
   `);
 
+  // Auto-migration for existing tables (e.g. VPS database upgrade to multi-coin):
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config MODIFY id INT AUTO_INCREMENT`);
+  } catch (alterErr: any) {
+    // ignore if already auto_increment
+  }
+
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD UNIQUE KEY uq_symbol (symbol)`);
+  } catch (keyErr: any) {
+    // ignore if index already exists
+  }
+
   // Ensure default BTCUSDT coin exists if table completely empty
   const existing: any = await executeQuery(`SELECT count(*) as count FROM compound_bot_config`);
   if (!existing || existing[0].count === 0) {
