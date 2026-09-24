@@ -142,10 +142,19 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 - **Tabel Riwayat Siklus (Cycle History):**
   - Merekam setiap siklus perdagangan: Siklus #, Pair, Status (`TARGET_HIT`, `STOPPED`, `SL_HIT`), Notional Masuk ➔ Keluar, Entry Price ➔ Exit Price, Realized PnL ($ dan %), dan Timestamp eksekusi.
 
-#### 3. Dual Execution Engine (Browser Poller & 24/7 Background Runner)
-- **Browser Poller:** Otomatis melakukan polling `/api/crypto/compound-bot/tick` setiap 3 detik selama tab browser dibuka oleh trader.
-- **Standalone Background Runner (`cron_compound_bot.js` & `run_compound_bot.bat`):**
-  - Menjalankan polling 24/7 di background terminal Windows tanpa perlu membuka browser secara terus-menerus.
+#### 4. Pembaruan Multi-Coin (Multi-Instance Compounding)
+- **Deskripsi:** Peningkatan arsitektur dari single-coin menjadi **Multi-Coin** di mana trader dapat menambahkan banyak koin sekaligus (misal `BTCUSDT`, `ETHUSDT`, `SOLUSDT`).
+- **Mekanisme Independen:**
+  - Setiap koin memiliki konfigurasi masing-masing (Notional USD, Leverage, Target Compound %, dan Stop Loss).
+  - Setiap koin berjalan mandiri: saat salah satu koin menyentuh target (+1%), hanya koin tersebut yang ditutup dan di-reopen dengan modal bertambah tanpa mengganggu koin lain.
+- **Fitur UI & Kontrol Multi-Coin:**
+  - Tombol **"+ Tambah Koin Baru"**: Modal konfigurasi koin baru lengkap dengan validasi live Binance.
+  - **Grid Card Multi-Koin**: Setiap koin memiliki kartu pemantauannya sendiri lengkap dengan live price, target exit, progress bar target, PnL, tombol START/STOP per koin, dan tombol Hapus.
+  - **Tombol "STOP ALL"**: Opsi sekali klik untuk menghentikan seluruh bot koin yang sedang aktif.
+  - **Filter Koin**: Filter log terminal dan riwayat siklus berdasarkan koin tertentu atau semua koin.
+- **Background Runner Multi-Coin (`cron_compound_bot.js`):**
+  - Mengevaluasi seluruh koin aktif secara simultan setiap 3 detik.
+  - Menampilkan ringkasan status masing-masing koin di terminal background.
 
 ---
 

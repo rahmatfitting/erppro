@@ -5,9 +5,13 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
+    let symbol = 'ALL';
     let closePosition = true;
     try {
       const body = await req.json();
+      if (body.symbol) {
+        symbol = body.symbol.toUpperCase().trim();
+      }
       if (body.closePosition !== undefined) {
         closePosition = Boolean(body.closePosition);
       }
@@ -15,10 +19,12 @@ export async function POST(req: NextRequest) {
       // json parse error or empty body
     }
 
-    const result = await stopCompoundBot(closePosition);
+    const result = await stopCompoundBot({ symbol, closeMarketPosition: closePosition });
     return NextResponse.json({
       success: true,
-      message: 'Bot Compound Future berhasil dihentikan.',
+      message: symbol === 'ALL' 
+        ? 'Seluruh bot compound berhasil dihentikan.' 
+        : `Bot compound untuk ${symbol} berhasil dihentikan.`,
       data: result
     });
   } catch (error: any) {

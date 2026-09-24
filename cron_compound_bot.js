@@ -3,14 +3,13 @@ const axios = require('axios');
 
 const API_BASE = process.env.APP_URL || 'http://localhost:3000';
 const TICK_URL = `${API_BASE}/api/crypto/compound-bot/tick`;
-const STATE_URL = `${API_BASE}/api/crypto/compound-bot`;
 
 let isTicking = false;
 let lastIdleLog = 0;
 
 console.log('====================================================');
-console.log('🤖 FUTURE COMPOUND BOT - 24/7 BACKGROUND ENGINE');
-console.log('🎯 BUY Only Auto-Compounding Runner');
+console.log('🤖 MULTI-COIN FUTURE COMPOUND BOT - 24/7 RUNNER');
+console.log('🎯 BUY Only Independent Multi-Pair Auto-Compounding');
 console.log(`🔗 Target API: ${TICK_URL}`);
 console.log('====================================================\n');
 
@@ -26,32 +25,35 @@ async function runTick() {
       const d = data.data;
       const now = new Date().toLocaleTimeString('id-ID');
 
-      if (d.status === 'MONITORING') {
-        const pnlSign = d.unrealizedPnl >= 0 ? '+' : '';
-        const progressStr = (d.progressToTarget || 0).toFixed(1);
-        console.log(
-          `[${now}] 🟢 [Cycle #${d.cycleNumber}] ${d.symbol} Live: $${d.currentPrice?.toLocaleString()} | Entry: $${d.entryPrice} | Target: $${d.targetPrice} | PnL: ${pnlSign}$${(d.unrealizedPnl || 0).toFixed(2)} | Progres: ${progressStr}%`
-        );
-      } else if (d.status === 'COMPOUND_EXECUTED') {
-        console.log('\n====================================================');
-        console.log(`[${now}] 🎯 TARGET HIT & COMPOUNDED!`);
-        console.log(`💰 Cycle #${d.previousCycle} Selesai! Realized Profit: +$${d.realizedPnl.toFixed(2)} USDT`);
-        console.log(`🚀 Cycle #${d.newCycle} Dibuka dengan Modal Ter-Compound: $${d.nextNotional} USD!`);
-        console.log(`📈 New Entry: $${d.nextEntryPrice} | New Target: $${d.nextTargetPrice}`);
-        console.log('====================================================\n');
-      } else if (d.status === 'STOP_LOSS_HIT') {
-        console.log(`\n[${now}] ⚠️ STOP LOSS HIT! Posisi ditutup @ $${d.exitPrice}. Bot dihentikan demi proteksi modal.\n`);
-      } else if (d.status === 'IDLE' || d.status === 'NO_OPEN_CYCLE') {
+      if (d.status === 'MONITORING' && Array.isArray(d.coins) && d.coins.length > 0) {
+        for (const coin of d.coins) {
+          if (coin.status === 'MONITORING') {
+            const pnlSign = (coin.unrealizedPnl || 0) >= 0 ? '+' : '';
+            const progressStr = (coin.progressToTarget || 0).toFixed(1);
+            console.log(
+              `[${now}] 🟢 [${coin.symbol} #${coin.cycleNumber}] Live: $${coin.currentPrice?.toLocaleString()} | Entry: $${coin.entryPrice} | Target: $${coin.targetPrice} | PnL: ${pnlSign}$${(coin.unrealizedPnl || 0).toFixed(2)} | Progres: ${progressStr}%`
+            );
+          } else if (coin.status === 'COMPOUND_EXECUTED') {
+            console.log('\n====================================================');
+            console.log(`[${now}] 🎯 [${coin.symbol}] TARGET HIT & RE-COMPOUNDED!`);
+            console.log(`💰 Cycle #${coin.previousCycle} Selesai! Realized Profit: +$${coin.realizedPnl?.toFixed(2)} USDT`);
+            console.log(`🚀 Cycle #${coin.newCycle} Dibuka dengan Modal Baru: $${coin.nextNotional} USD!`);
+            console.log('====================================================\n');
+          } else if (coin.status === 'STOP_LOSS_HIT') {
+            console.log(`\n[${now}] ⚠️ [${coin.symbol}] STOP LOSS HIT! Posisi ditutup @ $${coin.exitPrice}.\n`);
+          }
+        }
+      } else if (d.status === 'IDLE' || d.activeCount === 0) {
         const timeNow = Date.now();
         if (timeNow - lastIdleLog > 30000) {
-          console.log(`[${now}] ⏸️ Bot sedang idle (STOPPED). Menunggu start dari web browser (/crypto/compound-bot)...`);
+          console.log(`[${now}] ⏸️ Semua bot koin sedang idle (STOPPED). Menunggu start dari web browser (/crypto/compound-bot)...`);
           lastIdleLog = timeNow;
         }
       }
     }
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
-      console.error(`[${new Date().toLocaleTimeString('id-ID')}] ❌ Next.js dev server belum berjalan di ${API_BASE}. Menunggu koneksi...`);
+      console.error(`[${new Date().toLocaleTimeString('id-ID')}] ❌ Next.js server belum berjalan di ${API_BASE}. Menunggu koneksi...`);
     } else {
       console.error(`[${new Date().toLocaleTimeString('id-ID')}] Error tick:`, err.message);
     }
