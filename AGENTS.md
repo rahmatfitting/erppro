@@ -156,6 +156,14 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
   - Mengevaluasi seluruh koin aktif secara simultan setiap 3 detik.
   - Menampilkan ringkasan status masing-masing koin di terminal background.
 
+#### 5. Integrasi Perhitungan Harga & PnL Riil dari Binance Futures
+- **Masalah:** Perhitungan teoritis lokal menghasilkan perbedaan angka dengan posisi riil Binance (misal harga entri berbeda akibat penggabungan rata-rata posisi *One-Way Mode*, serta PnL terealisasi berbeda karena belum memperhitungkan komisi/fee bursa dan harga fill riil).
+- **Solusi & Sinkronisasi Live Binance FAPI:**
+  1. **Harga Entri & Ukuran Riil (`/fapi/v2/positionRisk`):** Mengambil `entryPrice`, `positionAmt`, `notional`, `markPrice`, `leverage`, dan `margin` langsung dari akun pengguna di Binance Futures. Target exit (+1.0%) dihitung secara presisi dari harga entri rata-rata riil Binance.
+  2. **Unrealized PnL & ROE% Riil:** Menampilkan `unRealizedProfit` dan persentase ROE langsung dari engine derivatif Binance secara real-time pada card aktif.
+  3. **Realized PnL Asli Siklus Selesai (`/fapi/v1/userTrades`):** Mengambil data eksekusi fill riil dan `realizedPnl` tepat setelah MARKET SELL terisi di Binance, sehingga angka profit siklus di riwayat identik dengan riwayat posisi Binance (termasuk potongan fee transaksi).
+  4. **Indikator Visual:** Menampilkan badge `LIVE BINANCE` dan `REAL` pada card posisi aktif serta tabel riwayat siklus.
+
 ### [2026-09-24] - Crypto Narrative & On-Chain Opportunity Monitor
 
 #### 1. Menu Baru: Crypto Narrative & On-Chain Opportunity Monitor (`/crypto/narrative-onchain`)

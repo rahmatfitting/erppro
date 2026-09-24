@@ -138,26 +138,158 @@ export async function callBinanceFutures(apiKey: string, secret: string, method:
   }
 }
 
-export async function fetchRealPosition(symbol: string) {
+export interface BinanceRealPosition {
+  symbol: string;
+  positionAmt: number;
+  amt: number;
+  entryPrice: number;
+  markPrice: number;
+  unRealizedProfit: number;
+  liquidationPrice: number;
+  leverage: number;
+  marginType: string;
+  notional: number;
+  marginUsd: number;
+  roePercent: number;
+  isolatedMargin: number;
+  updateTime: number;
+}
+
+export async function fetchRealPosition(symbol: string): Promise<BinanceRealPosition | null> {
   const { apiKey, apiSecret } = getBinanceCredentials();
   if (!apiKey || !apiSecret) return null;
 
-  const timestamp = Date.now().toString();
-  const data = await callBinanceFutures(apiKey, apiSecret, 'GET', '/fapi/v2/positionRisk', { symbol, timestamp });
-  if (Array.isArray(data) && data.length > 0) {
-    // data is an array of positions for the symbol
-    const amt = parseFloat(data[0].positionAmt);
-    if (amt !== 0) {
-      return {
-        symbol,
-        amt,
-        entryPrice: parseFloat(data[0].entryPrice),
-        unRealizedProfit: parseFloat(data[0].unRealizedProfit)
-      };
+  try {
+    const timestamp = Date.now().toString();
+    const data = await callBinanceFutures(apiKey, apiSecret, 'GET', '/fapi/v2/positionRisk', { symbol, timestamp });
+    if (Array.isArray(data) && data.length > 0) {
+      const pos = data.find((p: any) => p.symbol === symbol) || data[0];
+      const amt = parseFloat(pos.positionAmt) || 0;
+      if (amt !== 0) {
+        const notional = Math.abs(parseFloat(pos.notional) || 0);
+        const leverage = parseInt(pos.leverage) || 20;
+        const unRealizedProfit = parseFloat(pos.unRealizedProfit) || 0;
+        const marginUsd = notional / (leverage || 1);
+        const roePercent = marginUsd > 0 ? (unRealizedProfit / marginUsd) * 100 : 0;
+
+        return {
+          symbol: pos.symbol,
+          positionAmt: amt,
+          amt,
+          entryPrice: parseFloat(pos.entryPrice) || 0,
+          markPrice: parseFloat(pos.markPrice) || 0,
+          unRealizedProfit,
+          liquidationPrice: parseFloat(pos.liquidationPrice) || 0,
+          leverage,
+          marginType: pos.marginType || 'cross',
+          notional,
+          marginUsd,
+          roePercent,
+          isolatedMargin: parseFloat(pos.isolatedMargin) || 0,
+          updateTime: parseInt(pos.updateTime) || Date.now()
+        };
+      }
     }
+  } catch (err) {
+    console.error(`fetchRealPosition error for ${symbol}:`, err);
   }
   return null;
 }
+
+export async function fetchAllRealPositions(): Promise<Record<string, BinanceRealPosition>> {
+  const { apiKey, apiSecret } = getBinanceCredentials();
+  const positionsMap: Record<string, BinanceRealPosition> = {};
+  if (!apiKey || !apiSecret) return positionsMap;
+
+  try {
+    const timestamp = Date.now().toString();
+    const data = await callBinanceFutures(apiKey, apiSecret, 'GET', '/fapi/v2/positionRisk', { timestamp });
+    if (Array.isArray(data)) {
+      for (const pos of data) {
+        const amt = parseFloat(pos.positionAmt) || 0;
+        if (amt !== 0) {
+          const notional = Math.abs(parseFloat(pos.notional) || 0);
+          const leverage = parseInt(pos.leverage) || 20;
+          const unRealizedProfit = parseFloat(pos.unRealizedProfit) || 0;
+          const marginUsd = notional / (leverage || 1);
+          const roePercent = marginUsd > 0 ? (unRealizedProfit / marginUsd) * 100 : 0;
+
+          positionsMap[pos.symbol] = {
+            symbol: pos.symbol,
+            positionAmt: amt,
+            amt,
+            entryPrice: parseFloat(pos.entryPrice) || 0,
+            markPrice: parseFloat(pos.markPrice) || 0,
+            unRealizedProfit,
+            liquidationPrice: parseFloat(pos.liquidationPrice) || 0,
+            leverage,
+            marginType: pos.marginType || 'cross',
+            notional,
+            marginUsd,
+            roePercent,
+            isolatedMargin: parseFloat(pos.isolatedMargin) || 0,
+            updateTime: parseInt(pos.updateTime) || Date.now()
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.error('fetchAllRealPositions error:', err);
+  }
+  return positionsMap;
+}
+
+export async function fetchOrderRealizedPnl(symbol: string, orderId: string): Promise<{
+  realizedPnl: number;
+  commission: number;
+  netPnl: number;
+  avgPrice: number;
+  totalQty: number;
+} | null> {
+  const { apiKey, apiSecret } = getBinanceCredentials();
+  if (!apiKey || !apiSecret || !orderId) return null;
+
+  try {
+    const timestamp = Date.now().toString();
+    const trades = await callBinanceFutures(apiKey, apiSecret, 'GET', '/fapi/v1/userTrades', {
+      symbol,
+      orderId,
+      timestamp
+    });
+
+    if (Array.isArray(trades) && trades.length > 0) {
+      let totalRealizedPnl = 0;
+      let totalCommission = 0;
+      let totalQuote = 0;
+      let totalQty = 0;
+
+      for (const t of trades) {
+        const pnl = parseFloat(t.realizedPnl) || 0;
+        const comm = parseFloat(t.commission) || 0;
+        const qty = parseFloat(t.qty) || 0;
+        const price = parseFloat(t.price) || 0;
+
+        totalRealizedPnl += pnl;
+        totalCommission += comm;
+        totalQty += qty;
+        totalQuote += qty * price;
+      }
+
+      const avgPrice = totalQty > 0 ? totalQuote / totalQty : 0;
+      return {
+        realizedPnl: totalRealizedPnl,
+        commission: totalCommission,
+        netPnl: totalRealizedPnl - totalCommission,
+        avgPrice,
+        totalQty
+      };
+    }
+  } catch (err) {
+    console.error(`fetchOrderRealizedPnl error for ${symbol} order ${orderId}:`, err);
+  }
+  return null;
+}
+
 
 export interface SymbolPrecision {
   quantityPrecision: number;
@@ -518,18 +650,31 @@ export async function executeCompoundBuyOrder(params: {
   }
   if (!fillPrice) fillPrice = refPrice;
 
+  // 5. Query Real Position directly from Binance to get exact blended entry price and exact size
+  let realPos: BinanceRealPosition | null = null;
+  try {
+    await new Promise(r => setTimeout(r, 350));
+    realPos = await fetchRealPosition(symbol);
+    if (realPos && realPos.entryPrice > 0) {
+      fillPrice = realPos.entryPrice;
+    }
+  } catch (err) {
+    console.warn("fetchRealPosition fallback:", err);
+  }
+
   return {
     success: true,
     orderId: orderRes.orderId?.toString() || '',
     clientOrderId: orderRes.clientOrderId || '',
     symbol,
     side: 'BUY' as const,
-    quantity: executedQty,
+    quantity: realPos ? Math.abs(realPos.positionAmt) : executedQty,
     formattedQty: formattedQty,
     fillPrice,
-    notionalUsd: executedQty * fillPrice,
-    marginUsd: (executedQty * fillPrice) / leverage,
-    leverage
+    notionalUsd: realPos ? realPos.notional : executedQty * fillPrice,
+    marginUsd: realPos ? realPos.marginUsd : (executedQty * fillPrice) / leverage,
+    leverage,
+    realPosition: realPos
   };
 }
 
@@ -582,6 +727,26 @@ export async function executeCompoundCloseOrder(params: {
   }
   if (!exitPrice) exitPrice = refPrice;
 
+  // Query Real Realized PnL from Binance userTrades for this order
+  let realRealizedPnl = (exitPrice - refPrice) * executedQty;
+  let netPnl = realRealizedPnl;
+  let commission = 0;
+  let isRealPnl = false;
+
+  try {
+    await new Promise(r => setTimeout(r, 400));
+    const tradeInfo = await fetchOrderRealizedPnl(symbol, closeRes.orderId.toString());
+    if (tradeInfo && tradeInfo.totalQty > 0) {
+      if (tradeInfo.avgPrice > 0) exitPrice = tradeInfo.avgPrice;
+      realRealizedPnl = tradeInfo.realizedPnl;
+      netPnl = tradeInfo.netPnl;
+      commission = tradeInfo.commission;
+      isRealPnl = true;
+    }
+  } catch (tradeErr) {
+    console.warn("fetchOrderRealizedPnl warning:", tradeErr);
+  }
+
   return {
     success: true,
     orderId: closeRes.orderId?.toString() || '',
@@ -590,7 +755,12 @@ export async function executeCompoundCloseOrder(params: {
     side: 'SELL' as const,
     quantity: executedQty,
     exitPrice,
-    notionalUsd: executedQty * exitPrice
+    notionalUsd: executedQty * exitPrice,
+    realizedPnl: realRealizedPnl,
+    netPnl,
+    commission,
+    isRealPnl
   };
 }
+
 

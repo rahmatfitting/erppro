@@ -27,6 +27,21 @@ import {
   StopCircle
 } from "lucide-react";
 
+interface RealPosition {
+  symbol: string;
+  positionAmt: number;
+  entryPrice: number;
+  markPrice: number;
+  unRealizedProfit: number;
+  liquidationPrice: number;
+  leverage: number;
+  marginType: string;
+  notional: number;
+  marginUsd: number;
+  roePercent: number;
+  isolatedMargin: number;
+}
+
 interface CompoundConfig {
   id: number;
   symbol: string;
@@ -43,6 +58,7 @@ interface CompoundConfig {
   sl_price: number | null;
   quantity: number | null;
   last_check_at: string | null;
+  real_position?: RealPosition | null;
 }
 
 interface CompoundCycle {
@@ -64,6 +80,8 @@ interface CompoundCycle {
   binance_sell_order_id: string | null;
   created_at: string;
   closed_at: string | null;
+  real_position?: RealPosition | null;
+  is_real_pnl?: boolean;
 }
 
 interface CompoundLog {
@@ -571,15 +589,23 @@ export default function CompoundBotPage() {
               .filter((c) => filterCoin === "ALL" || c.symbol === filterCoin)
               .map((coin) => {
                 const activeCycle = activeCyclesMap[coin.symbol];
-                const livePrice = livePrices[coin.symbol] || coin.entry_price || 0;
+                const realPos = coin.real_position || activeCycle?.real_position;
+                const livePrice = realPos?.markPrice || livePrices[coin.symbol] || coin.entry_price || 0;
                 const isLoading = actionLoading[coin.symbol] || false;
 
-                // Live calculation if running
+                // Live calculation: Prioritize real Binance live position and PnL
                 let currentPnlUsd = 0;
                 let currentPnlRoe = 0;
                 let progressPct = 0;
 
-                if (coin.is_active && activeCycle && livePrice && activeCycle.entry_price) {
+                if (realPos && realPos.positionAmt !== 0) {
+                  currentPnlUsd = realPos.unRealizedProfit;
+                  currentPnlRoe = realPos.roePercent;
+                  const effEntry = realPos.entryPrice > 0 ? realPos.entryPrice : (activeCycle?.entry_price || coin.entry_price || 0);
+                  const effCurrent = realPos.markPrice > 0 ? realPos.markPrice : livePrice;
+                  const priceGainPct = effEntry > 0 ? ((effCurrent - effEntry) / effEntry) * 100 : 0;
+                  progressPct = Math.min(100, Math.max(0, (priceGainPct / coin.compound_percent) * 100));
+                } else if (coin.is_active && activeCycle && livePrice && activeCycle.entry_price) {
                   currentPnlUsd = (livePrice - activeCycle.entry_price) * activeCycle.quantity;
                   const marginUsed = activeCycle.notional_in / (activeCycle.leverage || 1);
                   currentPnlRoe = (currentPnlUsd / (marginUsed || 1)) * 100;
@@ -587,8 +613,18 @@ export default function CompoundBotPage() {
                   progressPct = Math.min(100, Math.max(0, (priceGainPct / coin.compound_percent) * 100));
                 }
 
-                const marginEst = coin.current_notional / (coin.leverage || 1);
-                const nextNotionalPreview = coin.current_notional * (1 + coin.compound_percent / 100);
+                const effectiveEntry = (realPos && realPos.entryPrice > 0)
+                  ? realPos.entryPrice
+                  : (activeCycle?.entry_price || coin.entry_price || 0);
+                const effectiveTarget = effectiveEntry > 0
+                  ? effectiveEntry * (1 + coin.compound_percent / 100)
+                  : (activeCycle?.target_price || coin.target_price || 0);
+                const effectiveNotional = (realPos && realPos.notional > 0)
+                  ? realPos.notional
+                  : (coin.is_active ? coin.current_notional : coin.notional_usd);
+                const effectiveMargin = (realPos && realPos.marginUsd > 0)
+                  ? realPos.marginUsd
+                  : (effectiveNotional / (coin.leverage || 1));
 
                 return (
                   <div
@@ -612,11 +648,17 @@ export default function CompoundBotPage() {
                             <div className="flex items-center gap-1.5">
                               <h3 className="font-bold text-base text-slate-100">{coin.symbol}</h3>
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
-                                {coin.leverage}x
+                                {realPos?.leverage || coin.leverage}x
                               </span>
+                              {realPos && realPos.positionAmt !== 0 && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/80 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                  LIVE BINANCE
+                                </span>
+                              )}
                             </div>
-                            <div className="text-[11px] font-mono text-cyan-300">
-                              {livePrice ? `$${livePrice.toLocaleString()}` : "Memuat..."}
+                            <div className="text-[11px] font-mono text-cyan-300 flex items-center gap-1.5">
+                              <span>Mark: {livePrice ? `$${livePrice.toLocaleString()}` : "Memuat..."}</span>
                             </div>
                           </div>
                         </div>
@@ -649,21 +691,24 @@ export default function CompoundBotPage() {
 
                       {/* Card Body */}
                       <div className="py-4 space-y-3.5">
-                        {coin.is_active && activeCycle ? (
+                        {coin.is_active && (activeCycle || (realPos && realPos.positionAmt !== 0)) ? (
                           <>
                             {/* Active Cycle Price Stats */}
                             <div className="grid grid-cols-2 gap-2 text-xs">
                               <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                                <div className="text-[10px] text-slate-400 uppercase">Harga Beli</div>
+                                <div className="flex items-center justify-between text-[10px] text-slate-400 uppercase">
+                                  <span>Harga Entri</span>
+                                  {realPos && <span className="text-emerald-400 font-bold text-[9px]">BINANCE REAL</span>}
+                                </div>
                                 <div className="font-mono font-bold text-slate-200 mt-0.5">
-                                  ${activeCycle.entry_price.toLocaleString()}
+                                  ${effectiveEntry.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                                 </div>
                               </div>
 
                               <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
                                 <div className="text-[10px] text-emerald-400 uppercase font-semibold">Target Exit (+{coin.compound_percent}%)</div>
                                 <div className="font-mono font-bold text-emerald-400 mt-0.5">
-                                  ${activeCycle.target_price.toLocaleString()}
+                                  ${effectiveTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                                 </div>
                               </div>
                             </div>
@@ -685,9 +730,12 @@ export default function CompoundBotPage() {
                                 />
                               </div>
                               <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
-                                <span>Unrealized PnL:</span>
+                                <span className="flex items-center gap-1">
+                                  PnL {realPos ? "Asli Binance" : "Unrealized"}:
+                                  {realPos && <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">Live</span>}
+                                </span>
                                 <span className={`font-mono font-bold ${currentPnlUsd >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                                  {currentPnlUsd >= 0 ? "+" : ""}${currentPnlUsd.toFixed(2)} ({currentPnlRoe.toFixed(1)}%)
+                                  {currentPnlUsd >= 0 ? "+" : ""}${currentPnlUsd.toFixed(2)} USDT ({currentPnlRoe >= 0 ? "+" : ""}${currentPnlRoe.toFixed(2)}% ROE)
                                 </span>
                               </div>
                             </div>
@@ -705,17 +753,15 @@ export default function CompoundBotPage() {
                             </div>
                             <div className="flex items-center justify-between text-slate-400">
                               <span>Estimasi Margin:</span>
-                              <span className="font-mono font-bold text-slate-200">${marginEst.toFixed(2)} USDT</span>
+                              <span className="font-mono font-bold text-slate-200">${effectiveMargin.toFixed(2)} USDT</span>
                             </div>
                           </div>
                         )}
 
                         {/* Compound Details info */}
                         <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
-                          <span>Notional Aktif: <strong className="text-slate-200">${coin.current_notional.toFixed(2)} USD</strong></span>
-                          <span>Profit Koin: <strong className={coin.total_profit >= 0 ? "text-emerald-400" : "text-rose-400"}>
-                            {coin.total_profit >= 0 ? "+" : ""}${coin.total_profit.toFixed(2)} USDT
-                          </strong></span>
+                          <span>Posisi: <strong className="text-slate-200 font-mono">${effectiveNotional.toFixed(2)} USDT</strong> {realPos && <span className="text-[10px] text-slate-400 font-normal">({Math.abs(realPos.positionAmt)} koin)</span>}</span>
+                          <span>Margin: <strong className="text-cyan-300 font-mono">${effectiveMargin.toFixed(2)} USDT</strong></span>
                         </div>
                       </div>
                     </div>
@@ -913,13 +959,25 @@ export default function CompoundBotPage() {
                         <td className="py-2.5 px-3 text-slate-300">
                           ${cycle.entry_price.toLocaleString()} ➔ {cycle.exit_price ? `$${cycle.exit_price.toLocaleString()}` : "-"}
                         </td>
-                        <td className={`py-2.5 px-3 font-bold ${
-                          cycle.pnl_usd >= 0 ? "text-emerald-400" : "text-rose-400"
-                        }`}>
+                        <td className="py-2.5 px-3">
                           {cycle.status === "OPEN" ? (
-                            <span className="text-slate-500 font-normal italic">Berjalan...</span>
+                            <span className="text-cyan-400 italic font-sans text-[11px]">Berjalan...</span>
                           ) : (
-                            `${cycle.pnl_usd >= 0 ? "+" : ""}$${cycle.pnl_usd.toFixed(2)} (${cycle.pnl_percent >= 0 ? "+" : ""}${cycle.pnl_percent.toFixed(1)}%)`
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className={`font-bold ${cycle.pnl_usd >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                                  {cycle.pnl_usd >= 0 ? "+" : ""}${cycle.pnl_usd.toFixed(2)} USDT
+                                </span>
+                                {cycle.is_real_pnl && (
+                                  <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
+                                    REAL
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 block font-normal">
+                                ({cycle.pnl_percent >= 0 ? "+" : ""}{cycle.pnl_percent.toFixed(2)}%)
+                              </span>
+                            </div>
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-[11px] text-slate-400 font-sans">

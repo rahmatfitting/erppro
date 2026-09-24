@@ -3,7 +3,11 @@ import {
   executeCompoundBuyOrder,
   executeCompoundCloseOrder,
   getSymbolPrecision,
-  getBinanceCredentials
+  getBinanceCredentials,
+  fetchAllRealPositions,
+  fetchRealPosition,
+  fetchOrderRealizedPnl,
+  BinanceRealPosition
 } from './binanceOrder';
 
 export interface CompoundBotConfig {
@@ -24,6 +28,7 @@ export interface CompoundBotConfig {
   last_check_at: string | null;
   updated_at: string;
   created_at: string;
+  real_position?: BinanceRealPosition | null;
 }
 
 export interface CompoundBotCycle {
@@ -45,6 +50,8 @@ export interface CompoundBotCycle {
   binance_sell_order_id: string | null;
   created_at: string;
   closed_at: string | null;
+  real_position?: BinanceRealPosition | null;
+  is_real_pnl?: boolean;
 }
 
 export interface CompoundBotLog {
@@ -293,22 +300,24 @@ export async function getBotState() {
   `);
   const logs: CompoundBotLog[] = logsRows;
 
-  // 5. Calculate Global Stats
-  const activeCoins = coins.filter(c => c.is_active);
-  const completedCycles = history.filter(h => h.status === 'TARGET_HIT');
-  const finishedCycles = history.filter(h => h.status !== 'OPEN');
-  const winRate = finishedCycles.length > 0 
-    ? (completedCycles.length / finishedCycles.length) * 100 
-    : 0;
-
-  const totalProfitUsd = coins.reduce((acc, c) => acc + (c.total_profit || 0), 0);
-  const totalActiveNotional = activeCoins.reduce((acc, c) => acc + (c.current_notional || 0), 0);
-
-  // 6. Check Binance Credentials availability
+  // 5. Binance Credentials & Live Positions
   const creds = getBinanceCredentials();
   const hasApiKeys = Boolean(creds.apiKey && creds.apiSecret);
 
-  // 7. Fetch Live Prices for all configured symbols
+  // 7. Fetch Real Positions directly from Binance Futures
+  const realPositions: Record<string, BinanceRealPosition> = {};
+  if (hasApiKeys) {
+    try {
+      const allReal = await fetchAllRealPositions();
+      for (const [sym, rp] of Object.entries(allReal)) {
+        realPositions[sym] = rp;
+      }
+    } catch (err) {
+      console.warn("Error fetching real positions in getBotState:", err);
+    }
+  }
+
+  // 8. Fetch Live Prices for all configured symbols
   const livePrices: Record<string, number> = {};
   try {
     const symbolsToFetch = coins.map(c => c.symbol);
@@ -327,6 +336,89 @@ export async function getBotState() {
     // ignore
   }
 
+  // 9. Sync Real Positions with Coin Configs and Active Cycles
+  for (const coin of coins) {
+    const rp = realPositions[coin.symbol];
+    if (rp) {
+      coin.real_position = rp;
+      livePrices[coin.symbol] = rp.markPrice; // Use real Binance Mark Price
+
+      if (coin.is_active) {
+        if (activeCyclesMap[coin.symbol]) {
+          activeCyclesMap[coin.symbol].real_position = rp;
+        }
+
+        // Auto-sync entry price and quantity in DB if real Binance position has updated average price
+        if (rp.entryPrice > 0 && Math.abs(rp.entryPrice - (coin.entry_price || 0)) > 0.0001) {
+          const newTargetPrice = rp.entryPrice * (1 + coin.compound_percent / 100);
+          const newSlPrice = coin.stop_loss_percent ? rp.entryPrice * (1 - coin.stop_loss_percent / 100) : null;
+          const realQty = Math.abs(rp.positionAmt);
+
+          coin.entry_price = rp.entryPrice;
+          coin.target_price = newTargetPrice;
+          coin.quantity = realQty;
+
+          if (activeCyclesMap[coin.symbol]) {
+            activeCyclesMap[coin.symbol].entry_price = rp.entryPrice;
+            activeCyclesMap[coin.symbol].target_price = newTargetPrice;
+            activeCyclesMap[coin.symbol].quantity = realQty;
+          }
+
+          executeQuery(`
+            UPDATE compound_bot_config 
+            SET entry_price = ?, target_price = ?, sl_price = ?, quantity = ? 
+            WHERE symbol = ?
+          `, [rp.entryPrice, newTargetPrice, newSlPrice, realQty, coin.symbol]).catch(() => {});
+
+          executeQuery(`
+            UPDATE compound_bot_cycles 
+            SET entry_price = ?, target_price = ?, quantity = ? 
+            WHERE symbol = ? AND status = 'OPEN'
+          `, [rp.entryPrice, newTargetPrice, realQty, coin.symbol]).catch(() => {});
+        }
+      }
+    }
+  }
+
+  // 10. Sync real realized PnL for latest closed cycles if orderId is available
+  if (hasApiKeys && history.length > 0) {
+    const recentClosed = history.filter(h => h.status === 'TARGET_HIT' && h.binance_sell_order_id).slice(0, 5);
+    for (const h of recentClosed) {
+      if (!h.is_real_pnl && h.binance_sell_order_id) {
+        try {
+          const tradeInfo = await fetchOrderRealizedPnl(h.symbol, h.binance_sell_order_id);
+          if (tradeInfo && tradeInfo.totalQty > 0) {
+            h.pnl_usd = tradeInfo.realizedPnl;
+            if (tradeInfo.avgPrice > 0) h.exit_price = tradeInfo.avgPrice;
+            h.pnl_percent = ((h.exit_price! - h.entry_price) / h.entry_price) * 100;
+            h.is_real_pnl = true;
+
+            executeQuery(`
+              UPDATE compound_bot_cycles 
+              SET pnl_usd = ?, exit_price = ?, pnl_percent = ? 
+              WHERE id = ?
+            `, [tradeInfo.realizedPnl, h.exit_price, h.pnl_percent, h.id]).catch(() => {});
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  // Recalculate Global Stats with Real Binance Data
+  const activeCoins = coins.filter(c => c.is_active);
+  const completedCycles = history.filter(h => h.status === 'TARGET_HIT');
+  const finishedCycles = history.filter(h => h.status !== 'OPEN');
+  const winRate = finishedCycles.length > 0 
+    ? (completedCycles.length / finishedCycles.length) * 100 
+    : 0;
+
+  const totalProfitUsd = completedCycles.reduce((acc, h) => acc + (h.pnl_usd || 0), 0);
+  const totalActiveNotional = activeCoins.reduce((acc, c) => {
+    return acc + (c.real_position ? c.real_position.notional : (c.current_notional || 0));
+  }, 0);
+
   return {
     coins,
     activeCycles,
@@ -342,6 +434,7 @@ export async function getBotState() {
       winRate: parseFloat(winRate.toFixed(1))
     },
     livePrices,
+    realPositions,
     hasApiKeys
   };
 }
@@ -661,9 +754,10 @@ export async function tickCompoundBot() {
       return { status: 'IDLE', activeCount: 0, message: 'Tidak ada bot koin yang aktif (STOPPED).' };
     }
 
-    // 2. Fetch live prices for all active symbols in bulk
+    // 2. Fetch live prices and real Binance positions for all active symbols
     const activeSymbols = activeCoins.map((c: any) => c.symbol);
     const tickerMap: Record<string, number> = {};
+    const realPositionsMap = await fetchAllRealPositions();
 
     try {
       const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price`, { cache: 'no-store' });
@@ -688,6 +782,9 @@ export async function tickCompoundBot() {
       const stopLossPercent = coin.stop_loss_percent ? parseFloat(coin.stop_loss_percent) : null;
       const leverage = parseInt(coin.leverage) || 20;
 
+      // Real Binance Position if open
+      const rp = realPositionsMap[symbol];
+
       // Find open cycle for this coin
       const cycleRows: any = await executeQuery(`
         SELECT * FROM compound_bot_cycles 
@@ -702,13 +799,15 @@ export async function tickCompoundBot() {
 
       const activeCycle = cycleRows[0];
       const cycleNum = parseInt(activeCycle.cycle_number);
-      const entryPrice = parseFloat(activeCycle.entry_price);
-      const targetPrice = parseFloat(activeCycle.target_price);
-      const quantity = parseFloat(activeCycle.quantity);
-      const currentNotional = parseFloat(activeCycle.notional_in);
+      
+      // Use real Binance entry price and quantity if available
+      const entryPrice = (rp && rp.entryPrice > 0) ? rp.entryPrice : parseFloat(activeCycle.entry_price);
+      const targetPrice = entryPrice * (1 + compoundPercent / 100);
+      const quantity = (rp && rp.positionAmt !== 0) ? Math.abs(rp.positionAmt) : parseFloat(activeCycle.quantity);
+      const currentNotional = rp ? rp.notional : parseFloat(activeCycle.notional_in);
 
-      // Get price from map or single fallback
-      let currentPrice = tickerMap[symbol] || 0;
+      // Current Price: prioritize Binance real markPrice
+      let currentPrice = (rp && rp.markPrice > 0) ? rp.markPrice : (tickerMap[symbol] || 0);
       if (!currentPrice) {
         try {
           const singleRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
@@ -727,8 +826,9 @@ export async function tickCompoundBot() {
       // Update last_check_at for this coin
       await executeQuery(`UPDATE compound_bot_config SET last_check_at = NOW() WHERE symbol = ?`, [symbol]);
 
-      const unrealizedPnl = (currentPrice - entryPrice) * quantity;
-      const priceChangePct = ((currentPrice - entryPrice) / entryPrice) * 100;
+      const unrealizedPnl = rp ? rp.unRealizedProfit : (currentPrice - entryPrice) * quantity;
+      const roePercent = rp ? rp.roePercent : ((unrealizedPnl / ((currentNotional / leverage) || 1)) * 100);
+      const priceChangePct = entryPrice > 0 ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
       const progressToTarget = Math.min(100, Math.max(0, (priceChangePct / compoundPercent) * 100));
 
       // =========================================================================
@@ -745,8 +845,10 @@ export async function tickCompoundBot() {
           });
 
           const exitPrice = closeRes.exitPrice;
-          const realizedPnl = (exitPrice - entryPrice) * quantity;
-          const realizedPnlPct = ((exitPrice - entryPrice) / entryPrice) * 100;
+          const realizedPnl = (closeRes.isRealPnl && closeRes.realizedPnl !== undefined) 
+            ? closeRes.realizedPnl 
+            : (exitPrice - entryPrice) * quantity;
+          const realizedPnlPct = entryPrice > 0 ? ((exitPrice - entryPrice) / entryPrice) * 100 : 0;
 
           // 2. Mark Cycle as TARGET_HIT
           await executeQuery(`
@@ -768,7 +870,8 @@ export async function tickCompoundBot() {
             activeCycle.id
           ]);
 
-          await addBotLog('CLOSE', `💰 [${symbol} #${cycleNum}] Sukses! Posisi ditutup @ $${exitPrice.toFixed(4)}. Profit: +$${realizedPnl.toFixed(2)} USDT (+${realizedPnlPct.toFixed(2)}%).`, 'SUCCESS');
+          const pnlSourceTag = closeRes.isRealPnl ? ' (Real Binance)' : '';
+          await addBotLog('CLOSE', `💰 [${symbol} #${cycleNum}] Sukses! Posisi ditutup @ $${exitPrice.toFixed(4)}. Profit${pnlSourceTag}: +$${realizedPnl.toFixed(2)} USDT (+${realizedPnlPct.toFixed(2)}%).`, 'SUCCESS');
 
           // 3. Compute NEXT COMPOUNDED NOTIONAL
           const nextNotionalRaw = currentNotional * (1 + compoundPercent / 100);
