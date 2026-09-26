@@ -69,22 +69,29 @@ export async function GET(request: Request) {
       }))
       .sort((a, b) => Math.abs(b.fundingRate) - Math.abs(a.fundingRate));
 
-    // 3. Take top 15 for health analysis to avoid rate limits/slow response
+    // 3. Take top 15 for health analysis in parallel (10x faster than sequential)
     const topOpportunities = filtered.slice(0, 15);
-    const results = [];
-
-    for (const opp of topOpportunities) {
-      const candles = await fetchFuturesKlines(opp.symbol, '1h', 20);
-      const condition = analyzeMarketCondition(candles);
-      
-      results.push({
-        ...opp,
-        marketCondition: condition,
-        // Recommendation logic
-        recommendation: opp.fundingRate > 0 ? 'SHORT' : 'LONG',
-        isExtreme: Math.abs(opp.fundingRate) >= 0.005, // The 0.5% threshold requested by user
-      });
-    }
+    const results = await Promise.all(
+      topOpportunities.map(async (opp: any) => {
+        try {
+          const candles = await fetchFuturesKlines(opp.symbol, '1h', 20);
+          const condition = analyzeMarketCondition(candles);
+          return {
+            ...opp,
+            marketCondition: condition,
+            recommendation: opp.fundingRate > 0 ? 'SHORT' : 'LONG',
+            isExtreme: Math.abs(opp.fundingRate) >= 0.005,
+          };
+        } catch {
+          return {
+            ...opp,
+            marketCondition: 'TRENDING',
+            recommendation: opp.fundingRate > 0 ? 'SHORT' : 'LONG',
+            isExtreme: Math.abs(opp.fundingRate) >= 0.005,
+          };
+        }
+      })
+    );
 
     if (isCron) {
       const extremeResults = results.filter(r => r.isExtreme);

@@ -1,40 +1,85 @@
-const FAPI_HOSTS = [
-  'https://fapi.binance.com',
-];
+function getFapiHosts(): string[] {
+  const hosts: string[] = [];
+  const proxy = process.env.BINANCE_FUTURES_BASE_URL || process.env.BINANCE_PROXY_URL;
+  if (proxy) {
+    hosts.push(proxy.trim().replace(/\/+$/, ''));
+  }
+  hosts.push('https://fapi.binance.com');
+  return hosts;
+}
 
 const HEADERS = {
   'Accept': 'application/json',
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
 };
 
-/** Try a Futures path on Binance host */
-export async function fetchFapiWithFallback(path: string): Promise<any | null> {
-  for (const host of FAPI_HOSTS) {
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4000); // 4s timeout
-      const res = await fetch(`${host}${path}`, {
-        headers: HEADERS,
-        signal: controller.signal,
-        cache: 'no-store',
-      });
-      clearTimeout(timer);
-      
-      if (!res.ok) {
-        return null;
-      }
-      
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        return null;
-      }
+// In-memory cache to prevent WAF throttling from repetitive heavy calls (e.g. premiumIndex 200KB)
+interface FapiCacheEntry {
+  data: any;
+  timestamp: number;
+}
+const fapiCache = new Map<string, FapiCacheEntry>();
+const CACHE_TTL_MS = 4000; // 4s fresh cache
+const STALE_TTL_MS = 180000; // 3m stale fallback if network temporarily fails
 
-      const data = await res.json();
-      if (data && !data.code) return data;
-    } catch (err: any) {
-      // network/timeout error
+/** Try a Futures path on Binance host with caching and retries */
+export async function fetchFapiWithFallback(path: string): Promise<any | null> {
+  const now = Date.now();
+  const cached = fapiCache.get(path);
+
+  // Return fresh cache immediately
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  const hosts = getFapiHosts();
+
+  for (const host of hosts) {
+    // Retry up to 2 times per host
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 9000); // 9s timeout for large payloads
+        const res = await fetch(`${host}${path}`, {
+          headers: HEADERS,
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        clearTimeout(timer);
+        
+        if (!res.ok) {
+          if (res.status === 429 || res.status === 403 || res.status === 451) {
+            console.warn(`[Binance FAPI] Host ${host}${path} returned HTTP ${res.status} (attempt ${attempt})`);
+          }
+          continue;
+        }
+        
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          continue;
+        }
+
+        const data = await res.json();
+        if (data && !data.code) {
+          // Cache successful response
+          fapiCache.set(path, { data, timestamp: Date.now() });
+          return data;
+        }
+      } catch (err: any) {
+        // network/timeout error
+        if (attempt < 2) {
+          await new Promise(r => setTimeout(r, 400));
+        }
+      }
     }
   }
+
+  // Fallback to stale cached data if available rather than hard failing
+  if (cached && now - cached.timestamp < STALE_TTL_MS) {
+    console.warn(`[Binance FAPI] Using stale cache for ${path} due to network/WAF block.`);
+    return cached.data;
+  }
+
   return null;
 }
 
