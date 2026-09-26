@@ -160,6 +160,22 @@ export default function FundingFarmingPage() {
     }
   };
 
+  // Open Config Modal & ensure form values match current saved config
+  const handleOpenConfigModal = () => {
+    if (botState?.config) {
+      setNotionalUsd(botState.config.notional_usd || 100);
+      setLeverage(botState.config.leverage || 5);
+      setOpenSecondsBefore(botState.config.open_seconds_before || 30);
+      setCloseSecondsAfter(botState.config.close_seconds_after || 10);
+      setMinFundingRatePercent((botState.config.min_funding_rate || 0.0001) * 100);
+      setBotIsReverse(Boolean(botState.config.is_reverse));
+      setBotRrRatio(botState.config.rr_ratio || 'NONE');
+      setBotBaseSlPercent(botState.config.base_sl_percent || 1.5);
+      setBotIsCompound(Boolean(botState.config.is_compound));
+    }
+    setShowConfigModal(true);
+  };
+
   // Start Bot Handler
   const handleStartBot = async () => {
     setIsStarting(true);
@@ -182,6 +198,9 @@ export default function FundingFarmingPage() {
       const json = await res.json();
       if (json.success && json.data) {
         setBotState(json.data);
+        if (json.data.config) {
+          setBotIsCompound(Boolean(json.data.config.is_compound));
+        }
         setShowConfigModal(false);
       } else {
         alert(json.error || 'Gagal memulai bot');
@@ -238,6 +257,9 @@ export default function FundingFarmingPage() {
       const json = await res.json();
       if (json.success && json.data) {
         setBotState(json.data);
+        if (json.data.config) {
+          setBotIsCompound(Boolean(json.data.config.is_compound));
+        }
         setShowConfigModal(false);
       } else {
         alert(json.error || 'Gagal menyimpan pengaturan');
@@ -606,7 +628,7 @@ export default function FundingFarmingPage() {
             )}
 
             <button 
-              onClick={() => setShowConfigModal(true)}
+              onClick={handleOpenConfigModal}
               className="p-4 rounded-3xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white transition-all hover:scale-105 active:scale-95"
               title="Pengaturan Parameter Bot"
             >
@@ -1625,11 +1647,11 @@ export default function FundingFarmingPage() {
           MODAL: 1-CLICK QUICK ORDER (NORMAL & REVERSE WITH RR)
       ───────────────────────────────────────────────────────────── */}
       {quickOrderModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-800 rounded-[40px] max-w-xl w-full p-8 shadow-2xl relative overflow-hidden space-y-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-800 rounded-[36px] max-w-xl w-full shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden my-auto">
             
             {/* Modal Header */}
-            <div className="flex justify-between items-start pb-4 border-b border-slate-800">
+            <div className="flex justify-between items-start px-6 py-5 sm:px-8 border-b border-slate-800 shrink-0 bg-slate-900">
               <div className="space-y-1">
                 <div className="flex items-center gap-2.5">
                   <h3 className="text-2xl font-black text-white uppercase italic font-mono">
@@ -1652,8 +1674,11 @@ export default function FundingFarmingPage() {
               </button>
             </div>
 
-            {/* Mode Arah Toggle (Normal vs Reverse) */}
-            <div className="space-y-2">
+            {/* Scrollable Content Body */}
+            <div className="p-6 sm:p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+
+              {/* Mode Arah Toggle (Normal vs Reverse) */}
+              <div className="space-y-2">
               <label className="text-xs font-black uppercase text-slate-400 block">
                 Pilih Mode Arah Posisi
               </label>
@@ -1808,8 +1833,10 @@ export default function FundingFarmingPage() {
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+            </div>
+
+            {/* Action Buttons (Pinned Footer) */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 sm:px-8 border-t border-slate-800 bg-slate-950/80 backdrop-blur-md shrink-0">
               <button
                 type="button"
                 onClick={() => setQuickOrderModal(prev => ({ ...prev, isOpen: false }))}
@@ -1842,9 +1869,10 @@ export default function FundingFarmingPage() {
           MODAL: PENGATURAN PARAMETER BOT (AUTONOMOUS)
       ───────────────────────────────────────────────────────────── */}
       {showConfigModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-800 rounded-[40px] max-w-xl w-full p-8 shadow-2xl relative overflow-hidden">
-            <div className="flex justify-between items-center mb-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-[36px] max-w-xl w-full shadow-2xl relative flex flex-col max-h-[90vh] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header (Pinned) */}
+            <div className="flex justify-between items-center px-6 py-5 sm:px-8 border-b border-slate-800/80 shrink-0 bg-slate-900">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
                   <Sliders className="h-5 w-5" />
@@ -1855,13 +1883,14 @@ export default function FundingFarmingPage() {
               </div>
               <button 
                 onClick={() => setShowConfigModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="h-9 w-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white text-base font-bold transition-all"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-6">
+            {/* Scrollable Form Body */}
+            <div className="p-6 sm:p-8 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
               {/* Bot Mode: Normal vs Reverse */}
               <div>
                 <label className="text-xs font-black uppercase text-slate-400 block mb-2">
@@ -2096,11 +2125,12 @@ export default function FundingFarmingPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t border-slate-800">
+            {/* Modal Footer (Pinned) */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 sm:px-8 border-t border-slate-800/80 bg-slate-950/80 backdrop-blur-md shrink-0">
               <button
                 type="button"
                 onClick={() => setShowConfigModal(false)}
-                className="px-6 py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-bold text-xs uppercase transition-all"
+                className="px-6 py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-bold text-xs uppercase tracking-wider transition-all"
               >
                 Batal
               </button>
@@ -2108,7 +2138,7 @@ export default function FundingFarmingPage() {
                 type="button"
                 onClick={handleSaveConfig}
                 disabled={isSavingConfig}
-                className="px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50"
+                className="px-7 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider transition-all disabled:opacity-50 shadow-lg shadow-indigo-600/30 hover:scale-105 active:scale-95"
               >
                 {isSavingConfig ? 'Menyimpan...' : 'Simpan Pengaturan'}
               </button>

@@ -348,6 +348,7 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
   - Pilihan tombol toggle interaktif di Modal Pengaturan Parameter Bot.
   - Badge visual `Compound: IYA (+Profit)` pada Hero Header dan bar Quick Parameters.
   - Tercatat di log konsol runner background `cron_funding_bot.js`.
+  - **Peningkatan Responsivitas Modal:** Modal Pengaturan Parameter Bot dan Modal Quick Order kini dilengkapi layout scroll vertikal internal (`max-h-[90vh]`, `overflow-y-auto`, header dan footer tombol *Simpan* tetap terpasang / pinned di bawah), sehingga seluruh input (hingga tombol Simpan) dapat discroll dan dijangkau dengan mudah di berbagai resolusi layar laptop / desktop.
 
 ---
 

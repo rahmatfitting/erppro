@@ -117,6 +117,12 @@ export async function ensureFundingBotTables() {
       total_profit DECIMAL(12, 4) DEFAULT 0.0000,
       total_funding_fee DECIMAL(12, 4) DEFAULT 0.0000,
       total_trade_pnl DECIMAL(12, 4) DEFAULT 0.0000,
+      is_reverse BOOLEAN DEFAULT false,
+      rr_ratio VARCHAR(10) DEFAULT 'NONE',
+      base_sl_percent DECIMAL(8, 4) DEFAULT 1.5000,
+      tp_price DECIMAL(18, 8) DEFAULT NULL,
+      sl_price DECIMAL(18, 8) DEFAULT NULL,
+      is_compound BOOLEAN DEFAULT false,
       last_check_at DATETIME DEFAULT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -322,6 +328,9 @@ export async function getFundingBotState() {
     is_reverse: Boolean(configRow.is_reverse),
     rr_ratio: (configRow.rr_ratio || 'NONE') as 'NONE' | '1:1' | '1:2' | '1:3',
     base_sl_percent: parseFloat(configRow.base_sl_percent) || 1.5,
+    is_compound: configRow.is_compound === 1 || configRow.is_compound === true || configRow.is_compound === '1' || String(configRow.is_compound) === 'true',
+    tp_price: configRow.tp_price ? parseFloat(configRow.tp_price) : null,
+    sl_price: configRow.sl_price ? parseFloat(configRow.sl_price) : null,
     current_symbol: configRow.current_symbol || null,
     current_side: configRow.current_side || null,
     current_state: configRow.current_state || 'IDLE',
@@ -462,7 +471,9 @@ export async function startFundingBot(params?: {
   const isReverse = params?.isReverse !== undefined ? Boolean(params.isReverse) : Boolean(current[0].is_reverse);
   const rrRatio = params?.rrRatio ?? current[0].rr_ratio ?? 'NONE';
   const baseSlPercent = params?.baseSlPercent ?? parseFloat(current[0].base_sl_percent) ?? 1.5;
-  const isCompound = params?.isCompound !== undefined ? Boolean(params.isCompound) : Boolean(current[0].is_compound);
+  const isCompound = params?.isCompound !== undefined 
+    ? Boolean(params.isCompound) 
+    : (current[0].is_compound === 1 || current[0].is_compound === true || current[0].is_compound === '1' || String(current[0].is_compound) === 'true');
 
   // Determine state: if already in position, maintain HOLDING; otherwise SCANNING
   const nextState = current[0].current_state === 'HOLDING_FOR_FUNDING' ? 'HOLDING_FOR_FUNDING' : 'SCANNING';
@@ -787,7 +798,7 @@ export async function tickFundingBot() {
               config.last_check_at || new Date()
             ]);
 
-            const isCompound = Boolean(config.is_compound);
+            const isCompound = config.is_compound === 1 || config.is_compound === true || config.is_compound === '1' || String(config.is_compound) === 'true';
             let nextNotionalUsd = notionalUsd;
 
             if (isCompound && netPnl > 0) {
@@ -933,7 +944,7 @@ export async function tickFundingBot() {
             config.last_check_at || new Date()
           ]);
 
-          const isCompound = Boolean(config.is_compound);
+          const isCompound = config.is_compound === 1 || config.is_compound === true || config.is_compound === '1' || String(config.is_compound) === 'true';
           let nextNotionalUsd = notionalUsd;
 
           if (isCompound && netPnl > 0) {
