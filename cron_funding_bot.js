@@ -1,8 +1,9 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const API_BASE = process.env.APP_URL || 'http://localhost:3000';
-const TICK_URL = `${API_BASE}/api/crypto/funding-farming/bot/tick`;
+let API_BASE = process.env.APP_URL || 'http://localhost:3000';
+let TICK_URL = `${API_BASE}/api/crypto/funding-farming/bot/tick`;
+let hasFallenBack = false;
 
 let isTicking = false;
 let lastIdleLog = 0;
@@ -85,12 +86,20 @@ async function runTick() {
       }
     }
   } catch (err) {
+    if ((err.response?.status === 404 || err.code === 'ECONNREFUSED') && !hasFallenBack && API_BASE === 'http://localhost:3000') {
+      hasFallenBack = true;
+      API_BASE = 'https://demo.erpproapp.com';
+      TICK_URL = `${API_BASE}/api/crypto/funding-farming/bot/tick`;
+      console.log(`\n[Auto-Fallback] Port 3000 ${err.response?.status === 404 ? 'mengembalikan 404 Not Found' : 'gagal terhubung'}. Mengalihkan target otomatis ke live domain: ${TICK_URL}\n`);
+      return;
+    }
     if (err.code === 'ECONNREFUSED') {
       console.error(`[${new Date().toLocaleTimeString('id-ID')}] ❌ Server Next.js belum aktif di ${API_BASE}. Menunggu koneksi...`);
     } else {
       console.error(`[${new Date().toLocaleTimeString('id-ID')}] Error tick:`, err.message);
     }
   } finally {
+
     isTicking = false;
   }
 }
