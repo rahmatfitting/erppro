@@ -40,8 +40,11 @@ async function runTick() {
 
       if (tickResult?.status === 'HOLDING') {
         const pnlSign = (tickResult.unrealizedPnl || 0) >= 0 ? '+' : '';
+        const exitNote = tickResult.isRrMode 
+          ? `Target: RR ${tickResult.rrRatio} (SL: $${tickResult.slPrice} / TP: $${tickResult.tpPrice})`
+          : `Auto-Close in: ${tickResult.secondsLeftToClose}s`;
         console.log(
-          `[${now}] 🟢 [HOLDING ${tickResult.symbol} ${tickResult.side}] Live: $${tickResult.markPrice?.toLocaleString()} | Entry: $${tickResult.entryPrice} | Float PnL: ${pnlSign}$${(tickResult.unrealizedPnl || 0).toFixed(4)} | Auto-Close in: ${tickResult.secondsLeftToClose}s`
+          `[${now}] 🟢 [HOLDING ${tickResult.symbol} ${tickResult.side}] Live: $${tickResult.markPrice?.toLocaleString()} | Entry: $${tickResult.entryPrice} | Float PnL: ${pnlSign}$${(tickResult.unrealizedPnl || 0).toFixed(4)} | ${exitNote}`
         );
       } else if (tickResult?.status === 'ORDER_OPENED') {
         console.log('\n====================================================');
@@ -51,8 +54,9 @@ async function runTick() {
         console.log(`🆔 Binance Order ID: ${tickResult.orderId}`);
         console.log('====================================================\n');
       } else if (tickResult?.status === 'ROUND_COMPLETED') {
+        const reasonTag = tickResult.exitReason ? `[${tickResult.exitReason}]` : '';
         console.log('\n====================================================');
-        console.log(`[${now}] 🎉 ROUND #${tickResult.roundNumber} COMPLETED!`);
+        console.log(`[${now}] 🎉 ROUND #${tickResult.roundNumber} COMPLETED! ${reasonTag}`);
         console.log(`🪙 Koin: ${tickResult.symbol} | Exit: $${tickResult.exitPrice}`);
         console.log(`💰 Funding Fee Diterima: +$${tickResult.fundingFee?.toFixed(4)} USDT`);
         console.log(`📊 Price Realized PnL: $${tickResult.tradePnl?.toFixed(4)} USDT`);

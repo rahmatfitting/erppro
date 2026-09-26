@@ -7,6 +7,8 @@ import {
   fetchFuturesAccountBalance,
   fetchFundingIncome,
   fetchRealPosition,
+  fetchSymbolRecentClosedTrades,
+  cancelSymbolOpenOrders,
   BinanceRealPosition,
   BinanceFuturesBalanceInfo,
 } from './binanceOrder';
@@ -28,6 +30,8 @@ export interface FundingBotConfig {
   target_funding_rate: number | null;
   target_next_funding_time: number | null;
   entry_price: number | null;
+  tp_price?: number | null;
+  sl_price?: number | null;
   quantity: number | null;
   binance_order_id: string | null;
   round_number: number;
@@ -162,6 +166,15 @@ export async function ensureFundingBotTables() {
   } catch {}
   try {
     await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN base_sl_percent DECIMAL(8, 4) DEFAULT 1.5000`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN tp_price DECIMAL(18, 8) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN sl_price DECIMAL(18, 8) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE funding_bot_history ADD COLUMN exit_reason VARCHAR(30) DEFAULT 'TIME_EXIT'`);
   } catch {}
 
   // Ensure initial config row exists
@@ -659,8 +672,166 @@ export async function tickFundingBot() {
       const side = config.current_side as 'SHORT' | 'LONG';
       const quantity = parseFloat(config.quantity) || 0;
       const entryPrice = parseFloat(config.entry_price) || 0;
+      const rrRatio = (config.rr_ratio || 'NONE') as 'NONE' | '1:1' | '1:2' | '1:3';
+      const isRrMode = rrRatio !== 'NONE';
 
-      // Check if settlement time has passed + close delay satisfied
+      // ─────────────────────────────────────────────────────────────
+      // PILIHAN 2 - BRANCH A: RR TARGET MODE (1:1, 1:2, 1:3)
+      // Bot TIDAK force close di 10 detik! Posisi di-hold sampai TP / SL kena di Binance.
+      // ─────────────────────────────────────────────────────────────
+      if (isRrMode) {
+        let livePos: BinanceRealPosition | null = null;
+        try {
+          livePos = await fetchRealPosition(symbol);
+        } catch (posErr) {
+          console.warn(`fetchRealPosition warning for ${symbol}:`, posErr);
+        }
+
+        if (livePos && Math.abs(livePos.positionAmt) > 0) {
+          // Posisi masih aktif dan berjalan menuju target TP/SL
+          const hasPayoutPassed = now >= targetFundingTime;
+          return {
+            status: 'HOLDING',
+            symbol,
+            side,
+            entryPrice,
+            markPrice: livePos.markPrice,
+            unrealizedPnl: livePos.unRealizedProfit,
+            roePercent: livePos.roePercent,
+            secondsLeftToClose: 0,
+            isRrMode: true,
+            rrRatio,
+            tpPrice: config.tp_price ? parseFloat(config.tp_price) : null,
+            slPrice: config.sl_price ? parseFloat(config.sl_price) : null,
+            hasPayoutPassed
+          };
+        } else {
+          // POSISI TELAH TERTUTUP DI BINANCE (Order Algo TP atau SL tereksekusi!)
+          await executeQuery(`
+            UPDATE funding_bot_config
+            SET current_state = 'CLOSING', last_check_at = NOW()
+            WHERE id = 1
+          `);
+
+          await addFundingBotLog(
+            'CLOSE',
+            `🎯 Posisi ${symbol} ${side} telah tertutup di Binance (Target TP / SL tercapai)! Membersihkan order bracket...`,
+            'SUCCESS'
+          );
+
+          try {
+            // Bersihkan sisa order bracket (misal jika TP hit, batalkan SL yang masih pending)
+            await cancelSymbolOpenOrders(symbol);
+
+            // Ambil riwayat trade penutupan
+            const tradeInfo = await fetchSymbolRecentClosedTrades(symbol, targetFundingTime - 120000);
+            const exitPrice = tradeInfo?.exitPrice || entryPrice;
+            const tradeRealizedPnl = tradeInfo?.realizedPnl || 0;
+            const commission = tradeInfo?.commission || 0;
+
+            // Ambil funding fee yang berhasil masuk
+            let actualFundingFee = 0;
+            try {
+              const incomeRes = await fetchFundingIncome(symbol, targetFundingTime - 120000);
+              if (incomeRes && incomeRes.totalFundingFee !== 0) {
+                actualFundingFee = incomeRes.totalFundingFee;
+              }
+            } catch {}
+
+            if (actualFundingFee === 0 && now >= targetFundingTime) {
+              const rate = parseFloat(config.target_funding_rate) || 0;
+              actualFundingFee = notionalUsd * Math.abs(rate);
+            }
+
+            const netPnl = tradeRealizedPnl - commission + actualFundingFee;
+            const netPnlPercent = notionalUsd > 0 ? (netPnl / notionalUsd) * 100 : 0;
+            const roundNum = parseInt(config.round_number) || 1;
+            const exitReason = tradeRealizedPnl >= 0 ? 'TP_HIT' : 'SL_HIT';
+
+            // Catat ke riwayat
+            await executeQuery(`
+              INSERT INTO funding_bot_history 
+                (round_number, symbol, side, notional_usd, leverage, funding_rate, entry_price, exit_price, quantity, funding_fee_usd, trade_pnl_usd, commission_usd, net_pnl_usd, net_pnl_percent, status, exit_reason, binance_open_order_id, binance_close_order_id, opened_at, closed_at)
+              VALUES 
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CLOSED', ?, ?, ?, ?, NOW())
+            `, [
+              roundNum,
+              symbol,
+              side,
+              notionalUsd,
+              leverage,
+              parseFloat(config.target_funding_rate) || 0,
+              entryPrice,
+              exitPrice,
+              tradeInfo?.totalQty || quantity,
+              actualFundingFee,
+              tradeRealizedPnl,
+              commission,
+              netPnl,
+              netPnlPercent,
+              exitReason,
+              config.binance_order_id || null,
+              tradeInfo?.lastOrderId || null,
+              config.last_check_at || new Date()
+            ]);
+
+            // Update akumulasi total dan kembalikan state ke SCANNING
+            const newTotalProfit = (parseFloat(config.total_profit) || 0) + netPnl;
+            const newTotalFee = (parseFloat(config.total_funding_fee) || 0) + actualFundingFee;
+            const newTotalTrade = (parseFloat(config.total_trade_pnl) || 0) + tradeRealizedPnl;
+
+            await executeQuery(`
+              UPDATE funding_bot_config
+              SET current_state = 'SCANNING',
+                  current_symbol = NULL,
+                  current_side = NULL,
+                  target_funding_rate = NULL,
+                  target_next_funding_time = NULL,
+                  entry_price = NULL,
+                  tp_price = NULL,
+                  sl_price = NULL,
+                  quantity = NULL,
+                  binance_order_id = NULL,
+                  total_profit = ?,
+                  total_funding_fee = ?,
+                  total_trade_pnl = ?,
+                  last_check_at = NOW()
+              WHERE id = 1
+            `, [newTotalProfit, newTotalFee, newTotalTrade]);
+
+            const pnlSign = netPnl >= 0 ? '+' : '';
+            const hitLabel = tradeRealizedPnl >= 0 ? '🎯 TP HIT' : '🛑 SL HIT';
+            await addFundingBotLog(
+              'CYCLE_COMPLETE',
+              `🎉 Round #${roundNum} Selesai via Target RR ${rrRatio}! ${symbol} Exit @ $${exitPrice} (${hitLabel}) | Funding Fee: +$${actualFundingFee.toFixed(4)} | Trade PnL: $${tradeRealizedPnl.toFixed(4)} | Net: ${pnlSign}$${netPnl.toFixed(4)} (${pnlSign}${netPnlPercent.toFixed(2)}%)`,
+              netPnl >= 0 ? 'SUCCESS' : 'WARN'
+            );
+
+            return {
+              status: 'ROUND_COMPLETED',
+              roundNumber: roundNum,
+              symbol,
+              exitPrice,
+              fundingFee: actualFundingFee,
+              tradePnl: tradeRealizedPnl,
+              netPnl,
+              exitReason
+            };
+          } catch (closeError: any) {
+            console.error("Error finalizing RR trade:", closeError);
+            await addFundingBotLog(
+              'ERROR',
+              `Gagal mencatat penyelesaian trade RR ${symbol}: ${closeError.message}.`,
+              'ERROR'
+            );
+            return { status: 'CLOSE_FAILED', error: closeError.message };
+          }
+        }
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // PILIHAN 2 - BRANCH B: FEE LOCK MODE (Close di +10s setelah payout)
+      // ─────────────────────────────────────────────────────────────
       if (now >= closeThresholdTime) {
         // TIME TO CLOSE POSITION!
         await executeQuery(`
@@ -714,9 +885,9 @@ export async function tickFundingBot() {
           // Record to History
           await executeQuery(`
             INSERT INTO funding_bot_history 
-              (round_number, symbol, side, notional_usd, leverage, funding_rate, entry_price, exit_price, quantity, funding_fee_usd, trade_pnl_usd, commission_usd, net_pnl_usd, net_pnl_percent, status, binance_open_order_id, binance_close_order_id, opened_at, closed_at)
+              (round_number, symbol, side, notional_usd, leverage, funding_rate, entry_price, exit_price, quantity, funding_fee_usd, trade_pnl_usd, commission_usd, net_pnl_usd, net_pnl_percent, status, exit_reason, binance_open_order_id, binance_close_order_id, opened_at, closed_at)
             VALUES 
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CLOSED', ?, ?, ?, NOW())
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CLOSED', 'TIME_EXIT', ?, ?, ?, NOW())
           `, [
             roundNum,
             symbol,
@@ -750,6 +921,8 @@ export async function tickFundingBot() {
                 target_funding_rate = NULL,
                 target_next_funding_time = NULL,
                 entry_price = NULL,
+                tp_price = NULL,
+                sl_price = NULL,
                 quantity = NULL,
                 binance_order_id = NULL,
                 total_profit = ?,
@@ -773,7 +946,8 @@ export async function tickFundingBot() {
             exitPrice: closeRes.exitPrice,
             fundingFee: actualFundingFee,
             tradePnl: tradeRealizedPnl,
-            netPnl
+            netPnl,
+            exitReason: 'TIME_EXIT'
           };
         } catch (closeError: any) {
           console.error("Error closing position during funding settlement:", closeError);
@@ -870,6 +1044,9 @@ export async function tickFundingBot() {
 
         const nextRoundNumber = (parseInt(config.round_number) || 0) + 1;
 
+        const tpVal = openRes.takeProfitPrice ? parseFloat(openRes.takeProfitPrice) : null;
+        const slVal = openRes.stopLossPrice ? parseFloat(openRes.stopLossPrice) : null;
+
         await executeQuery(`
           UPDATE funding_bot_config
           SET current_state = 'HOLDING_FOR_FUNDING',
@@ -878,6 +1055,8 @@ export async function tickFundingBot() {
               target_funding_rate = ?,
               target_next_funding_time = ?,
               entry_price = ?,
+              tp_price = ?,
+              sl_price = ?,
               quantity = ?,
               binance_order_id = ?,
               round_number = ?,
@@ -889,6 +1068,8 @@ export async function tickFundingBot() {
           targetCandidate.fundingRate,
           targetCandidate.nextFundingTime,
           openRes.fillPrice,
+          tpVal,
+          slVal,
           openRes.quantity,
           openRes.orderId,
           nextRoundNumber

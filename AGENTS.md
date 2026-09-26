@@ -323,6 +323,16 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 - Menampilkan estimasi harga entri, trigger Stop Loss beserta nominal estimasi kerugian dalam USD, serta target Take Profit beserta estimasi keuntungan riil USD.
 - Menampilkan indikator margin saldo terpakai sesuai leverage yang dipilih (`3x`, `5x`, `10x`, `20x`).
 
+#### 4. Pemisahan Siklus Keluar: Mode Fee Lock (+10s) vs Mode Target RR (Hold sampai TP/SL)
+- **Mode Fee Lock (`rr_ratio === 'NONE'`):**
+  - Bot keluar tepat `+10 detik` setelah payout funding untuk segera mengunci fee dan menutup posisi via Market Order.
+- **Mode Target RR (`RR 1:1`, `RR 1:2`, `RR 1:3`):**
+  - Bot **TIDAK** force-close di 10 detik!
+  - Posisi dibiarkan berjalan (*HOLD*) di Binance Futures dengan proteksi bracket Stop Loss dan Take Profit.
+  - Setiap tick bot memantau status posisi riil Binance:
+    - Selama posisi masih terbuka: bot menampilkan live unrealized PnL, mark price, serta level harga TP dan SL.
+    - Begitu posisi tertutup di Binance (TP hit atau SL hit): bot secara otomatis membatalkan sisa order bracket pasangannya via `cancelSymbolOpenOrders`, mengambil rincian profit/loss riil beserta funding fee yang diterima selama masa hold, mencatat riwayat round (`TP_HIT` / `SL_HIT`), dan melanjutkan pencarian koin target berikutnya.
+
 ---
 
 ## 🛠️ File-File Terkait

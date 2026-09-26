@@ -31,7 +31,8 @@ import {
   DollarSign,
   RotateCcw,
   ArrowLeftRight,
-  Percent
+  Percent,
+  Target
 } from "lucide-react";
 import { exportToExcel } from "@/lib/exportUtils";
 
@@ -786,7 +787,7 @@ export default function FundingFarmingPage() {
             </div>
 
             <div className="flex flex-wrap lg:flex-col items-end gap-4">
-              <div className="bg-slate-950/80 p-5 rounded-3xl border border-white/10 flex items-center gap-6">
+              <div className="bg-slate-950/80 p-5 rounded-3xl border border-white/10 flex flex-wrap items-center gap-6">
                 <div className="space-y-1">
                   <div className="text-[10px] font-black text-slate-400 uppercase">Harga Entry</div>
                   <div className="text-lg font-mono font-black text-white">${botConfig?.entry_price?.toFixed(4)}</div>
@@ -798,6 +799,24 @@ export default function FundingFarmingPage() {
                     ${realPosition ? realPosition.markPrice.toFixed(4) : (botConfig?.entry_price?.toFixed(4) || '-')}
                   </div>
                 </div>
+                {botConfig?.sl_price && (
+                  <>
+                    <div className="h-8 w-[1px] bg-slate-800"></div>
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-black text-rose-400 uppercase">Stop Loss</div>
+                      <div className="text-lg font-mono font-black text-rose-400">${botConfig.sl_price.toFixed(4)}</div>
+                    </div>
+                  </>
+                )}
+                {botConfig?.tp_price && (
+                  <>
+                    <div className="h-8 w-[1px] bg-slate-800"></div>
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-black text-emerald-400 uppercase">Take Profit</div>
+                      <div className="text-lg font-mono font-black text-emerald-400">${botConfig.tp_price.toFixed(4)}</div>
+                    </div>
+                  </>
+                )}
                 <div className="h-8 w-[1px] bg-slate-800"></div>
                 <div className="space-y-1">
                   <div className="text-[10px] font-black text-slate-400 uppercase">Unrealized PnL</div>
@@ -810,10 +829,17 @@ export default function FundingFarmingPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <div className="px-5 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 font-black text-xs uppercase flex items-center gap-2">
-                  <Timer className="h-4 w-4 animate-bounce" />
-                  Auto-Exit: {formatCountdown(activeNextFundingTime + ((botConfig?.close_seconds_after || 10) * 1000))}
-                </div>
+                {botConfig?.rr_ratio && botConfig.rr_ratio !== 'NONE' ? (
+                  <div className="px-5 py-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-black text-xs uppercase flex items-center gap-2">
+                    <Target className="h-4 w-4 text-emerald-400 animate-pulse" />
+                    Target: RR {botConfig.rr_ratio} (Hold to TP/SL)
+                  </div>
+                ) : (
+                  <div className="px-5 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 font-black text-xs uppercase flex items-center gap-2">
+                    <Timer className="h-4 w-4 animate-bounce" />
+                    Auto-Exit: {formatCountdown(activeNextFundingTime + ((botConfig?.close_seconds_after || 10) * 1000))}
+                  </div>
+                )}
                 <button
                   onClick={() => handleStopBot(true)}
                   disabled={isStopping}
@@ -1881,8 +1907,8 @@ export default function FundingFarmingPage() {
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1.5">
                   {botRrRatio === 'NONE' 
-                    ? 'Posisi ditutup segera setelah settlement funding fee selesai (+10s).'
-                    : `Bot memasang algo order Stop Loss & Take Profit di Binance sesuai rasio ${botRrRatio}.`}
+                    ? 'Mode Fee Lock: Posisi ditutup otomatis via Market Order setelah settlement fee selesai (+10s).'
+                    : `Mode Target ${botRrRatio}: Bot TIDAK menutup di 10 detik. Posisi di-HOLD di Binance sampai Take Profit atau Stop Loss tersentuh.`}
                 </p>
               </div>
 
@@ -1946,7 +1972,7 @@ export default function FundingFarmingPage() {
                 </p>
               </div>
 
-              {/* Entry Timing (Seconds Before) */}
+              {/* Entry Timing (Seconds Before) & Exit Timing */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-black uppercase text-slate-400 block mb-2">
@@ -1965,19 +1991,31 @@ export default function FundingFarmingPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-black uppercase text-slate-400 block mb-2">
-                    Auto-Close Setelah Payout
+                  <label className="text-xs font-black uppercase text-slate-400 block mb-2 flex items-center justify-between">
+                    <span>Auto-Close Setelah Payout</span>
+                    {botRrRatio !== 'NONE' && (
+                      <span className="text-[9px] font-black uppercase text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
+                        Di-Hold (Mode RR)
+                      </span>
+                    )}
                   </label>
                   <div className="flex items-center gap-2">
                     <input 
                       type="number" 
                       value={closeSecondsAfter} 
+                      disabled={botRrRatio !== 'NONE'}
                       onChange={e => setCloseSecondsAfter(Math.max(3, parseInt(e.target.value) || 10))}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 text-white font-mono font-bold text-base focus:ring-2 focus:ring-indigo-500 outline-none"
+                      className={`w-full bg-slate-950 border border-slate-800 rounded-2xl px-4 py-3 font-mono font-bold text-base focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${
+                        botRrRatio !== 'NONE' ? 'opacity-40 cursor-not-allowed text-slate-500' : 'text-white'
+                      }`}
                     />
                     <span className="text-slate-400 text-xs font-bold">Detik</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-1 block">Rekomendasi: 5-15s</span>
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    {botRrRatio !== 'NONE' 
+                      ? 'Dinonaktifkan saat mode RR aktif (posisi di-hold sampai TP / SL tersentuh di Binance).'
+                      : 'Rekomendasi: 5-15s (hanya aktif saat mode Fee Lock).'}
+                  </span>
                 </div>
               </div>
 

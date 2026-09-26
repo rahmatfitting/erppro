@@ -290,6 +290,89 @@ export async function fetchOrderRealizedPnl(symbol: string, orderId: string): Pr
   return null;
 }
 
+export async function fetchSymbolRecentClosedTrades(symbol: string, startTime?: number): Promise<{
+  realizedPnl: number;
+  commission: number;
+  netPnl: number;
+  exitPrice: number;
+  totalQty: number;
+  lastOrderId: string;
+} | null> {
+  const { apiKey, apiSecret } = getBinanceCredentials();
+  if (!apiKey || !apiSecret || !symbol) return null;
+
+  try {
+    const params: Record<string, string> = {
+      symbol,
+      limit: '15',
+      timestamp: Date.now().toString()
+    };
+    if (startTime && startTime > 0) {
+      params.startTime = (startTime - 60000).toString();
+    }
+
+    const trades = await callBinanceFutures(apiKey, apiSecret, 'GET', '/fapi/v1/userTrades', params);
+
+    if (Array.isArray(trades) && trades.length > 0) {
+      const closingTrades = trades.filter((t: any) => parseFloat(t.realizedPnl) !== 0);
+      const targetTrades = closingTrades.length > 0 ? closingTrades : trades.slice(-2);
+
+      let totalRealizedPnl = 0;
+      let totalCommission = 0;
+      let totalQuote = 0;
+      let totalQty = 0;
+      let lastOrderId = '';
+
+      for (const t of targetTrades) {
+        const pnl = parseFloat(t.realizedPnl) || 0;
+        const comm = parseFloat(t.commission) || 0;
+        const qty = parseFloat(t.qty) || 0;
+        const price = parseFloat(t.price) || 0;
+
+        totalRealizedPnl += pnl;
+        totalCommission += comm;
+        totalQty += qty;
+        totalQuote += qty * price;
+        lastOrderId = t.orderId?.toString() || lastOrderId;
+      }
+
+      const exitPrice = totalQty > 0 ? totalQuote / totalQty : 0;
+      return {
+        realizedPnl: totalRealizedPnl,
+        commission: totalCommission,
+        netPnl: totalRealizedPnl - totalCommission,
+        exitPrice,
+        totalQty,
+        lastOrderId
+      };
+    }
+  } catch (err) {
+    console.error(`fetchSymbolRecentClosedTrades error for ${symbol}:`, err);
+  }
+  return null;
+}
+
+export async function cancelSymbolOpenOrders(symbol: string) {
+  const { apiKey, apiSecret } = getBinanceCredentials();
+  if (!apiKey || !apiSecret || !symbol) return;
+
+  try {
+    await callBinanceFutures(apiKey, apiSecret, 'DELETE', '/fapi/v1/allOpenOrders', {
+      symbol,
+      timestamp: Date.now().toString()
+    });
+  } catch (err) {
+    console.warn(`cancelSymbolOpenOrders regular warning for ${symbol}:`, err);
+  }
+
+  try {
+    await callBinanceFutures(apiKey, apiSecret, 'DELETE', '/fapi/v1/algo/allOpenOrders', {
+      symbol,
+      timestamp: Date.now().toString()
+    });
+  } catch (err) {}
+}
+
 
 export interface SymbolPrecision {
   quantityPrecision: number;
@@ -1022,6 +1105,10 @@ export async function executeFundingCloseOrder(params: {
   } catch (tradeErr) {
     console.warn("fetchOrderRealizedPnl warning:", tradeErr);
   }
+
+  try {
+    await cancelSymbolOpenOrders(symbol);
+  } catch {}
 
   return {
     success: true,
