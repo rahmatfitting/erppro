@@ -67,6 +67,7 @@ export default function FundingFarmingPage() {
   const [botIsReverse, setBotIsReverse] = useState<boolean>(false);
   const [botRrRatio, setBotRrRatio] = useState<'NONE' | '1:1' | '1:2' | '1:3'>('NONE');
   const [botBaseSlPercent, setBotBaseSlPercent] = useState<number>(1.5);
+  const [botIsCompound, setBotIsCompound] = useState<boolean>(false);
 
   // 1-Click Quick Order Modal State
   const [quickOrderModal, setQuickOrderModal] = useState<{
@@ -116,6 +117,7 @@ export default function FundingFarmingPage() {
           setBotIsReverse(Boolean(json.data.config.is_reverse));
           setBotRrRatio(json.data.config.rr_ratio || 'NONE');
           setBotBaseSlPercent(json.data.config.base_sl_percent || 1.5);
+          setBotIsCompound(Boolean(json.data.config.is_compound));
         }
       }
     } catch (err) {
@@ -173,7 +175,8 @@ export default function FundingFarmingPage() {
           minFundingRate: minFundingRatePercent / 100,
           isReverse: botIsReverse,
           rrRatio: botRrRatio,
-          baseSlPercent: botBaseSlPercent
+          baseSlPercent: botBaseSlPercent,
+          isCompound: botIsCompound
         })
       });
       const json = await res.json();
@@ -228,7 +231,8 @@ export default function FundingFarmingPage() {
           minFundingRate: minFundingRatePercent / 100,
           isReverse: botIsReverse,
           rrRatio: botRrRatio,
-          baseSlPercent: botBaseSlPercent
+          baseSlPercent: botBaseSlPercent,
+          isCompound: botIsCompound
         })
       });
       const json = await res.json();
@@ -558,6 +562,11 @@ export default function FundingFarmingPage() {
                   <RotateCcw className="h-3 w-3" /> Bot Mode: REVERSE
                 </span>
               )}
+              {botConfig?.is_compound && (
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center gap-1.5">
+                  <TrendingUp className="h-3 w-3" /> Compound: IYA (+Profit)
+                </span>
+              )}
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tighter uppercase italic drop-shadow-sm">
@@ -642,6 +651,12 @@ export default function FundingFarmingPage() {
           <div className="flex items-center gap-2 bg-slate-900/60 px-4 py-2 rounded-2xl border border-slate-800">
             <span className="text-[10px] uppercase text-slate-500 font-black">Open Timing:</span>
             <span className="text-amber-400 font-mono">&lt; {botConfig?.open_seconds_before || openSecondsBefore}s</span>
+          </div>
+          <div className="flex items-center gap-2 bg-slate-900/60 px-4 py-2 rounded-2xl border border-slate-800">
+            <span className="text-[10px] uppercase text-slate-500 font-black">Compound:</span>
+            <span className={`font-mono font-bold ${botConfig?.is_compound ? 'text-emerald-400' : 'text-slate-400'}`}>
+              {botConfig?.is_compound ? '📈 IYA (+Profit)' : '⚪ TIDAK'}
+            </span>
           </div>
         </div>
       </div>
@@ -1944,6 +1959,49 @@ export default function FundingFarmingPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Auto-Compound Profit (IYA / TIDAK) */}
+              <div>
+                <label className="text-xs font-black uppercase text-slate-400 block mb-2 flex items-center justify-between">
+                  <span>Compound Profit ke Notional Berikutnya?</span>
+                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border ${
+                    botIsCompound 
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}>
+                    {botIsCompound ? '📈 AKTIF (+PROFIT)' : 'TIDAK (NOTIONAL TETAP)'}
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setBotIsCompound(true)}
+                    className={`py-3 rounded-2xl font-black text-xs uppercase tracking-wider border transition-all flex items-center justify-center gap-1.5 ${
+                      botIsCompound
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/30'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>🟢 IYA (Compound Profit)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBotIsCompound(false)}
+                    className={`py-3 rounded-2xl font-black text-xs uppercase tracking-wider border transition-all ${
+                      !botIsCompound
+                        ? 'bg-slate-800 text-white border-slate-700 shadow-lg'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    ⚪ TIDAK (Notional Tetap)
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1.5">
+                  {botIsCompound
+                    ? 'Jika dipilih IYA: Setiap ronde yang menghasilkan profit (+net PnL) akan otomatis ditambahkan ke modal Notional USD koin berikutnya.'
+                    : 'Jika dipilih TIDAK: Nilai Notional USD tetap konstan sesuai input nominal di atas pada setiap putaran.'}
+                </p>
               </div>
 
               {/* Leverage */}

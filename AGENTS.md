@@ -333,6 +333,22 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
     - Selama posisi masih terbuka: bot menampilkan live unrealized PnL, mark price, serta level harga TP dan SL.
     - Begitu posisi tertutup di Binance (TP hit atau SL hit): bot secara otomatis membatalkan sisa order bracket pasangannya via `cancelSymbolOpenOrders`, mengambil rincian profit/loss riil beserta funding fee yang diterima selama masa hold, mencatat riwayat round (`TP_HIT` / `SL_HIT`), dan melanjutkan pencarian koin target berikutnya.
 
+#### 5. Fitur Auto-Compound Profit (Pilihan IYA / TIDAK)
+- **Deskripsi:** Opsi fleksibel untuk menentukan apakah keuntungan riil (*net profit USD*) yang diperoleh dari ronde farming sebelumnya otomatis diakumulasikan kembali (*reinvesting / compounding*) ke modal posisi notional koin berikutnya.
+- **Dua Pilihan Mode:**
+  - **🟢 IYA (Compound Profit):**
+    - Jika ronde selesai dengan keuntungan bersih (`netPnl > 0`), nilai modal notional otomatis ditambahkan:
+      $$\text{Notional Berikutnya} = \text{Notional Sebelumnya} + \text{Net PnL (USD)}$$
+    - *Contoh:* Notional awal `$100 USD`, perolehan profit bersih ronde 1 adalah `+$3.50 USD` $\rightarrow$ Ronde 2 otomatis membuka posisi dengan Notional `$103.50 USD`.
+    - Jika ronde impas atau minus, modal notional tidak berkurang/bertambah sembarangan (tetap stabil).
+    - Menghasilkan log khusus bertag `[COMPOUND]` di terminal antarmuka web dan runner background.
+  - **⚪ TIDAK (Notional Tetap):**
+    - Modal notional tetap konstan sesuai nominal yang ditentukan pengguna (misal `$100 USD`) di setiap ronde tanpa perubahan.
+- **Integrasi Antarmuka & Indikator:**
+  - Pilihan tombol toggle interaktif di Modal Pengaturan Parameter Bot.
+  - Badge visual `Compound: IYA (+Profit)` pada Hero Header dan bar Quick Parameters.
+  - Tercatat di log konsol runner background `cron_funding_bot.js`.
+
 ---
 
 ## 🛠️ File-File Terkait

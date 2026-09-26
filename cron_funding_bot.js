@@ -61,6 +61,9 @@ async function runTick() {
         console.log(`💰 Funding Fee Diterima: +$${tickResult.fundingFee?.toFixed(4)} USDT`);
         console.log(`📊 Price Realized PnL: $${tickResult.tradePnl?.toFixed(4)} USDT`);
         console.log(`✨ Net Realized PnL: $${tickResult.netPnl?.toFixed(4)} USDT`);
+        if (config?.is_compound && (tickResult.netPnl || 0) > 0) {
+          console.log(`📈 Auto-Compound: Profit +$${tickResult.netPnl?.toFixed(4)} USD ditambahkan! Notional berikutnya: $${config.notional_usd} USD`);
+        }
         console.log('🔄 Loop berlanjut, memindai target koin berikutnya...');
         console.log('====================================================\n');
       } else if (tickResult?.status === 'WAITING_ENTRY') {

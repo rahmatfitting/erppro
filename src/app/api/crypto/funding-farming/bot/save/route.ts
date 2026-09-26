@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     const isReverse = body.isReverse !== undefined ? Boolean(body.isReverse) : false;
     const rrRatio = body.rrRatio || 'NONE';
     const baseSlPercent = parseFloat(body.baseSlPercent) || 1.5;
+    const isCompound = body.isCompound !== undefined ? Boolean(body.isCompound) : false;
 
     const state = await saveFundingBotConfig({
       notionalUsd,
@@ -21,7 +22,8 @@ export async function POST(request: Request) {
       minFundingRate,
       isReverse,
       rrRatio,
-      baseSlPercent
+      baseSlPercent,
+      isCompound
     });
 
     return NextResponse.json({

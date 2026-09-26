@@ -24,6 +24,7 @@ export interface FundingBotConfig {
   is_reverse: boolean;
   rr_ratio: 'NONE' | '1:1' | '1:2' | '1:3';
   base_sl_percent: number;
+  is_compound?: boolean;
   current_symbol: string | null;
   current_side: 'SHORT' | 'LONG' | null;
   current_state: 'IDLE' | 'SCANNING' | 'WAITING_ENTRY' | 'HOLDING_FOR_FUNDING' | 'CLOSING';
@@ -172,6 +173,9 @@ export async function ensureFundingBotTables() {
   } catch {}
   try {
     await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN sl_price DECIMAL(18, 8) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN is_compound BOOLEAN DEFAULT false`);
   } catch {}
   try {
     await executeQuery(`ALTER TABLE funding_bot_history ADD COLUMN exit_reason VARCHAR(30) DEFAULT 'TIME_EXIT'`);
@@ -441,6 +445,7 @@ export async function startFundingBot(params?: {
   isReverse?: boolean;
   rrRatio?: 'NONE' | '1:1' | '1:2' | '1:3';
   baseSlPercent?: number;
+  isCompound?: boolean;
 }) {
   await ensureFundingBotTables();
 
@@ -457,6 +462,7 @@ export async function startFundingBot(params?: {
   const isReverse = params?.isReverse !== undefined ? Boolean(params.isReverse) : Boolean(current[0].is_reverse);
   const rrRatio = params?.rrRatio ?? current[0].rr_ratio ?? 'NONE';
   const baseSlPercent = params?.baseSlPercent ?? parseFloat(current[0].base_sl_percent) ?? 1.5;
+  const isCompound = params?.isCompound !== undefined ? Boolean(params.isCompound) : Boolean(current[0].is_compound);
 
   // Determine state: if already in position, maintain HOLDING; otherwise SCANNING
   const nextState = current[0].current_state === 'HOLDING_FOR_FUNDING' ? 'HOLDING_FOR_FUNDING' : 'SCANNING';
@@ -472,17 +478,19 @@ export async function startFundingBot(params?: {
         is_reverse = ?,
         rr_ratio = ?,
         base_sl_percent = ?,
+        is_compound = ?,
         current_state = ?,
         last_check_at = NOW()
     WHERE id = 1
-  `, [notional, leverage, openSeconds, closeSeconds, minRate, isReverse, rrRatio, baseSlPercent, nextState]);
+  `, [notional, leverage, openSeconds, closeSeconds, minRate, isReverse, rrRatio, baseSlPercent, isCompound, nextState]);
 
   const reverseText = isReverse ? ' | Mode: REVERSE' : ' | Mode: Normal';
   const rrText = rrRatio !== 'NONE' ? ` | RR: ${rrRatio}` : '';
+  const compoundText = isCompound ? ' | Compound: IYA' : ' | Compound: TIDAK';
 
   await addFundingBotLog(
     'START',
-    `🟢 Bot Funding Farming DIAKTIFKAN! Notional: $${notional} USD | Leverage: ${leverage}x | Auto-Open: < ${openSeconds}s | Auto-Close: +${closeSeconds}s${reverseText}${rrText}`,
+    `🟢 Bot Funding Farming DIAKTIFKAN! Notional: $${notional} USD | Leverage: ${leverage}x | Auto-Open: < ${openSeconds}s | Auto-Close: +${closeSeconds}s${reverseText}${rrText}${compoundText}`,
     'SUCCESS'
   );
 
@@ -592,6 +600,7 @@ export async function saveFundingBotConfig(params: {
   isReverse?: boolean;
   rrRatio?: 'NONE' | '1:1' | '1:2' | '1:3';
   baseSlPercent?: number;
+  isCompound?: boolean;
 }) {
   await ensureFundingBotTables();
 
@@ -605,6 +614,7 @@ export async function saveFundingBotConfig(params: {
         is_reverse = ?,
         rr_ratio = ?,
         base_sl_percent = ?,
+        is_compound = ?,
         last_check_at = NOW()
     WHERE id = 1
   `, [
@@ -615,15 +625,17 @@ export async function saveFundingBotConfig(params: {
     params.minFundingRate,
     Boolean(params.isReverse),
     params.rrRatio || 'NONE',
-    params.baseSlPercent || 1.5
+    params.baseSlPercent || 1.5,
+    Boolean(params.isCompound)
   ]);
 
   const reverseText = params.isReverse ? ' | Mode: REVERSE' : ' | Mode: Normal';
   const rrText = params.rrRatio && params.rrRatio !== 'NONE' ? ` | RR: ${params.rrRatio}` : '';
+  const compoundText = params.isCompound ? ' | Compound: IYA' : ' | Compound: TIDAK';
 
   await addFundingBotLog(
     'CONFIG',
-    `⚙️ Pengaturan bot diperbarui: Notional $${params.notionalUsd} USD | Leverage ${params.leverage}x | Entry < ${params.openSecondsBefore}s | Exit +${params.closeSecondsAfter}s${reverseText}${rrText}`,
+    `⚙️ Pengaturan bot diperbarui: Notional $${params.notionalUsd} USD | Leverage ${params.leverage}x | Entry < ${params.openSecondsBefore}s | Exit +${params.closeSecondsAfter}s${reverseText}${rrText}${compoundText}`,
     'INFO'
   );
 
@@ -775,6 +787,18 @@ export async function tickFundingBot() {
               config.last_check_at || new Date()
             ]);
 
+            const isCompound = Boolean(config.is_compound);
+            let nextNotionalUsd = notionalUsd;
+
+            if (isCompound && netPnl > 0) {
+              nextNotionalUsd = Math.round((notionalUsd + netPnl) * 100) / 100;
+              await addFundingBotLog(
+                'COMPOUND',
+                `📈 Auto-Compound Aktif: Profit +$${netPnl.toFixed(4)} USD ditambahkan ke Notional! Notional berikutnya naik: $${notionalUsd.toFixed(2)} ➔ $${nextNotionalUsd.toFixed(2)} USD.`,
+                'SUCCESS'
+              );
+            }
+
             // Update akumulasi total dan kembalikan state ke SCANNING
             const newTotalProfit = (parseFloat(config.total_profit) || 0) + netPnl;
             const newTotalFee = (parseFloat(config.total_funding_fee) || 0) + actualFundingFee;
@@ -792,12 +816,13 @@ export async function tickFundingBot() {
                   sl_price = NULL,
                   quantity = NULL,
                   binance_order_id = NULL,
+                  notional_usd = ?,
                   total_profit = ?,
                   total_funding_fee = ?,
                   total_trade_pnl = ?,
                   last_check_at = NOW()
               WHERE id = 1
-            `, [newTotalProfit, newTotalFee, newTotalTrade]);
+            `, [nextNotionalUsd, newTotalProfit, newTotalFee, newTotalTrade]);
 
             const pnlSign = netPnl >= 0 ? '+' : '';
             const hitLabel = tradeRealizedPnl >= 0 ? '🎯 TP HIT' : '🛑 SL HIT';
@@ -908,6 +933,18 @@ export async function tickFundingBot() {
             config.last_check_at || new Date()
           ]);
 
+          const isCompound = Boolean(config.is_compound);
+          let nextNotionalUsd = notionalUsd;
+
+          if (isCompound && netPnl > 0) {
+            nextNotionalUsd = Math.round((notionalUsd + netPnl) * 100) / 100;
+            await addFundingBotLog(
+              'COMPOUND',
+              `📈 Auto-Compound Aktif: Profit +$${netPnl.toFixed(4)} USD ditambahkan ke Notional! Notional berikutnya naik: $${notionalUsd.toFixed(2)} ➔ $${nextNotionalUsd.toFixed(2)} USD.`,
+              'SUCCESS'
+            );
+          }
+
           // Update cumulative totals and reset state to SCANNING for the next coin!
           const newTotalProfit = (parseFloat(config.total_profit) || 0) + netPnl;
           const newTotalFee = (parseFloat(config.total_funding_fee) || 0) + actualFundingFee;
@@ -925,12 +962,13 @@ export async function tickFundingBot() {
                 sl_price = NULL,
                 quantity = NULL,
                 binance_order_id = NULL,
+                notional_usd = ?,
                 total_profit = ?,
                 total_funding_fee = ?,
                 total_trade_pnl = ?,
                 last_check_at = NOW()
             WHERE id = 1
-          `, [newTotalProfit, newTotalFee, newTotalTrade]);
+          `, [nextNotionalUsd, newTotalProfit, newTotalFee, newTotalTrade]);
 
           const pnlSign = netPnl >= 0 ? '+' : '';
           await addFundingBotLog(
