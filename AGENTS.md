@@ -243,17 +243,104 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 - **Sinkronisasi Riwayat Siklus:** Kolom Notional pada tabel riwayat siklus kini menampilkan tag `+N DCA` beserta nominal tambahan yang diakumulasikan.
 - **Kategori Log Khusus `[DCA]`:** Penanda warna amber pada jendela log terminal monospace untuk seluruh eksekusi DCA instan maupun otomatis.
 
+### [2026-09-26] - Autonomous Funding Farming Bot & Real Binance Settlement Engine
+
+#### 1. Fitur Baru: Autonomous Funding Farming Bot (`/crypto/funding-farming`)
+- **Deskripsi:** Bot arbitrase kuantitatif otomatis untuk mengeksploitasi pembayaran *Funding Fee* di pasar Binance Futures USDT-M.
+- **Mekanisme Autonomous Loop:**
+  - **Fokus Koin Fee Terbesar:** Bot secara cerdas memindai seluruh pair USDT-M di Binance Futures untuk menemukan koin yang mendekati jam settlement pendanaan terdekat dengan nilai *Funding Rate* absolut tertinggi (`Math.abs(fundingRate)`).
+  - **Sisi Posisi Arbitrase:**
+    - Jika Funding Rate > 0: Long membayar Short. Bot otomatis membuka posisi **SHORT (SELL)** untuk menerima fee dari Long.
+    - Jika Funding Rate < 0: Short membayar Long. Bot otomatis membuka posisi **LONG (BUY)** untuk menerima fee dari Short.
+  - **Auto-Open Presisi (&lt; 30 Detik):** Bot menunggu hingga waktu pembayaran funding fee tersisa **kurang dari 30 detik** sebelum otomatis mengeksekusi order MARKET di Binance Futures untuk meminimalkan paparan risiko pergerakan harga pasar.
+  - **Auto-Close Fee Lock:** Segera setelah jam pembayaran settlement terlewati (+10 detik) dan fee tercatat di ledger Binance, bot langsung mengeksekusi MARKET close (`reduceOnly: true`) untuk menutup posisi dan mengunci profit terlepas dari apakah kondisi harga koin dalam status minus atau plus.
+  - **Continuous Continuous Loop:** Setelah satu siklus (*round*) selesai, bot secara otomatis kembali ke mode scanning untuk mencari kandidat koin dengan fee tertinggi pada jadwal settlement berikutnya dan mengulang proses tanpa henti hingga tombol **STOP** ditekan.
+
+#### 2. Kontrol & Pengaturan Parameter Bot
+- **Tombol START & STOP:** Kontrol instan pada hero banner dilengkapi status aktif round dan modal konfirmasi penutupan darurat jika ada posisi yang masih aktif saat dihentikan.
+- **Konfigurasi Fleksibel:**
+  - **Ukuran Notional (USD):** Nilai kontrak total di bursa dengan preset chip cepat `$20`, `$50`, `$100`, `$250`, `$500` USD atau custom input.
+  - **Leverage:** Pengungkit modal margin (`3x`, `5x`, `10x`, `20x`).
+  - **Timing Masuk & Keluar:** Waktu buka posisi sebelum settlement (default `< 30 detik`) dan waktu tutup setelah settlement (default `+10 detik`).
+  - **Threshold Minimum Rate:** Batasan minimum funding rate (default `0.01%`) agar bot tidak membuka posisi pada koin dengan fee yang tidak signifikan.
+
+#### 3. Kondisi Saldo Real Binance & Metrik Total Profit
+- **Live Binance Futures Wallet Balance Card:**
+  - Menampilkan Saldo Real USDT Wallet Balance dari akun Binance Futures (`/fapi/v2/account`).
+  - Margin Tersedia (*Available Balance*) untuk membuka posisi baru.
+  - Floating Unrealized PnL real-time.
+- **Performance Bar Total Profit:**
+  - Total Net Realized Profit ($ USDT).
+  - Total Funding Fee Diterima ($ USDT).
+  - Total Price Trading PnL ($ USDT).
+  - Win Rate (% siklus dengan Net PnL > 0) dan Total Rounds.
+- **Live Active Farming Radar Card:**
+  - Status `HOLDING FOR FEE`: Menampilkan koin aktif, sisi (SHORT/LONG), harga entry riil, harga mark Binance terkini, floating PnL, dan countdown auto-exit.
+  - Status `WAITING FOR ENTRY`: Menampilkan koin target #1 dengan fee tertinggi, estimasi fee dalam USD, dan countdown menuju jendela `< 30s`.
+
+#### 4. Konsol Log Monospace & Riwayat Siklus
+- **Terminal Log Interaktif:** Menampilkan status `[START]`, `[OPEN_TRIGGER]`, `[OPENED]`, `[HOLDING]`, `[CLOSE]`, `[CYCLE_COMPLETE]`, `[STOP]` dengan penanda warna dan fitur autoscroll.
+- **Tabel Riwayat Round:** Merekam setiap siklus: Round #, Symbol, Sisi, Notional USD, Leverage, Funding Rate, Entry Price ➔ Exit Price, Funding Fee, Price PnL, Komisi, Net Realized PnL ($ dan % ROE), Status, serta Timestamp.
+- **Export to Excel:** Fitur download laporan riwayat round dan scanner ke format spreadsheet Excel.
+
+#### 5. Background Daemon Runner (`cron_funding_bot.js` & `run_funding_bot.bat`)
+- Standalone runner Node.js untuk Windows yang mengevaluasi tick setiap 2.5 detik secara mandiri di background 24/7 tanpa mewajibkan tab browser terbuka.
+
+### [2026-09-26] - Funding Farming: Fitur Mode Reverse & 1-Click Order RR (Risk:Reward 1:1, 1:2, 1:3)
+
+#### 1. Konsep & Fitur Mode Reverse (Pembalikan Sisi Order)
+- **Deskripsi:** Menambahkan kemampuan untuk membalikkan (*reverse*) arah posisi derivatif dari rekomendasi arbitrase funding fee standar.
+- **Mekanisme Logika:**
+  - **Sinyal Asli Funding Fee:**
+    - Funding < 0: Sinyal arbitrase standar adalah **`LONG (BUY)`** (menerima bayaran fee dari short).
+    - Funding > 0: Sinyal arbitrase standar adalah **`SHORT (SELL)`** (menerima bayaran fee dari long).
+  - **Saat Mode Reverse Aktif:**
+    - Sinyal Funding < 0 (biasanya koin yang di-short habis-habisan) $\rightarrow$ Dibalik menjadi **`SELL / SHORT`** (mengikuti momentum penurunan atau trading breakdown).
+    - Sinyal Funding > 0 $\rightarrow$ Dibalik menjadi **`BUY / LONG`** (mengikuti momentum rally atau short squeeze).
+- **Integrasi Antarmuka:**
+  - **Toggle Reverse per Kartu Scanner:** Setiap kartu koin (seperti `WAXPUSDT`) memiliki tombol toggle `Reverse`. Saat diaktifkan, badge arah posisi langsung berubah secara visual (misal `LONG` menjadi `SELL (REVERSE)` berwarna ungu/rose).
+  - **Toggle Reverse pada Bot Otomatis:** Pilihan reverse juga tersedia di Pengaturan Bot Otomatis, sehingga bot dapat berjalan 24/7 membuka posisi berlawanan dengan arah fee jika strategi trader menghendakinya.
+
+#### 2. Tombol Pilihan Risk:Reward (RR 1:1, 1:2, 1:3) & Eksekusi Otomatis
+- **Deskripsi:** Tombol aksi cepat Risk:Reward (`RR 1:1`, `RR 1:2`, `RR 1:3`) disematkan langsung di setiap kartu scanner koin maupun kartu kandidat target settlement.
+- **Kalkulasi Bracket SL & TP Otomatis:**
+  - **Stop Loss Dasar:** Default 1.5% dari harga fill/entri riil.
+  - **Formula Target TP:**
+    - `RR 1:1`: Target Profit = $+1.5\%$ (1x SL).
+    - `RR 1:2`: Target Profit = $+3.0\%$ (2x SL).
+    - `RR 1:3`: Target Profit = $+4.5\%$ (3x SL).
+  - **Arah Posisi:**
+    - Jika `BUY` (Long): $\text{SL} = \text{Entry} \times (1 - 0.015)$, $\text{TP} = \text{Entry} \times (1 + 0.015 \times \text{RR})$.
+    - Jika `SELL` (Short): $\text{SL} = \text{Entry} \times (1 + 0.015)$, $\text{TP} = \text{Entry} \times (1 - 0.015 \times \text{RR})$.
+- **Eksekusi 1-Click Binance Futures (`/fapi/v1/algoOrder`):**
+  - Mengirim order posisi utama `MARKET` ke Binance Futures.
+  - Secara otomatis mengirim sepasang Algo Order bracket:
+    1. **Stop Loss (`STOP_MARKET`)**: Mengunci proteksi modal jika pergerakan berlawanan arah.
+    2. **Take Profit (`TAKE_PROFIT_MARKET`)**: Mengunci keuntungan saat harga mencapai target rasio.
+  - Dilengkapi proteksi error `[-2021]` (auto-kalibrasi dinamis terhadap slippage harga isi pasar) dan `reduceOnly: true`.
+
+#### 3. Modal Konfirmasi & Live Calculator Preview
+- Menampilkan estimasi harga entri, trigger Stop Loss beserta nominal estimasi kerugian dalam USD, serta target Take Profit beserta estimasi keuntungan riil USD.
+- Menampilkan indikator margin saldo terpakai sesuai leverage yang dipilih (`3x`, `5x`, `10x`, `20x`).
+
 ---
 
 ## 🛠️ File-File Terkait
 
 | File Path | Peran & Tanggung Jawab |
 |-----------|------------------------|
+| [`src/app/crypto/funding-farming/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/funding-farming/page.tsx) | Antarmuka pengguna Funding Farming Bot: Hero Master Control (START/STOP), Saldo Real Binance, Card Target Koin, 3 Tab View (Bot Leaderboard & Terminal, Riwayat Round, Full Scanner), Modal Pengaturan, Watchdog Tick, Toggle Reverse per Card, Tombol RR 1:1, 1:2, 1:3, dan Modal Konfirmasi Order Cepat. |
+| [`src/lib/binanceOrder.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) | Integrasi Binance FAPI: Eksekusi order dengan bracket SL/TP (`executeFundingOrderWithRR`), penyesuaian leverage, pembacaan saldo riil, serta order algo conditional `/fapi/v1/algoOrder`. |
+| [`src/app/api/crypto/funding-farming/order/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/funding-farming/order/route.ts) | API Endpoint POST untuk eksekusi 1-Click order manual dengan mode Reverse dan kalkulasi bracket RR otomatis. |
+| [`src/lib/fundingBot.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/fundingBot.ts) | Core Engine Funding Farming Bot: Migrasi skema database kolom `is_reverse`, `rr_ratio`, `base_sl_percent`, integrasi pembalikan arah posisi dan bracket algo order pada siklus autonomous. |
+| [`src/app/api/crypto/funding-farming/bot/start/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/funding-farming/bot/start/route.ts) | API Endpoint POST untuk memulai bot dengan opsi `isReverse`, `rrRatio`, dan `baseSlPercent`. |
+| [`src/app/api/crypto/funding-farming/bot/save/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/funding-farming/bot/save/route.ts) | API Endpoint POST untuk menyimpan konfigurasi bot termasuk setting Reverse dan RR. |
+| [`cron_funding_bot.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_funding_bot.js) | Standalone Node.js background runner untuk eksekusi funding farming 24/7 di Windows. |
+| [`run_funding_bot.bat`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/run_funding_bot.bat) | Batch launcher Windows 1-click untuk menjalankan background cron funding bot. |
 | [`src/app/crypto/compound-bot/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/compound-bot/page.tsx) | Antarmuka pengguna Bot Compound Future: Tombol DCA di setiap koin, Modal interaktif 2 mode (DCA Instan & Auto DCA Penurunan), simulasi live margin & entry baru, serta badge status DCA. |
 | [`src/lib/compoundBot.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/compoundBot.ts) | Core Engine Bot Compound: Migrasi skema database kolom DCA (`dca_auto_enabled`, `dca_drop_percent`, `dca_notional_usd`, `dca_trigger_price`, `dca_executed`, `dca_count`), fungsi `executeInstantDca`, `setAutoDca`, `cancelAutoDca`, dan evaluasi auto DCA di `tickCompoundBot`. |
 | [`src/app/api/crypto/compound-bot/dca/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/dca/route.ts) | API Endpoint POST untuk memproses DCA Instan, Set Auto DCA Penurunan, dan Cancel Auto DCA. |
 | [`cron_compound_bot.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_compound_bot.js) | Standalone Node.js background runner untuk eksekusi engine compound 24/7 dan pencatatan trigger DCA otomatis di konsol. |
-| [`src/lib/binanceOrder.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) | Fungsi eksekusi order Binance Futures: `executeCompoundBuyOrder` dan penarikan blended average price riil Binance. |
 | [`src/app/crypto/narrative-onchain/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/narrative-onchain/page.tsx) | Antarmuka pengguna utama Dashboard Crypto Narrative & On-Chain Monitor: Regime Header, 4 Sub-View Tab, Modal Deep Dive 5 Layer, Filter Scanner Drawer, dan Alert Sender. |
 | [`src/lib/narrativeOnchain.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/narrativeOnchain.ts) | Core Engine Kuantitatif: Auto-migration tabel MySQL (`crypto_narratives`, `crypto_narrative_coins`, `crypto_narrative_catalysts`, `crypto_narrative_alerts`), formula Opportunity Score 5-layer, klasifikasi sinyal, sinkronisasi data Binance & DefiLlama, dan formatter pesan Telegram. |
 | [`src/app/api/crypto/compound-bot/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/route.ts) | API Endpoint GET status bot, konfigurasi, riwayat siklus, dan log eksekusi. |
@@ -264,7 +351,7 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 | [`src/app/api/crypto/compound-bot/clear-logs/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/clear-logs/route.ts) | API Endpoint POST untuk membersihkan tabel log aktivitas bot. |
 | [`run_compound_bot.bat`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/run_compound_bot.bat) | File batch Windows 1-click launcher untuk menjalankan daemon background compound bot. |
 | [`src/components/Sidebar.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/components/Sidebar.tsx) | Menu navigasi "Bot Compound Future" & "Narrative & On-Chain Monitor" di bagian Crypto Intelligence. |
-| [`src/middleware.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/middleware.ts) | Whitelist rute `/api/crypto/compound-bot` dan `/api/crypto/narrative-onchain` agar dapat diakses tanpa hambatan sesi. |
+| [`src/middleware.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/middleware.ts) | Whitelist rute `/api/crypto/funding-farming`, `/api/crypto/compound-bot` dan `/api/crypto/narrative-onchain` agar dapat diakses tanpa hambatan sesi. |
 | [`src/app/crypto/hedgefund-buy/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/hedgefund-buy/page.tsx) | Halaman antarmuka Radar, Tabel Freeze Header, Terminal 8 Chart, Tombol "Kirim ke Telegram", dan Watchdog Scheduler. |
 | [`src/app/api/crypto/hedgefund-buy/scan/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/scan/route.ts) | API Endpoint GET & POST untuk scan pasar, pembentukan format pesan Telegram institusional, dan dispatch notifikasi. |
 | [`cron_hedgefund_buy.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_hedgefund_buy.js) | Standalone Node.js background runner untuk pemantauan jadwal 07:00, 13:00, 20:00 WIB dan trigger API. |
@@ -272,6 +359,7 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 | [`src/lib/hedgefundBuy.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/hedgefundBuy.ts) | Library kuantitatif scoring Alpha (0–100), setup classifier, dan builder 8 seri chart derivatif. |
 | [`src/app/api/crypto/hedgefund-buy/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/route.ts) | API Endpoint untuk mengambil daftar sinyal koin derivatif Binance. |
 | [`src/app/api/crypto/hedgefund-buy/detail/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/hedgefund-buy/detail/route.ts) | API Endpoint untuk mengambil 8 seri data grafik historis Binance Futures. |
+
 
 
 

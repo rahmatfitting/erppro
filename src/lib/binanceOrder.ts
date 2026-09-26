@@ -763,4 +763,508 @@ export async function executeCompoundCloseOrder(params: {
   };
 }
 
+export interface BinanceFuturesBalanceInfo {
+  totalWalletBalance: number;
+  availableBalance: number;
+  totalUnrealizedProfit: number;
+  totalMarginBalance: number;
+  usdtBalance: number;
+}
+
+export async function fetchFuturesAccountBalance(): Promise<BinanceFuturesBalanceInfo | null> {
+  const { apiKey, apiSecret } = getBinanceCredentials();
+  if (!apiKey || !apiSecret) return null;
+
+  try {
+    const timestamp = Date.now().toString();
+    const data = await callBinanceFutures(apiKey, apiSecret, 'GET', '/fapi/v2/account', { timestamp });
+    if (data && !data.code && data.totalWalletBalance !== undefined) {
+      let usdtBal = parseFloat(data.totalWalletBalance) || 0;
+      if (Array.isArray(data.assets)) {
+        const usdtAsset = data.assets.find((a: any) => a.asset === 'USDT');
+        if (usdtAsset) {
+          usdtBal = parseFloat(usdtAsset.walletBalance) || usdtBal;
+        }
+      }
+
+      return {
+        totalWalletBalance: parseFloat(data.totalWalletBalance) || 0,
+        availableBalance: parseFloat(data.availableBalance) || 0,
+        totalUnrealizedProfit: parseFloat(data.totalUnrealizedProfit) || 0,
+        totalMarginBalance: parseFloat(data.totalMarginBalance) || 0,
+        usdtBalance: usdtBal
+      };
+    }
+  } catch (err) {
+    console.error('fetchFuturesAccountBalance error:', err);
+  }
+  return null;
+}
+
+export async function fetchFundingIncome(symbol: string, startTime?: number): Promise<{
+  totalFundingFee: number;
+  items: Array<{ symbol: string; income: number; time: number; tranId: string }>;
+}> {
+  const { apiKey, apiSecret } = getBinanceCredentials();
+  if (!apiKey || !apiSecret) return { totalFundingFee: 0, items: [] };
+
+  try {
+    const params: Record<string, string> = {
+      symbol,
+      incomeType: 'FUNDING_FEE',
+      limit: '10',
+      timestamp: Date.now().toString()
+    };
+    if (startTime && startTime > 0) {
+      params.startTime = (startTime - 60000).toString(); // buffer 1 minute before
+    }
+
+    const data = await callBinanceFutures(apiKey, apiSecret, 'GET', '/fapi/v1/income', params);
+    if (Array.isArray(data)) {
+      let total = 0;
+      const items = data.map((d: any) => {
+        const inc = parseFloat(d.income) || 0;
+        total += inc;
+        return {
+          symbol: d.symbol,
+          income: inc,
+          time: parseInt(d.time) || Date.now(),
+          tranId: d.tranId?.toString() || ''
+        };
+      });
+      return { totalFundingFee: total, items };
+    }
+  } catch (err) {
+    console.error(`fetchFundingIncome error for ${symbol}:`, err);
+  }
+  return { totalFundingFee: 0, items: [] };
+}
+
+export async function executeFundingOpenOrder(params: {
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  notionalUsd: number;
+  leverage: number;
+}) {
+  const { symbol, side, notionalUsd, leverage } = params;
+  const { apiKey, apiSecret } = getBinanceCredentials();
+
+  if (!apiKey || !apiSecret) {
+    throw new Error('BINANCE_API_KEY atau BINANCE_API_SECRET belum dikonfigurasi di file .env / .env.local');
+  }
+
+  const prec = await getSymbolPrecision(symbol);
+
+  // 1. Live market price
+  const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
+  const tickerData = await tickerRes.json();
+  const refPrice = parseFloat(tickerData.price) || 0;
+
+  if (refPrice <= 0) {
+    throw new Error('Gagal mendapatkan harga pasar untuk ' + symbol);
+  }
+
+  if (notionalUsd < prec.minNotional) {
+    throw new Error(`Ukuran notional minimum di Binance adalah $${prec.minNotional} USD. Ukuran posisi Anda ($${notionalUsd.toFixed(2)}) terlalu kecil.`);
+  }
+
+  // 2. Set Leverage
+  const timestamp = Date.now();
+  try {
+    await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/leverage', {
+      symbol,
+      leverage: leverage.toString(),
+      timestamp: timestamp.toString()
+    });
+  } catch (err) {
+    console.warn("Set leverage warning:", err);
+  }
+
+  // 3. Calculate quantity
+  const rawQty = notionalUsd / refPrice;
+  const stepDecimals = Math.max(0, prec.quantityPrecision);
+  const factor = Math.pow(10, stepDecimals);
+  let quantity = Math.floor(rawQty * factor) / factor;
+
+  if (quantity < prec.minQty) {
+    quantity = prec.minQty;
+  }
+
+  const formattedQty = quantity.toFixed(stepDecimals);
+
+  // 4. Place MARKET order (BUY or SELL)
+  const orderRes = await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/order', {
+    symbol,
+    side,
+    type: 'MARKET',
+    quantity: formattedQty,
+    timestamp: Date.now().toString()
+  });
+
+  if (!orderRes || orderRes.code) {
+    const errCode = orderRes?.code || 'ERROR';
+    const errMsg = orderRes?.msg || 'Gagal mengeksekusi order pembukaan posisi di Binance';
+    throw new Error(`Binance Error [${errCode}]: ${errMsg}`);
+  }
+
+  const executedQty = orderRes.executedQty && parseFloat(orderRes.executedQty) > 0 
+    ? parseFloat(orderRes.executedQty) 
+    : quantity;
+  
+  let fillPrice = parseFloat(orderRes.avgPrice) || 0;
+  if (!fillPrice && orderRes.cumQuote && executedQty > 0) {
+    fillPrice = parseFloat(orderRes.cumQuote) / executedQty;
+  }
+  if (!fillPrice) fillPrice = refPrice;
+
+  // 5. Query Real Position directly from Binance
+  let realPos: BinanceRealPosition | null = null;
+  try {
+    await new Promise(r => setTimeout(r, 350));
+    realPos = await fetchRealPosition(symbol);
+    if (realPos && realPos.entryPrice > 0) {
+      fillPrice = realPos.entryPrice;
+    }
+  } catch (err) {
+    console.warn("fetchRealPosition fallback:", err);
+  }
+
+  return {
+    success: true,
+    orderId: orderRes.orderId?.toString() || '',
+    clientOrderId: orderRes.clientOrderId || '',
+    symbol,
+    side,
+    quantity: realPos ? Math.abs(realPos.positionAmt) : executedQty,
+    formattedQty,
+    fillPrice,
+    notionalUsd: realPos ? realPos.notional : executedQty * fillPrice,
+    marginUsd: realPos ? realPos.marginUsd : (executedQty * fillPrice) / leverage,
+    leverage,
+    realPosition: realPos
+  };
+}
+
+export async function executeFundingCloseOrder(params: {
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  entryPrice?: number;
+}) {
+  const { symbol, side, quantity, entryPrice } = params;
+  const { apiKey, apiSecret } = getBinanceCredentials();
+
+  if (!apiKey || !apiSecret) {
+    throw new Error('BINANCE_API_KEY atau BINANCE_API_SECRET belum dikonfigurasi di file .env / .env.local');
+  }
+
+  const prec = await getSymbolPrecision(symbol);
+  const stepDecimals = Math.max(0, prec.quantityPrecision);
+  const factor = Math.pow(10, stepDecimals);
+  let qtyToClose = Math.floor(quantity * factor) / factor;
+  if (qtyToClose < prec.minQty) qtyToClose = prec.minQty;
+  const formattedQty = qtyToClose.toFixed(stepDecimals);
+
+  // Get current market price
+  const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
+  const tickerData = await tickerRes.json();
+  const refPrice = parseFloat(tickerData.price) || 0;
+
+  // Execute MARKET order with reduceOnly: 'true'
+  const closeRes = await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/order', {
+    symbol,
+    side,
+    type: 'MARKET',
+    quantity: formattedQty,
+    reduceOnly: 'true',
+    timestamp: Date.now().toString()
+  });
+
+  if (!closeRes || closeRes.code) {
+    const errCode = closeRes?.code || 'ERROR';
+    const errMsg = closeRes?.msg || 'Gagal mengeksekusi order penutupan di Binance';
+    throw new Error(`Binance Close Error [${errCode}]: ${errMsg}`);
+  }
+
+  const executedQty = closeRes.executedQty && parseFloat(closeRes.executedQty) > 0
+    ? parseFloat(closeRes.executedQty)
+    : qtyToClose;
+
+  let exitPrice = parseFloat(closeRes.avgPrice) || 0;
+  if (!exitPrice && closeRes.cumQuote && executedQty > 0) {
+    exitPrice = parseFloat(closeRes.cumQuote) / executedQty;
+  }
+  if (!exitPrice) exitPrice = refPrice;
+
+  // Realized PnL estimation:
+  // For SHORT (opened SELL, closed BUY): pnl = (entryPrice - exitPrice) * qty
+  // For LONG (opened BUY, closed SELL): pnl = (exitPrice - entryPrice) * qty
+  const baseEntry = entryPrice || refPrice;
+  let estimatedPnl = side === 'BUY' 
+    ? (baseEntry - exitPrice) * executedQty 
+    : (exitPrice - baseEntry) * executedQty;
+
+  let realRealizedPnl = estimatedPnl;
+  let netPnl = realRealizedPnl;
+  let commission = 0;
+  let isRealPnl = false;
+
+  try {
+    await new Promise(r => setTimeout(r, 400));
+    const tradeInfo = await fetchOrderRealizedPnl(symbol, closeRes.orderId.toString());
+    if (tradeInfo && tradeInfo.totalQty > 0) {
+      if (tradeInfo.avgPrice > 0) exitPrice = tradeInfo.avgPrice;
+      realRealizedPnl = tradeInfo.realizedPnl;
+      netPnl = tradeInfo.netPnl;
+      commission = tradeInfo.commission;
+      isRealPnl = true;
+    }
+  } catch (tradeErr) {
+    console.warn("fetchOrderRealizedPnl warning:", tradeErr);
+  }
+
+  return {
+    success: true,
+    orderId: closeRes.orderId?.toString() || '',
+    clientOrderId: closeRes.clientOrderId || '',
+    symbol,
+    side,
+    quantity: executedQty,
+    exitPrice,
+    notionalUsd: executedQty * exitPrice,
+    realizedPnl: realRealizedPnl,
+    netPnl,
+    commission,
+    isRealPnl
+  };
+}
+
+export async function executeFundingOrderWithRR(params: {
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  notionalUsd: number;
+  leverage: number;
+  rrRatio?: '1:1' | '1:2' | '1:3' | 'NONE';
+  baseSlPercent?: number;
+  isReverse?: boolean;
+}) {
+  const { symbol, side, notionalUsd, leverage, rrRatio = 'NONE', baseSlPercent = 1.5, isReverse = false } = params;
+  const { apiKey, apiSecret } = getBinanceCredentials();
+
+  if (!apiKey || !apiSecret) {
+    throw new Error('BINANCE_API_KEY atau BINANCE_API_SECRET belum dikonfigurasi di file .env / .env.local');
+  }
+
+  const prec = await getSymbolPrecision(symbol);
+
+  // 1. Live market price
+  const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
+  const tickerData = await tickerRes.json();
+  const refPrice = parseFloat(tickerData.price) || 0;
+
+  if (refPrice <= 0) {
+    throw new Error('Gagal mendapatkan harga pasar untuk ' + symbol);
+  }
+
+  if (notionalUsd < prec.minNotional) {
+    throw new Error(`Ukuran notional minimum di Binance adalah $${prec.minNotional} USD. Ukuran posisi Anda ($${notionalUsd.toFixed(2)}) terlalu kecil.`);
+  }
+
+  // 2. Set Leverage
+  const timestamp = Date.now();
+  try {
+    await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/leverage', {
+      symbol,
+      leverage: leverage.toString(),
+      timestamp: timestamp.toString()
+    });
+  } catch (err) {
+    console.warn("Set leverage warning:", err);
+  }
+
+  // 3. Calculate quantity
+  const rawQty = notionalUsd / refPrice;
+  const stepDecimals = Math.max(0, prec.quantityPrecision);
+  const factor = Math.pow(10, stepDecimals);
+  let quantity = Math.floor(rawQty * factor) / factor;
+
+  if (quantity < prec.minQty) {
+    quantity = prec.minQty;
+  }
+
+  const formattedQty = quantity.toFixed(stepDecimals);
+
+  // 4. Place Main MARKET Order (BUY or SELL)
+  const orderRes = await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/order', {
+    symbol,
+    side,
+    type: 'MARKET',
+    quantity: formattedQty,
+    timestamp: Date.now().toString()
+  });
+
+  if (!orderRes || orderRes.code) {
+    const errCode = orderRes?.code || 'ERROR';
+    const errMsg = orderRes?.msg || 'Gagal mengeksekusi order di Binance';
+    throw new Error(`Binance Error [${errCode}]: ${errMsg}`);
+  }
+
+  const actualQty = orderRes.executedQty && parseFloat(orderRes.executedQty) > 0 
+    ? parseFloat(orderRes.executedQty) 
+    : quantity;
+  
+  let fillPrice = parseFloat(orderRes.avgPrice) || 0;
+  if (!fillPrice && orderRes.cumQuote && actualQty > 0) {
+    fillPrice = parseFloat(orderRes.cumQuote) / actualQty;
+  }
+  if (!fillPrice) fillPrice = refPrice;
+
+  // 5. Query Real Position directly from Binance
+  let realPos: BinanceRealPosition | null = null;
+  try {
+    await new Promise(r => setTimeout(r, 350));
+    realPos = await fetchRealPosition(symbol);
+    if (realPos && realPos.entryPrice > 0) {
+      fillPrice = realPos.entryPrice;
+    }
+  } catch (err) {
+    console.warn("fetchRealPosition fallback:", err);
+  }
+
+  let formattedSL: string | null = null;
+  let formattedTP: string | null = null;
+  let slRes: any = null;
+  let tpRes: any = null;
+
+  // 6. If RR option is selected (1:1, 1:2, 1:3), place Stop Loss and Take Profit algo orders
+  if (rrRatio && rrRatio !== 'NONE') {
+    const closeSide = side === 'BUY' ? 'SELL' : 'BUY';
+    const mult = rrRatio === '1:1' ? 1 : rrRatio === '1:2' ? 2 : 3;
+    const slRatio = (baseSlPercent > 0 ? baseSlPercent : 1.5) / 100;
+    const tpRatio = slRatio * mult;
+
+    let targetSL = 0;
+    let targetTP = 0;
+
+    if (side === 'BUY') {
+      // Long: SL is below fillPrice, TP is above fillPrice
+      targetSL = fillPrice * (1 - slRatio);
+      targetTP = fillPrice * (1 + tpRatio);
+    } else {
+      // Short (SELL): SL is above fillPrice, TP is below fillPrice
+      targetSL = fillPrice * (1 + slRatio);
+      targetTP = fillPrice * (1 - tpRatio);
+    }
+
+    formattedSL = targetSL.toFixed(prec.pricePrecision);
+    formattedTP = targetTP.toFixed(prec.pricePrecision);
+
+    // Place Stop Loss Algo Order
+    try {
+      slRes = await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/algoOrder', {
+        symbol,
+        side: closeSide,
+        algoType: 'CONDITIONAL',
+        type: 'STOP_MARKET',
+        quantity: actualQty.toString(),
+        triggerPrice: formattedSL,
+        reduceOnly: 'true',
+        timestamp: Date.now().toString()
+      });
+
+      // Recovery if order immediately triggers due to price slip
+      if (slRes && slRes.code === -2021) {
+        const currentTickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
+        const curTickerData = await currentTickerRes.json();
+        const curPrice = parseFloat(curTickerData.price) || fillPrice;
+        const retrySL = side === 'BUY'
+          ? (curPrice * (1 - slRatio * 1.1)).toFixed(prec.pricePrecision)
+          : (curPrice * (1 + slRatio * 1.1)).toFixed(prec.pricePrecision);
+
+        slRes = await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/algoOrder', {
+          symbol,
+          side: closeSide,
+          algoType: 'CONDITIONAL',
+          type: 'STOP_MARKET',
+          quantity: actualQty.toString(),
+          triggerPrice: retrySL,
+          reduceOnly: 'true',
+          timestamp: Date.now().toString()
+        });
+
+        if (!slRes?.code) {
+          formattedSL = retrySL;
+        }
+      }
+    } catch (slErr) {
+      console.warn("Auto Stop Loss error:", slErr);
+    }
+
+    // Place Take Profit Algo Order
+    try {
+      tpRes = await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/algoOrder', {
+        symbol,
+        side: closeSide,
+        algoType: 'CONDITIONAL',
+        type: 'TAKE_PROFIT_MARKET',
+        quantity: actualQty.toString(),
+        triggerPrice: formattedTP,
+        reduceOnly: 'true',
+        timestamp: Date.now().toString()
+      });
+
+      if (tpRes && tpRes.code === -2021) {
+        const currentTickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
+        const curTickerData = await currentTickerRes.json();
+        const curPrice = parseFloat(curTickerData.price) || fillPrice;
+        const retryTP = side === 'BUY'
+          ? (curPrice * (1 + tpRatio * 1.1)).toFixed(prec.pricePrecision)
+          : (curPrice * (1 - tpRatio * 1.1)).toFixed(prec.pricePrecision);
+
+        tpRes = await callBinanceFutures(apiKey, apiSecret, 'POST', '/fapi/v1/algoOrder', {
+          symbol,
+          side: closeSide,
+          algoType: 'CONDITIONAL',
+          type: 'TAKE_PROFIT_MARKET',
+          quantity: actualQty.toString(),
+          triggerPrice: retryTP,
+          reduceOnly: 'true',
+          timestamp: Date.now().toString()
+        });
+
+        if (!tpRes?.code) {
+          formattedTP = retryTP;
+        }
+      }
+    } catch (tpErr) {
+      console.warn("Auto Take Profit error:", tpErr);
+    }
+  }
+
+  const marginRequired = notionalUsd / leverage;
+
+  return {
+    success: true,
+    orderId: orderRes.orderId?.toString() || '',
+    clientOrderId: orderRes.clientOrderId || '',
+    symbol,
+    side,
+    isReverse,
+    rrRatio,
+    quantity: actualQty,
+    formattedQty,
+    fillPrice,
+    stopLossPrice: formattedSL,
+    takeProfitPrice: formattedTP,
+    slOrderId: slRes?.algoId?.toString() || slRes?.orderId?.toString() || null,
+    tpOrderId: tpRes?.algoId?.toString() || tpRes?.orderId?.toString() || null,
+    notionalUsd,
+    marginUsd: marginRequired,
+    leverage,
+    realPosition: realPos
+  };
+}
+
+
+
 
