@@ -21,6 +21,9 @@ import {
   Layers,
   ArrowUpRight,
   Plus,
+  PlusCircle,
+  ArrowDownRight,
+  Sparkles,
   X,
   Coins,
   Settings2,
@@ -59,6 +62,12 @@ interface CompoundConfig {
   quantity: number | null;
   last_check_at: string | null;
   real_position?: RealPosition | null;
+  dca_auto_enabled?: boolean;
+  dca_drop_percent?: number | null;
+  dca_notional_usd?: number | null;
+  dca_trigger_price?: number | null;
+  dca_executed?: boolean;
+  dca_count?: number;
 }
 
 interface CompoundCycle {
@@ -82,6 +91,8 @@ interface CompoundCycle {
   closed_at: string | null;
   real_position?: RealPosition | null;
   is_real_pnl?: boolean;
+  dca_count?: number;
+  dca_added_notional?: number;
 }
 
 interface CompoundLog {
@@ -148,6 +159,15 @@ export default function CompoundBotPage() {
   const [showStopModal, setShowStopModal] = useState(false);
   const [stopTargetSymbol, setStopTargetSymbol] = useState<string>("ALL");
   const [stopWithClose, setStopWithClose] = useState(true);
+
+  // Modal: DCA Position
+  const [showDcaModal, setShowDcaModal] = useState(false);
+  const [selectedDcaCoin, setSelectedDcaCoin] = useState<CompoundConfig | null>(null);
+  const [dcaMode, setDcaMode] = useState<"INSTANT" | "AUTO_DIP">("INSTANT");
+  const [instantNotional, setInstantNotional] = useState<number>(50);
+  const [autoDropPercent, setAutoDropPercent] = useState<number>(2.0);
+  const [autoNotional, setAutoNotional] = useState<number>(50);
+  const [dcaSubmitting, setDcaSubmitting] = useState(false);
 
   // Action Loading states
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
@@ -236,9 +256,12 @@ export default function CompoundBotPage() {
           });
           const json = await res.json();
           if (json.success && json.data) {
-            // Check if any compound executed or SL hit to refresh full state
+            // Check if any compound executed, DCA triggered, or SL hit to refresh full state
             const hasTrigger = json.data.coins?.some(
-              (c: any) => c.status === "COMPOUND_EXECUTED" || c.status === "STOP_LOSS_HIT"
+              (c: any) =>
+                c.status === "COMPOUND_EXECUTED" ||
+                c.status === "STOP_LOSS_HIT" ||
+                c.status === "DCA_TRIGGERED"
             );
             if (hasTrigger) {
               fetchState();
@@ -394,6 +417,120 @@ export default function CompoundBotPage() {
       console.error(err);
     } finally {
       setClearingLogs(false);
+    }
+  };
+
+  // 9. DCA Handlers
+  const handleOpenDcaModal = (coin: CompoundConfig) => {
+    setSelectedDcaCoin(coin);
+    const defaultNotional = coin.notional_usd ? Math.max(10, Math.round(coin.notional_usd * 0.5)) : 50;
+    setInstantNotional(defaultNotional);
+    setAutoDropPercent(coin.dca_drop_percent || 2.0);
+    setAutoNotional(coin.dca_notional_usd || defaultNotional);
+    setDcaMode(coin.dca_auto_enabled ? "AUTO_DIP" : "INSTANT");
+    setShowDcaModal(true);
+  };
+
+  const handleExecuteInstantDca = async () => {
+    if (!selectedDcaCoin) return;
+    if (!instantNotional || instantNotional <= 0) {
+      alert("Nominal tambahan notional harus lebih dari 0 USD.");
+      return;
+    }
+
+    setDcaSubmitting(true);
+    try {
+      const res = await fetch("/api/crypto/compound-bot/dca", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "INSTANT",
+          symbol: selectedDcaCoin.symbol,
+          notionalUsd: instantNotional
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message || `DCA Instan ${selectedDcaCoin.symbol} berhasil!`);
+        setShowDcaModal(false);
+        await fetchState();
+      } else {
+        alert(`Gagal DCA: ${json.error}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setDcaSubmitting(false);
+    }
+  };
+
+  const handleSetAutoDca = async () => {
+    if (!selectedDcaCoin) return;
+    if (!autoDropPercent || autoDropPercent <= 0) {
+      alert("Target persentase penurunan harus lebih dari 0%.");
+      return;
+    }
+    if (!autoNotional || autoNotional <= 0) {
+      alert("Nominal tambahan notional harus lebih dari 0 USD.");
+      return;
+    }
+
+    setDcaSubmitting(true);
+    try {
+      const res = await fetch("/api/crypto/compound-bot/dca", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "SET_AUTO",
+          symbol: selectedDcaCoin.symbol,
+          dropPercent: autoDropPercent,
+          notionalUsd: autoNotional
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message || `Auto DCA untuk ${selectedDcaCoin.symbol} berhasil diaktifkan!`);
+        setShowDcaModal(false);
+        await fetchState();
+      } else {
+        alert(`Gagal memasang Auto DCA: ${json.error}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setDcaSubmitting(false);
+    }
+  };
+
+  const handleCancelAutoDca = async () => {
+    if (!selectedDcaCoin) return;
+    if (!window.confirm(`Batalkan Auto DCA penurunan untuk ${selectedDcaCoin.symbol}?`)) return;
+
+    setDcaSubmitting(true);
+    try {
+      const res = await fetch("/api/crypto/compound-bot/dca", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "CANCEL_AUTO",
+          symbol: selectedDcaCoin.symbol
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message || `Auto DCA untuk ${selectedDcaCoin.symbol} telah dibatalkan.`);
+        setShowDcaModal(false);
+        await fetchState();
+      } else {
+        alert(`Gagal membatalkan Auto DCA: ${json.error}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setDcaSubmitting(false);
     }
   };
 
@@ -663,8 +800,27 @@ export default function CompoundBotPage() {
                           </div>
                         </div>
 
-                        {/* Status Badge */}
-                        <div className="flex items-center gap-2">
+                        {/* Status Badge & DCA Indicators */}
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          {coin.dca_auto_enabled && coin.dca_drop_percent && (
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 border border-amber-500/60 text-amber-300 flex items-center gap-1"
+                              title={`Auto DCA Aktif: Menunggu penurunan -${coin.dca_drop_percent}% (Pemicu: $${coin.dca_trigger_price ? coin.dca_trigger_price.toFixed(4) : '-'}) untuk tambah +$${coin.dca_notional_usd} USD`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                              Auto DCA: -{coin.dca_drop_percent}%
+                            </span>
+                          )}
+
+                          {coin.dca_count && coin.dca_count > 0 ? (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-950/90 border border-purple-600/60 text-purple-300"
+                              title={`Posisi telah di-DCA sebanyak ${coin.dca_count} kali`}
+                            >
+                              DCA x{coin.dca_count}
+                            </span>
+                          ) : null}
+
                           <span
                             className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
                               coin.is_active
@@ -767,7 +923,29 @@ export default function CompoundBotPage() {
                     </div>
 
                     {/* Card Actions */}
-                    <div className="pt-2 border-t border-slate-800/80">
+                    <div className="pt-2 border-t border-slate-800/80 flex items-center gap-2">
+                      {/* DCA Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDcaModal(coin)}
+                        disabled={isLoading}
+                        className={`px-3 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer ${
+                          coin.dca_auto_enabled
+                            ? "bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-white shadow-amber-950/40 border border-amber-400/50"
+                            : "bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-600/40 hover:border-amber-500/70"
+                        }`}
+                        title="Tambah Posisi Notional (DCA Instan / Auto Dip)"
+                      >
+                        <PlusCircle className="w-3.5 h-3.5" />
+                        DCA
+                        {coin.dca_count && coin.dca_count > 0 ? (
+                          <span className="px-1 py-0.2 rounded bg-amber-950 text-[9px] text-amber-200">
+                            x{coin.dca_count}
+                          </span>
+                        ) : null}
+                      </button>
+
+                      {/* Start / Stop Button */}
                       {coin.is_active ? (
                         <button
                           type="button"
@@ -776,7 +954,7 @@ export default function CompoundBotPage() {
                             setShowStopModal(true);
                           }}
                           disabled={isLoading}
-                          className="w-full py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-rose-950"
+                          className="flex-1 py-2.5 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-rose-950 cursor-pointer"
                         >
                           <Square className="w-3.5 h-3.5 fill-white" />
                           {isLoading ? "Menghentikan..." : `STOP ${coin.symbol}`}
@@ -794,7 +972,7 @@ export default function CompoundBotPage() {
                             })
                           }
                           disabled={isLoading}
-                          className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-950 cursor-pointer"
+                          className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md shadow-emerald-950 cursor-pointer"
                         >
                           <Play className="w-3.5 h-3.5 fill-white" />
                           {isLoading ? "Membuka BUY..." : `START ${coin.symbol}`}
@@ -845,6 +1023,7 @@ export default function CompoundBotPage() {
                 if (log.category === "TARGET_HIT") badgeColor = "bg-emerald-700 text-white font-bold border border-emerald-400";
                 if (log.category === "COMPOUND") badgeColor = "bg-purple-900/60 text-purple-300 border border-purple-600/50";
                 if (log.category === "CLOSE") badgeColor = "bg-blue-900/60 text-blue-300 border border-blue-700/50";
+                if (log.category === "DCA") badgeColor = "bg-amber-900/80 text-amber-300 border border-amber-500/60 font-bold";
                 if (log.category === "STOP") badgeColor = "bg-amber-900/60 text-amber-300 border border-amber-700/50";
                 if (log.level === "ERROR") badgeColor = "bg-rose-900/60 text-rose-200 border border-rose-600/50";
 
@@ -955,6 +1134,14 @@ export default function CompoundBotPage() {
                         <td className="py-2.5 px-3 font-sans">{statusBadge}</td>
                         <td className="py-2.5 px-3 text-slate-200">
                           ${cycle.notional_in.toFixed(2)}
+                          {cycle.dca_count && cycle.dca_count > 0 ? (
+                            <span
+                              className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-600/60 inline-flex items-center"
+                              title={`Posisi ditambah ${cycle.dca_count}x DCA (+${cycle.dca_added_notional ? `$${cycle.dca_added_notional.toFixed(2)}` : ''})`}
+                            >
+                              +{cycle.dca_count} DCA
+                            </span>
+                          ) : null}
                         </td>
                         <td className="py-2.5 px-3 text-slate-300">
                           ${cycle.entry_price.toLocaleString()} ➔ {cycle.exit_price ? `$${cycle.exit_price.toLocaleString()}` : "-"}
@@ -1305,6 +1492,489 @@ export default function CompoundBotPage() {
           </div>
         </div>
       )}
+
+      {/* Modal: DCA (Tambah Posisi Notional) */}
+      {showDcaModal && selectedDcaCoin && (() => {
+        const coin = selectedDcaCoin;
+        const activeCycle = activeCyclesMap[coin.symbol];
+        const realPos = coin.real_position || activeCycle?.real_position;
+        const livePrice = realPos?.markPrice || livePrices[coin.symbol] || coin.entry_price || 0;
+        const currentEntry = (realPos && realPos.entryPrice > 0)
+          ? realPos.entryPrice
+          : (activeCycle?.entry_price || coin.entry_price || livePrice);
+        const currentQty = (realPos && realPos.positionAmt !== 0)
+          ? Math.abs(realPos.positionAmt)
+          : (activeCycle?.quantity || coin.quantity || (currentEntry > 0 ? coin.notional_usd / currentEntry : 0));
+        const currentNotional = (realPos && realPos.notional > 0)
+          ? realPos.notional
+          : (coin.is_active ? coin.current_notional : coin.notional_usd);
+        const leverage = realPos?.leverage || coin.leverage || 20;
+        const compoundPercent = coin.compound_percent || 1.0;
+
+        // Instant DCA calculations
+        const instantMargin = instantNotional / leverage;
+        const instantNewTotalNotional = currentNotional + instantNotional;
+        const instantAddedQty = livePrice > 0 ? (instantNotional / livePrice) : 0;
+        const instantNewTotalQty = currentQty + instantAddedQty;
+        const instantEstNewEntry = (instantNewTotalQty > 0 && livePrice > 0)
+          ? (((currentQty * currentEntry) + (instantAddedQty * livePrice)) / instantNewTotalQty)
+          : livePrice;
+        const instantEstNewTarget = instantEstNewEntry * (1 + compoundPercent / 100);
+        const currentTarget = currentEntry * (1 + compoundPercent / 100);
+
+        // Auto DCA calculations
+        const autoTriggerPrice = currentEntry * (1 - autoDropPercent / 100);
+        const autoMargin = autoNotional / leverage;
+        const autoAddedQty = autoTriggerPrice > 0 ? (autoNotional / autoTriggerPrice) : 0;
+        const autoNewTotalQty = currentQty + autoAddedQty;
+        const autoEstNewEntry = (autoNewTotalQty > 0 && autoTriggerPrice > 0)
+          ? (((currentQty * currentEntry) + (autoAddedQty * autoTriggerPrice)) / autoNewTotalQty)
+          : autoTriggerPrice;
+        const autoEstNewTarget = autoEstNewEntry * (1 + compoundPercent / 100);
+
+        // Live gap to existing trigger
+        const existingTrigger = coin.dca_trigger_price || (currentEntry * (1 - (coin.dca_drop_percent || 2) / 100));
+        const distanceToTriggerPct = (livePrice > 0 && existingTrigger > 0)
+          ? (((livePrice - existingTrigger) / livePrice) * 100)
+          : 0;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[92vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-gradient-to-tr from-amber-600 to-orange-500 text-white shadow-md shadow-amber-950/40">
+                    <PlusCircle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                      DCA Posisi • {coin.symbol}
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Tambah posisi notional untuk meratakan harga entri & mempercepat target profit
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDcaModal(false)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Status Bar Koin */}
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Ukuran Posisi Saat Ini:</span>
+                  <span className="font-mono font-bold text-slate-100">
+                    ${currentNotional.toFixed(2)} USD <span className="text-[10px] text-cyan-400 font-normal">({(currentNotional / leverage).toFixed(2)} USDT @ {leverage}x)</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Harga Entri Rata-Rata:</span>
+                  <span className="font-mono font-bold text-slate-200">
+                    ${currentEntry.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Harga Pasar Live (Mark):</span>
+                  <span className="font-mono font-bold text-cyan-300">
+                    {livePrice ? `$${livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}` : "Memuat..."}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Target Exit Saat Ini (+{compoundPercent}%):</span>
+                  <span className="font-mono font-bold text-emerald-400">
+                    ${currentTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* Inactive Notice if Stopped */}
+              {!coin.is_active ? (
+                <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-600/50 space-y-3 text-center">
+                  <div className="text-amber-300 font-semibold text-xs flex items-center justify-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    Koin ini sedang STOPPED (tidak ada posisi aktif berjalan).
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Fitur DCA digunakan untuk menambah modal pada posisi koin yang sedang terbuka di Binance. Silakan mulai bot (START) koin ini terlebih dahulu.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDcaModal(false);
+                      handleStartCoin({
+                        symbol: coin.symbol,
+                        notionalUsd: coin.notional_usd,
+                        leverage: coin.leverage,
+                        compoundPercent: coin.compound_percent,
+                        stopLossPercent: coin.stop_loss_percent
+                      });
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-md shadow-emerald-950 cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-white" />
+                    START {coin.symbol} Sekarang
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Mode Tab Switcher */}
+                  <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setDcaMode("INSTANT")}
+                      className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        dcaMode === "INSTANT"
+                          ? "bg-gradient-to-r from-amber-600 to-orange-500 text-white shadow-md shadow-amber-950/40"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      Langsung Tambah Posisi
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDcaMode("AUTO_DIP")}
+                      className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        dcaMode === "AUTO_DIP"
+                          ? "bg-gradient-to-r from-amber-600 to-orange-500 text-white shadow-md shadow-amber-950/40"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <ArrowDownRight className="w-3.5 h-3.5" />
+                      Otomatis Saat Penurunan
+                      {coin.dca_auto_enabled && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5"></span>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* TAB 1: INSTANT DCA */}
+                  {dcaMode === "INSTANT" && (
+                    <div className="space-y-4">
+                      {/* Input Notional */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-300 flex items-center justify-between">
+                          <span>Nominal Tambahan Notional (USD)</span>
+                          <span className="text-[10px] text-slate-400">
+                            Estimasi Margin: +${instantMargin.toFixed(2)} USDT
+                          </span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-2 text-slate-400 font-bold">$</span>
+                          <input
+                            type="number"
+                            min="5"
+                            value={instantNotional}
+                            onChange={(e) => setInstantNotional(parseFloat(e.target.value) || 0)}
+                            className="w-full pl-8 pr-12 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm font-semibold text-slate-100 focus:outline-none focus:border-amber-500"
+                          />
+                          <span className="absolute right-3.5 top-2.5 text-xs text-slate-400 font-medium">USD</span>
+                        </div>
+
+                        {/* Presets */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          {[10, 20, 50, 100, 250, 500].map((val) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setInstantNotional(val)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                                instantNotional === val
+                                  ? "bg-amber-600 text-white border border-amber-500"
+                                  : "bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400"
+                              }`}
+                            >
+                              +${val}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Simulation Card */}
+                      <div className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-600/30 space-y-2.5 text-xs">
+                        <div className="text-[11px] uppercase tracking-wider font-bold text-amber-400 flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Simulasi Dampak DCA Langsung
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <span className="text-slate-400 block text-[10px]">Total Notional Baru</span>
+                            <span className="font-mono font-bold text-slate-100">
+                              ${instantNewTotalNotional.toFixed(2)} USD
+                            </span>
+                          </div>
+
+                          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <span className="text-slate-400 block text-[10px]">Margin Terpakai Tambahan</span>
+                            <span className="font-mono font-bold text-cyan-300">
+                              +${instantMargin.toFixed(2)} USDT
+                            </span>
+                          </div>
+
+                          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <span className="text-slate-400 block text-[10px]">Entry Rata-Rata Baru</span>
+                            <div className="font-mono font-bold text-slate-200 mt-0.5">
+                              ${instantEstNewEntry.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </div>
+                            <span className="text-[9px] text-emerald-400 block">Lebih dekat ke harga live</span>
+                          </div>
+
+                          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <span className="text-slate-400 block text-[10px]">Target Exit Baru (+{compoundPercent}%)</span>
+                            <div className="font-mono font-bold text-emerald-400 mt-0.5">
+                              ${instantEstNewTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </div>
+                            <span className="text-[9px] text-cyan-400 block">Jauh lebih cepat tercapai!</span>
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-slate-400 leading-relaxed italic">
+                          *Market Buy akan langsung dikirim ke Binance Futures. Koin akan tergabung otomatis dalam posisi aktif saat ini.
+                        </p>
+                      </div>
+
+                      {/* Action Button */}
+                      <button
+                        type="button"
+                        onClick={handleExecuteInstantDca}
+                        disabled={dcaSubmitting || instantNotional <= 0}
+                        className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 via-orange-500 to-amber-500 hover:from-amber-500 hover:to-orange-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-950/40 cursor-pointer disabled:opacity-50"
+                      >
+                        {dcaSubmitting ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Mengeksekusi BUY di Binance...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="w-4 h-4" />
+                            Eksekusi Tambah Posisi (+${instantNotional} USD) Sekarang
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* TAB 2: AUTO DCA DIP */}
+                  {dcaMode === "AUTO_DIP" && (
+                    <div className="space-y-4">
+                      {/* Active Auto DCA Status Banner */}
+                      {coin.dca_auto_enabled && (
+                        <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/60 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                              Auto DCA Sedang Aktif & Memantau
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleCancelAutoDca}
+                              disabled={dcaSubmitting}
+                              className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-950 hover:bg-rose-900 border border-rose-600/60 text-rose-300 transition-colors cursor-pointer"
+                            >
+                              Batalkan Auto DCA
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="p-2 rounded-lg bg-slate-950 border border-slate-800">
+                              <span className="text-[10px] text-slate-400 block">Menunggu Penurunan:</span>
+                              <span className="font-mono font-bold text-amber-400">
+                                -{coin.dca_drop_percent}%
+                              </span>
+                            </div>
+
+                            <div className="p-2 rounded-lg bg-slate-950 border border-slate-800">
+                              <span className="text-[10px] text-slate-400 block">Level Pemicu (Trigger):</span>
+                              <span className="font-mono font-bold text-slate-100">
+                                ${coin.dca_trigger_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) || "-"}
+                              </span>
+                            </div>
+
+                            <div className="p-2 rounded-lg bg-slate-950 border border-slate-800">
+                              <span className="text-[10px] text-slate-400 block">Tambahan Notional:</span>
+                              <span className="font-mono font-bold text-cyan-300">
+                                +${coin.dca_notional_usd} USD
+                              </span>
+                            </div>
+
+                            <div className="p-2 rounded-lg bg-slate-950 border border-slate-800">
+                              <span className="text-[10px] text-slate-400 block">Jarak ke Pemicu:</span>
+                              <span className={`font-mono font-bold ${distanceToTriggerPct > 0 ? "text-slate-300" : "text-amber-400"}`}>
+                                {distanceToTriggerPct > 0 ? `${distanceToTriggerPct.toFixed(2)}% lagi` : "Sangat dekat!"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Drop % Input */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-300 flex items-center justify-between">
+                          <span>{coin.dca_auto_enabled ? "Perbarui" : "Atur"} Target Penurunan Harga (%)</span>
+                          <span className="text-[10px] text-amber-400 font-semibold font-mono">
+                            Pemicu: ${autoTriggerPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                          </span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0.5"
+                            value={autoDropPercent}
+                            onChange={(e) => setAutoDropPercent(parseFloat(e.target.value) || 0)}
+                            className="w-full pl-3 pr-10 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm font-semibold text-slate-100 focus:outline-none focus:border-amber-500"
+                          />
+                          <span className="absolute right-3.5 top-2 text-xs text-amber-400 font-bold">-%</span>
+                        </div>
+
+                        {/* Presets */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          {[1.0, 1.5, 2.0, 3.0, 5.0, 7.5, 10.0].map((pct) => (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => setAutoDropPercent(pct)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                                autoDropPercent === pct
+                                  ? "bg-amber-600 text-white border border-amber-500"
+                                  : "bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400"
+                              }`}
+                            >
+                              -{pct}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Notional to Add */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-slate-300 flex items-center justify-between">
+                          <span>Nominal Tambahan Notional (USD)</span>
+                          <span className="text-[10px] text-slate-400">
+                            Estimasi Margin: +${autoMargin.toFixed(2)} USDT
+                          </span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-2 text-slate-400 font-bold">$</span>
+                          <input
+                            type="number"
+                            min="5"
+                            value={autoNotional}
+                            onChange={(e) => setAutoNotional(parseFloat(e.target.value) || 0)}
+                            className="w-full pl-8 pr-12 py-2 rounded-xl bg-slate-950 border border-slate-800 text-sm font-semibold text-slate-100 focus:outline-none focus:border-amber-500"
+                          />
+                          <span className="absolute right-3.5 top-2.5 text-xs text-slate-400 font-medium">USD</span>
+                        </div>
+
+                        {/* Presets */}
+                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                          {[20, 50, 100, 250, 500].map((val) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setAutoNotional(val)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                                autoNotional === val
+                                  ? "bg-amber-600 text-white border border-amber-500"
+                                  : "bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400"
+                              }`}
+                            >
+                              +${val}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Auto DCA Simulation Card */}
+                      <div className="p-3.5 rounded-xl bg-slate-950/80 border border-amber-600/30 space-y-2 text-xs">
+                        <div className="text-[11px] uppercase tracking-wider font-bold text-amber-400 flex items-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5" />
+                          Simulasi Jika Pemicu Penurunan (-{autoDropPercent}%) Tersentuh
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <span className="text-slate-400 block text-[10px]">Harga Pemicu Eksekusi</span>
+                            <span className="font-mono font-bold text-amber-300">
+                              ${autoTriggerPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </span>
+                          </div>
+
+                          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <span className="text-slate-400 block text-[10px]">Estimasi Total Notional</span>
+                            <span className="font-mono font-bold text-slate-100">
+                              ${(currentNotional + autoNotional).toFixed(2)} USD
+                            </span>
+                          </div>
+
+                          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <span className="text-slate-400 block text-[10px]">Entry Rata-Rata Baru</span>
+                            <span className="font-mono font-bold text-slate-200">
+                              ${autoEstNewEntry.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </span>
+                          </div>
+
+                          <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                            <span className="text-slate-400 block text-[10px]">Target Exit Baru (+{compoundPercent}%)</span>
+                            <span className="font-mono font-bold text-emerald-400">
+                              ${autoEstNewTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-slate-400 leading-relaxed italic">
+                          *Bot tick engine dan background runner memantau harga setiap 3 detik. Saat harga menyentuh pemicu, order buy dieksekusi seketika.
+                        </p>
+                      </div>
+
+                      {/* Action Button */}
+                      <button
+                        type="button"
+                        onClick={handleSetAutoDca}
+                        disabled={dcaSubmitting || autoDropPercent <= 0 || autoNotional <= 0}
+                        className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-600 via-orange-500 to-amber-500 hover:from-amber-500 hover:to-orange-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-950/40 cursor-pointer disabled:opacity-50"
+                      >
+                        {dcaSubmitting ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Menyimpan Pengaturan Auto DCA...
+                          </>
+                        ) : (
+                          <>
+                            <ArrowDownRight className="w-4 h-4" />
+                            {coin.dca_auto_enabled ? "Perbarui" : "Pasang"} Auto DCA (-{autoDropPercent}% / +${autoNotional} USD)
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Close Button */}
+              <div className="pt-2 border-t border-slate-800 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowDcaModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

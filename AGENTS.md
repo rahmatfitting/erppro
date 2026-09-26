@@ -215,28 +215,54 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 - **Modal Deep Dive 5 Layer:** Analisis rincian 5 layer per koin secara mendalam dengan visual progress bar skor, data finansial on-chain, status leverage derivatif, dan profil tokenomics.
 - **Integrasi Telegram Alert:** Tombol 1-click kirim alert laporan terstruktur ke bot Telegram atau webhook notifikasi.
 
+### [2026-09-26] - Bot Compound Future: Fitur DCA (Dollar Cost Averaging) Tambah Posisi Notional
+
+#### 1. Tombol & Modal DCA Disetiap Koin (`/crypto/compound-bot`)
+- **Deskripsi:** Tombol aksi `DCA` baru pada setiap kartu koin untuk menambah ukuran posisi notional koin yang sedang berjalan di Binance Futures, meratakan harga rata-rata entri (*average-down*), dan mempercepat pencapaian target exit profit siklus compound.
+- **Dua Mode Eksekusi DCA:**
+  1. **Mode DCA Instan (`INSTANT`):**
+     - Langsung mengeksekusi order MARKET BUY di Binance Futures untuk menambah notional posisi saat ini juga.
+     - Pilihan preset notional cepat: `$10`, `$20`, `$50`, `$100`, `$250`, `$500` USD atau custom input.
+     - Live simulation card menghitung secara instan:
+       - Tambahan margin terpakai (`+$USDT`).
+       - Total ukuran notional baru (`$USD`).
+       - Estimasi harga entri rata-rata baru (turun lebih dekat ke harga pasar riil).
+       - Estimasi target exit baru (+X% dari entri baru yang jauh lebih mudah tercapai).
+  2. **Mode Auto DCA Penurunan (`AUTO_DIP`):**
+     - Opsi menunggu penurunan harga sebesar X% dari harga entri saat ini sebelum otomatis menambah posisi notional.
+     - Pilihan preset persentase penurunan: `-1.0%`, `-1.5%`, `-2.0%`, `-3.0%`, `-5.0%`, `-7.5%`, `-10.0%`.
+     - Perhitungan harga pemicu otomatis:
+       $$\text{Trigger Price} = \text{Entry Price} \times (1 - \frac{\text{Drop Percent}}{100})$$
+     - Dipantau otomatis oleh tick engine browser dan background daemon runner (`cron_compound_bot.js`) setiap 3 detik.
+     - Saat harga menyentuh atau turun di bawah harga pemicu, sistem seketika mengeksekusi MARKET BUY penambahan posisi di Binance, memperbarui harga entri dan target exit baru, serta mencatat status `DCA_TRIGGERED` di log terminal.
+     - Dilengkapi fitur pembatalan (*Cancel Auto DCA*) kapan saja langsung dari modal.
+
+#### 2. Indikator Visual & Sinkronisasi Live Binance
+- **Badge Status Auto DCA:** Menampilkan label pulsing `Auto DCA: -X%` pada header kartu koin saat pemantauan penurunan sedang aktif.
+- **Counter DCA (`DCA xN`):** Menampilkan jumlah akumulasi DCA yang telah dieksekusi pada siklus aktif saat ini.
+- **Sinkronisasi Riwayat Siklus:** Kolom Notional pada tabel riwayat siklus kini menampilkan tag `+N DCA` beserta nominal tambahan yang diakumulasikan.
+- **Kategori Log Khusus `[DCA]`:** Penanda warna amber pada jendela log terminal monospace untuk seluruh eksekusi DCA instan maupun otomatis.
+
 ---
 
 ## 🛠️ File-File Terkait
 
 | File Path | Peran & Tanggung Jawab |
 |-----------|------------------------|
+| [`src/app/crypto/compound-bot/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/compound-bot/page.tsx) | Antarmuka pengguna Bot Compound Future: Tombol DCA di setiap koin, Modal interaktif 2 mode (DCA Instan & Auto DCA Penurunan), simulasi live margin & entry baru, serta badge status DCA. |
+| [`src/lib/compoundBot.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/compoundBot.ts) | Core Engine Bot Compound: Migrasi skema database kolom DCA (`dca_auto_enabled`, `dca_drop_percent`, `dca_notional_usd`, `dca_trigger_price`, `dca_executed`, `dca_count`), fungsi `executeInstantDca`, `setAutoDca`, `cancelAutoDca`, dan evaluasi auto DCA di `tickCompoundBot`. |
+| [`src/app/api/crypto/compound-bot/dca/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/dca/route.ts) | API Endpoint POST untuk memproses DCA Instan, Set Auto DCA Penurunan, dan Cancel Auto DCA. |
+| [`cron_compound_bot.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_compound_bot.js) | Standalone Node.js background runner untuk eksekusi engine compound 24/7 dan pencatatan trigger DCA otomatis di konsol. |
+| [`src/lib/binanceOrder.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) | Fungsi eksekusi order Binance Futures: `executeCompoundBuyOrder` dan penarikan blended average price riil Binance. |
 | [`src/app/crypto/narrative-onchain/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/narrative-onchain/page.tsx) | Antarmuka pengguna utama Dashboard Crypto Narrative & On-Chain Monitor: Regime Header, 4 Sub-View Tab, Modal Deep Dive 5 Layer, Filter Scanner Drawer, dan Alert Sender. |
 | [`src/lib/narrativeOnchain.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/narrativeOnchain.ts) | Core Engine Kuantitatif: Auto-migration tabel MySQL (`crypto_narratives`, `crypto_narrative_coins`, `crypto_narrative_catalysts`, `crypto_narrative_alerts`), formula Opportunity Score 5-layer, klasifikasi sinyal, sinkronisasi data Binance & DefiLlama, dan formatter pesan Telegram. |
-| [`src/app/api/crypto/narrative-onchain/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/narrative-onchain/route.ts) | API Endpoint GET untuk mengambil seluruh dataset monitor: makro rezim, leaderboard narasi, daftar koin ter-skor, kalender katalis, dan alert terbaru. |
-| [`src/app/api/crypto/narrative-onchain/scan/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/narrative-onchain/scan/route.ts) | API Endpoint POST untuk menjalankan scan ulang manual, refresh metrik pasar live Binance & DefiLlama, dan kalkulasi ulang skor. |
-| [`src/app/api/crypto/narrative-onchain/alert/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/narrative-onchain/alert/route.ts) | API Endpoint POST untuk menyiarkan sinyal koin terpilih atau ringkasan hot narrative langsung ke bot Telegram. |
-| [`src/app/crypto/compound-bot/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/compound-bot/page.tsx) | Antarmuka pengguna Bot Compound Future: Input parameter, Tombol Cek Pair, START & STOP, Card Monitoring Live, Terminal Log, dan Tabel Riwayat Siklus. |
-| [`src/lib/compoundBot.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/compoundBot.ts) | Core Engine Bot Compound: Inisialisasi tabel MySQL (`compound_bot_config`, `compound_bot_cycles`, `compound_bot_logs`), state management, kalkulasi compound, tick engine, dan validasi pair. |
 | [`src/app/api/crypto/compound-bot/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/route.ts) | API Endpoint GET status bot, konfigurasi, riwayat siklus, dan log eksekusi. |
 | [`src/app/api/crypto/compound-bot/validate/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/validate/route.ts) | API Endpoint GET untuk validasi pair ke Binance Futures USDT-M. |
 | [`src/app/api/crypto/compound-bot/start/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/start/route.ts) | API Endpoint POST untuk memulai bot dan mengeksekusi order BUY perdana di Binance. |
 | [`src/app/api/crypto/compound-bot/stop/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/stop/route.ts) | API Endpoint POST untuk menghentikan bot dan opsional menutup posisi pasar. |
 | [`src/app/api/crypto/compound-bot/tick/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/tick/route.ts) | API Endpoint GET & POST untuk evaluasi harga real-time, eksekusi close saat target hit, dan pembukaan order compound baru. |
 | [`src/app/api/crypto/compound-bot/clear-logs/route.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/api/crypto/compound-bot/clear-logs/route.ts) | API Endpoint POST untuk membersihkan tabel log aktivitas bot. |
-| [`cron_compound_bot.js`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/cron_compound_bot.js) | Standalone Node.js background runner untuk eksekusi engine compound 24/7. |
 | [`run_compound_bot.bat`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/run_compound_bot.bat) | File batch Windows 1-click launcher untuk menjalankan daemon background compound bot. |
-| [`src/lib/binanceOrder.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/lib/binanceOrder.ts) | Fungsi eksekusi order Binance Futures: `executeCompoundBuyOrder` dan `executeCompoundCloseOrder`. |
 | [`src/components/Sidebar.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/components/Sidebar.tsx) | Menu navigasi "Bot Compound Future" & "Narrative & On-Chain Monitor" di bagian Crypto Intelligence. |
 | [`src/middleware.ts`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/middleware.ts) | Whitelist rute `/api/crypto/compound-bot` dan `/api/crypto/narrative-onchain` agar dapat diakses tanpa hambatan sesi. |
 | [`src/app/crypto/hedgefund-buy/page.tsx`](file:///d:/rahmat/belajar%20next%20js/erp_nextjs/frontend/src/app/crypto/hedgefund-buy/page.tsx) | Halaman antarmuka Radar, Tabel Freeze Header, Terminal 8 Chart, Tombol "Kirim ke Telegram", dan Watchdog Scheduler. |

@@ -29,6 +29,12 @@ export interface CompoundBotConfig {
   updated_at: string;
   created_at: string;
   real_position?: BinanceRealPosition | null;
+  dca_auto_enabled?: boolean;
+  dca_drop_percent?: number | null;
+  dca_notional_usd?: number | null;
+  dca_trigger_price?: number | null;
+  dca_executed?: boolean;
+  dca_count?: number;
 }
 
 export interface CompoundBotCycle {
@@ -52,6 +58,8 @@ export interface CompoundBotCycle {
   closed_at: string | null;
   real_position?: BinanceRealPosition | null;
   is_real_pnl?: boolean;
+  dca_count?: number;
+  dca_added_notional?: number;
 }
 
 export interface CompoundBotLog {
@@ -137,6 +145,34 @@ export async function ensureCompoundBotTables() {
   } catch (keyErr: any) {
     // ignore if index already exists
   }
+
+  // Auto-migration for DCA features in compound_bot_config:
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN dca_auto_enabled BOOLEAN DEFAULT false`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN dca_drop_percent DECIMAL(8, 4) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN dca_notional_usd DECIMAL(12, 4) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN dca_trigger_price DECIMAL(16, 8) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN dca_executed BOOLEAN DEFAULT false`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN dca_count INT DEFAULT 0`);
+  } catch {}
+
+  // Auto-migration for DCA columns in compound_bot_cycles:
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_cycles ADD COLUMN dca_count INT DEFAULT 0`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_cycles ADD COLUMN dca_added_notional DECIMAL(12, 4) DEFAULT 0.0000`);
+  } catch {}
 
   // Ensure default BTCUSDT coin exists if table completely empty
   const existing: any = await executeQuery(`SELECT count(*) as count FROM compound_bot_config`);
@@ -246,7 +282,13 @@ export async function getBotState() {
     target_price: r.target_price ? parseFloat(r.target_price) : null,
     sl_price: r.sl_price ? parseFloat(r.sl_price) : null,
     quantity: r.quantity ? parseFloat(r.quantity) : null,
-    is_active: Boolean(r.is_active)
+    is_active: Boolean(r.is_active),
+    dca_auto_enabled: Boolean(r.dca_auto_enabled),
+    dca_drop_percent: r.dca_drop_percent ? parseFloat(r.dca_drop_percent) : null,
+    dca_notional_usd: r.dca_notional_usd ? parseFloat(r.dca_notional_usd) : null,
+    dca_trigger_price: r.dca_trigger_price ? parseFloat(r.dca_trigger_price) : null,
+    dca_executed: Boolean(r.dca_executed),
+    dca_count: parseInt(r.dca_count) || 0
   }));
 
   // 2. Fetch all active open cycles
@@ -266,7 +308,9 @@ export async function getBotState() {
     quantity: parseFloat(r.quantity),
     pnl_usd: parseFloat(r.pnl_usd),
     pnl_percent: parseFloat(r.pnl_percent),
-    leverage: parseInt(r.leverage)
+    leverage: parseInt(r.leverage),
+    dca_count: parseInt(r.dca_count) || 0,
+    dca_added_notional: parseFloat(r.dca_added_notional) || 0
   }));
 
   // Map of active cycles by symbol
@@ -290,7 +334,9 @@ export async function getBotState() {
     quantity: parseFloat(r.quantity),
     pnl_usd: parseFloat(r.pnl_usd),
     pnl_percent: parseFloat(r.pnl_percent),
-    leverage: parseInt(r.leverage)
+    leverage: parseInt(r.leverage),
+    dca_count: parseInt(r.dca_count) || 0,
+    dca_added_notional: parseFloat(r.dca_added_notional) || 0
   }));
 
   // 4. Latest 80 logs
@@ -516,15 +562,21 @@ export async function startCompoundBot(params: {
     throw new Error('Persentase compound per kenaikan harga harus lebih besar dari 0% (contoh: 1.0%).');
   }
 
-  // 2. Check if this coin already has an active cycle
-  const openRows: any = await executeQuery(`
-    SELECT count(*) as count FROM compound_bot_cycles 
-    WHERE symbol = ? AND status = 'OPEN'
+  // 2. Check if this coin is currently running active
+  const configRows: any = await executeQuery(`
+    SELECT is_active FROM compound_bot_config WHERE symbol = ?
   `, [cleanSymbol]);
 
-  if (openRows && openRows[0].count > 0) {
-    throw new Error(`Koin ${cleanSymbol} sudah memiliki posisi compound aktif yang sedang berjalan! Hentikan terlebih dahulu.`);
+  if (configRows && configRows.length > 0 && configRows[0].is_active) {
+    throw new Error(`Koin ${cleanSymbol} sedang aktif berjalan! Hentikan (STOP) terlebih dahulu sebelum memulai siklus baru.`);
   }
+
+  // Bersihkan siklus lama yang menggantung (stuck OPEN) agar tidak memblokir start baru
+  await executeQuery(`
+    UPDATE compound_bot_cycles 
+    SET status = 'STOPPED', closed_at = NOW() 
+    WHERE symbol = ? AND status = 'OPEN'
+  `, [cleanSymbol]);
 
   // 3. Execute Initial BUY Order on Binance
   await addBotLog('START', `🚀 [${cleanSymbol}] Memulai Bot Compound Future (Notional: $${notionalUsd} USD, Leverage: ${leverage}x, Target: +${compoundPercent}%)...`, 'INFO');
@@ -561,9 +613,9 @@ export async function startCompoundBot(params: {
   // 5. Update or Insert Bot Config for this coin
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price)
     VALUES 
-      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW())
+      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL)
     ON DUPLICATE KEY UPDATE
       is_active = true,
       notional_usd = VALUES(notional_usd),
@@ -576,7 +628,13 @@ export async function startCompoundBot(params: {
       target_price = VALUES(target_price),
       sl_price = VALUES(sl_price),
       quantity = VALUES(quantity),
-      last_check_at = NOW()
+      last_check_at = NOW(),
+      dca_auto_enabled = false,
+      dca_executed = false,
+      dca_count = 0,
+      dca_drop_percent = NULL,
+      dca_notional_usd = NULL,
+      dca_trigger_price = NULL
   `, [
     cleanSymbol,
     notionalUsd,
@@ -681,7 +739,14 @@ export async function stopCompoundBot(params: {
           await addBotLog('STOP', `🛑 [${sym}] Bot dihentikan. Posisi Cycle #${cycle.cycle_number} ditutup di harga $${exitPrice.toFixed(4)} (PnL: ${realizedPnl >= 0 ? '+' : ''}$${realizedPnl.toFixed(2)} USDT / ${pnlPercent.toFixed(2)}%).`, 'WARN');
         } catch (err: any) {
           console.error(`Gagal menutup posisi ${sym} saat STOP:`, err);
-          await addBotLog('ERROR', `❌ [${sym}] Gagal menutup posisi pasar saat STOP: ${err.message}.`, 'ERROR');
+          await addBotLog('ERROR', `⚠️ [${sym}] Gagal menutup posisi pasar saat STOP: ${err.message}. Status siklus tetap ditandai STOPPED.`, 'ERROR');
+
+          // Tetap tandai siklus sebagai STOPPED agar tidak tersangkut OPEN
+          await executeQuery(`
+            UPDATE compound_bot_cycles 
+            SET status = 'STOPPED', closed_at = NOW() 
+            WHERE id = ?
+          `, [cycle.id]);
         }
       } else {
         await executeQuery(`
@@ -694,6 +759,13 @@ export async function stopCompoundBot(params: {
       }
     }
 
+    // Pastikan semua siklus OPEN koin ini ditandai STOPPED
+    await executeQuery(`
+      UPDATE compound_bot_cycles 
+      SET status = 'STOPPED', closed_at = NOW() 
+      WHERE symbol = ? AND status = 'OPEN'
+    `, [sym]);
+
     // Set config active = false for this coin
     await executeQuery(`
       UPDATE compound_bot_config 
@@ -701,7 +773,10 @@ export async function stopCompoundBot(params: {
           entry_price = NULL,
           target_price = NULL,
           sl_price = NULL,
-          quantity = NULL
+          quantity = NULL,
+          dca_auto_enabled = false,
+          dca_executed = false,
+          dca_trigger_price = NULL
       WHERE symbol = ?
     `, [sym]);
 
@@ -731,6 +806,253 @@ export async function deleteCoinConfig(symbol: string) {
 
   await executeQuery(`DELETE FROM compound_bot_config WHERE symbol = ?`, [cleanSymbol]);
   await addBotLog('SYSTEM', `🗑️ Koin ${cleanSymbol} telah dihapus dari daftar bot.`, 'INFO');
+
+  return { success: true, symbol: cleanSymbol };
+}
+
+/**
+ * Execute Instant DCA (Adds Notional Position to an Active Coin via Binance Market Buy)
+ */
+export async function executeInstantDca(params: {
+  symbol: string;
+  notionalUsd: number;
+  isAutoTrigger?: boolean;
+}) {
+  await ensureCompoundBotTables();
+  const { symbol, notionalUsd, isAutoTrigger = false } = params;
+  const cleanSymbol = symbol.toUpperCase().trim();
+
+  if (!notionalUsd || notionalUsd <= 0) {
+    throw new Error('Nominal tambahan posisi Notional harus lebih besar dari 0 USD.');
+  }
+
+  // 1. Get current coin config
+  const cfgRows: any = await executeQuery(`SELECT * FROM compound_bot_config WHERE symbol = ?`, [cleanSymbol]);
+  if (!cfgRows || cfgRows.length === 0) {
+    throw new Error(`Koin ${cleanSymbol} tidak ditemukan.`);
+  }
+
+  const coin = cfgRows[0];
+  if (!coin.is_active) {
+    throw new Error(`Koin ${cleanSymbol} sedang STOPPED. Mulai bot (START) terlebih dahulu sebelum menambah posisi.`);
+  }
+
+  const leverage = parseInt(coin.leverage) || 20;
+  const compoundPercent = parseFloat(coin.compound_percent) || 1.0;
+  const stopLossPercent = coin.stop_loss_percent ? parseFloat(coin.stop_loss_percent) : null;
+  const currentNotional = parseFloat(coin.current_notional) || parseFloat(coin.notional_usd) || 100;
+  const currentEntry = coin.entry_price ? parseFloat(coin.entry_price) : 0;
+  const currentQty = coin.quantity ? parseFloat(coin.quantity) : 0;
+  const cycleNum = parseInt(coin.current_cycle) || 1;
+
+  // 2. Execute Market Buy on Binance
+  const buyResult = await executeCompoundBuyOrder({
+    symbol: cleanSymbol,
+    notionalUsd,
+    leverage
+  });
+
+  const fillPrice = buyResult.fillPrice;
+  const addedQty = buyResult.quantity;
+  const newTotalNotional = currentNotional + notionalUsd;
+
+  // If Binance real position returned new values, prioritize them, otherwise calculate blended average
+  let newAvgEntry = fillPrice;
+  let newTotalQty = currentQty + addedQty;
+
+  if (buyResult.realPosition && buyResult.realPosition.entryPrice > 0) {
+    newAvgEntry = buyResult.realPosition.entryPrice;
+    newTotalQty = Math.abs(buyResult.realPosition.positionAmt);
+  } else if (currentQty > 0 && currentEntry > 0) {
+    newAvgEntry = ((currentQty * currentEntry) + (addedQty * fillPrice)) / (currentQty + addedQty);
+  }
+
+  const newTargetPrice = newAvgEntry * (1 + compoundPercent / 100);
+  const newSlPrice = stopLossPercent ? newAvgEntry * (1 - stopLossPercent / 100) : null;
+
+  // 3. Update compound_bot_cycles (Active open cycle)
+  await executeQuery(`
+    UPDATE compound_bot_cycles 
+    SET notional_in = notional_in + ?,
+        quantity = ?,
+        entry_price = ?,
+        target_price = ?,
+        dca_count = dca_count + 1,
+        dca_added_notional = dca_added_notional + ?
+    WHERE symbol = ? AND status = 'OPEN'
+  `, [
+    notionalUsd,
+    newTotalQty,
+    newAvgEntry,
+    newTargetPrice,
+    notionalUsd,
+    cleanSymbol
+  ]);
+
+  // 4. Update compound_bot_config
+  // If auto DCA was configured and not executed yet, recalibrate trigger price if needed
+  let updatedDcaTrigger = null;
+  if (coin.dca_auto_enabled && coin.dca_drop_percent && !isAutoTrigger) {
+    updatedDcaTrigger = newAvgEntry * (1 - parseFloat(coin.dca_drop_percent) / 100);
+  }
+
+  if (isAutoTrigger) {
+    await executeQuery(`
+      UPDATE compound_bot_config 
+      SET current_notional = ?,
+          quantity = ?,
+          entry_price = ?,
+          target_price = ?,
+          sl_price = ?,
+          dca_count = dca_count + 1,
+          dca_auto_enabled = false,
+          dca_executed = true,
+          dca_trigger_price = NULL
+      WHERE symbol = ?
+    `, [
+      newTotalNotional,
+      newTotalQty,
+      newAvgEntry,
+      newTargetPrice,
+      newSlPrice,
+      cleanSymbol
+    ]);
+  } else {
+    await executeQuery(`
+      UPDATE compound_bot_config 
+      SET current_notional = ?,
+          quantity = ?,
+          entry_price = ?,
+          target_price = ?,
+          sl_price = ?,
+          dca_count = dca_count + 1,
+          dca_trigger_price = IF(dca_auto_enabled = true AND ? IS NOT NULL, ?, dca_trigger_price)
+      WHERE symbol = ?
+    `, [
+      newTotalNotional,
+      newTotalQty,
+      newAvgEntry,
+      newTargetPrice,
+      newSlPrice,
+      updatedDcaTrigger,
+      updatedDcaTrigger,
+      cleanSymbol
+    ]);
+  }
+
+  // 5. Add Log
+  const dcaLabel = isAutoTrigger ? 'Auto DCA (Dip Trigger)' : 'DCA Instan';
+  const marginEst = (notionalUsd / leverage).toFixed(2);
+  await addBotLog(
+    'DCA',
+    `➕ [${cleanSymbol} #${cycleNum}] ${dcaLabel} Sukses! Ditambah +$${notionalUsd.toFixed(2)} USD Notional (${addedQty} koin @ $${fillPrice.toFixed(4)}, Margin: $${marginEst} USDT). Total Posisi Baru: $${newTotalNotional.toFixed(2)} USD. Entry Rata-Rata Baru: $${newAvgEntry.toFixed(4)} ➔ Target Exit Baru (+${compoundPercent}%): $${newTargetPrice.toFixed(4)}.`,
+    'SUCCESS'
+  );
+
+  return {
+    success: true,
+    symbol: cleanSymbol,
+    addedNotional: notionalUsd,
+    fillPrice,
+    newEntryPrice: newAvgEntry,
+    newTargetPrice: newTargetPrice,
+    newTotalNotional,
+    newTotalQty,
+    dcaCount: (parseInt(coin.dca_count) || 0) + 1
+  };
+}
+
+/**
+ * Set Auto DCA on Price Drop Percentage
+ */
+export async function setAutoDca(params: {
+  symbol: string;
+  dropPercent: number;
+  notionalUsd: number;
+}) {
+  await ensureCompoundBotTables();
+  const { symbol, dropPercent, notionalUsd } = params;
+  const cleanSymbol = symbol.toUpperCase().trim();
+
+  if (!dropPercent || dropPercent <= 0) {
+    throw new Error('Persentase penurunan harus lebih besar dari 0% (contoh: 2.0%).');
+  }
+  if (!notionalUsd || notionalUsd <= 0) {
+    throw new Error('Nominal tambahan posisi Notional harus lebih besar dari 0 USD.');
+  }
+
+  const cfgRows: any = await executeQuery(`SELECT * FROM compound_bot_config WHERE symbol = ?`, [cleanSymbol]);
+  if (!cfgRows || cfgRows.length === 0) {
+    throw new Error(`Koin ${cleanSymbol} tidak ditemukan.`);
+  }
+
+  const coin = cfgRows[0];
+  if (!coin.is_active) {
+    throw new Error(`Koin ${cleanSymbol} sedang STOPPED. Mulai bot (START) terlebih dahulu sebelum memasang Auto DCA.`);
+  }
+
+  let entryPrice = coin.entry_price ? parseFloat(coin.entry_price) : 0;
+  if (entryPrice <= 0) {
+    try {
+      const rp = await fetchRealPosition(cleanSymbol);
+      if (rp && rp.entryPrice > 0) entryPrice = rp.entryPrice;
+    } catch {}
+  }
+
+  if (entryPrice <= 0) {
+    throw new Error(`Harga entri untuk ${cleanSymbol} belum terdeteksi. Pastikan posisi sudah terbuka.`);
+  }
+
+  const triggerPrice = entryPrice * (1 - dropPercent / 100);
+
+  await executeQuery(`
+    UPDATE compound_bot_config 
+    SET dca_auto_enabled = true,
+        dca_drop_percent = ?,
+        dca_notional_usd = ?,
+        dca_trigger_price = ?,
+        dca_executed = false
+    WHERE symbol = ?
+  `, [
+    dropPercent,
+    notionalUsd,
+    triggerPrice,
+    cleanSymbol
+  ]);
+
+  await addBotLog(
+    'DCA',
+    `🎯 [${cleanSymbol}] Auto DCA Penurunan diaktifkan! Menunggu penurunan -${dropPercent}% (Pemicu: $${triggerPrice.toFixed(4)}). Jika tersentuh, otomatis menambah notional +$${notionalUsd.toFixed(2)} USD.`,
+    'INFO'
+  );
+
+  return {
+    success: true,
+    symbol: cleanSymbol,
+    dropPercent,
+    notionalUsd,
+    triggerPrice
+  };
+}
+
+/**
+ * Cancel Pending Auto DCA
+ */
+export async function cancelAutoDca(symbol: string) {
+  await ensureCompoundBotTables();
+  const cleanSymbol = symbol.toUpperCase().trim();
+
+  await executeQuery(`
+    UPDATE compound_bot_config 
+    SET dca_auto_enabled = false,
+        dca_drop_percent = NULL,
+        dca_notional_usd = NULL,
+        dca_trigger_price = NULL,
+        dca_executed = false
+    WHERE symbol = ?
+  `, [cleanSymbol]);
+
+  await addBotLog('DCA', `⏹️ [${cleanSymbol}] Auto DCA penurunan dibatalkan oleh pengguna.`, 'INFO');
 
   return { success: true, symbol: cleanSymbol };
 }
@@ -832,6 +1154,49 @@ export async function tickCompoundBot() {
       const progressToTarget = Math.min(100, Math.max(0, (priceChangePct / compoundPercent) * 100));
 
       // =========================================================================
+      // CASE 0: AUTO DCA TRIGGER (IF CONFIGURED & PRICE DROPPED TO DIP LEVEL)
+      // =========================================================================
+      if (
+        coin.dca_auto_enabled &&
+        !coin.dca_executed &&
+        coin.dca_drop_percent &&
+        coin.dca_notional_usd &&
+        coin.dca_notional_usd > 0
+      ) {
+        const dcaTriggerPrice = coin.dca_trigger_price 
+          ? parseFloat(coin.dca_trigger_price) 
+          : (entryPrice * (1 - parseFloat(coin.dca_drop_percent) / 100));
+
+        if (currentPrice <= dcaTriggerPrice) {
+          const dropPct = parseFloat(coin.dca_drop_percent);
+          const addedNotional = parseFloat(coin.dca_notional_usd);
+
+          await addBotLog('DCA', `📉 [${symbol}] AUTO DCA TERPICU! Harga ($${currentPrice.toFixed(4)}) turun -${dropPct}% dari entri ($${entryPrice.toFixed(4)}) dan menyentuh level pemicu ($${dcaTriggerPrice.toFixed(4)}). Mengeksekusi penambahan posisi +$${addedNotional.toFixed(2)} USD...`, 'INFO');
+
+          try {
+            const dcaRes = await executeInstantDca({
+              symbol,
+              notionalUsd: addedNotional,
+              isAutoTrigger: true
+            });
+
+            tickResults.push({
+              symbol,
+              status: 'DCA_TRIGGERED',
+              dcaNotional: addedNotional,
+              newEntryPrice: dcaRes.newEntryPrice,
+              newTargetPrice: dcaRes.newTargetPrice
+            });
+
+            continue;
+          } catch (dcaErr: any) {
+            console.error(`Auto DCA error for ${symbol}:`, dcaErr);
+            await addBotLog('ERROR', `❌ [${symbol}] Gagal mengeksekusi Auto DCA: ${dcaErr.message}.`, 'ERROR');
+          }
+        }
+      }
+
+      // =========================================================================
       // CASE 1: TARGET HIT (COMPOUND TRIGGER!)
       // =========================================================================
       if (currentPrice >= targetPrice) {
@@ -920,7 +1285,13 @@ export async function tickCompoundBot() {
                 target_price = ?,
                 sl_price = ?,
                 quantity = ?,
-                total_profit = total_profit + ?
+                total_profit = total_profit + ?,
+                dca_auto_enabled = false,
+                dca_executed = false,
+                dca_count = 0,
+                dca_drop_percent = NULL,
+                dca_notional_usd = NULL,
+                dca_trigger_price = NULL
             WHERE symbol = ?
           `, [
             nextCycleNum,

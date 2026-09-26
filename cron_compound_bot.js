@@ -39,6 +39,13 @@ async function runTick() {
             console.log(`💰 Cycle #${coin.previousCycle} Selesai! Realized Profit: +$${coin.realizedPnl?.toFixed(2)} USDT`);
             console.log(`🚀 Cycle #${coin.newCycle} Dibuka dengan Modal Baru: $${coin.nextNotional} USD!`);
             console.log('====================================================\n');
+          } else if (coin.status === 'DCA_TRIGGERED') {
+            console.log('\n====================================================');
+            console.log(`[${now}] ➕ [${coin.symbol}] AUTO DCA PENURUNAN TERPICU!`);
+            console.log(`💵 Tambahan Notional: +$${coin.dcaNotional} USD`);
+            console.log(`📉 Entry Rata-Rata Baru: $${coin.newEntryPrice}`);
+            console.log(`🎯 Target Exit Baru: $${coin.newTargetPrice}`);
+            console.log('====================================================\n');
           } else if (coin.status === 'STOP_LOSS_HIT') {
             console.log(`\n[${now}] ⚠️ [${coin.symbol}] STOP LOSS HIT! Posisi ditutup @ $${coin.exitPrice}.\n`);
           }
