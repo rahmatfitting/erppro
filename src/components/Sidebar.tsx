@@ -448,6 +448,11 @@ export const menuData: MenuSection[] = [
         href: "/crypto/funding-farming",
         icon: Coins,
       },
+      {
+        title: "Top Gainer Scalper (20s)",
+        href: "/crypto/top-gainer",
+        icon: Flame,
+      },
       // {
       //   title: "ETHUSDT 5M Scalper",
       //   href: "/crypto/ethusdt5m",

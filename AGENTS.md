@@ -6,6 +6,37 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 
 ## 📅 Riwayat Perubahan & Fitur (Changelog)
 
+### [2026-09-27] - Bot Top Gainer Scalper (Binance Futures 20-Second Flash Scalp)
+
+#### 1. Menu Baru: Bot Top Gainer Scalper (`/crypto/top-gainer`)
+- **Deskripsi:** Bot momentum scalping otomatis di pasar Binance Futures USDT-M yang secara konstan memantau koin urutan pertama (**Top Gainer #1**) berdasarkan pergerakan persentase harga 24 jam (`priceChangePercent`).
+- **Mekanisme Pemicu & Siklus 20 Detik (Flash Scalp):**
+  1. **Deteksi Juara Baru (#1 Leader Shift):** Bot memindai seluruh pair USDT futures aktif (700+ pair). Begitu terdeteksi ada koin baru yang merebut posisi nomor 1 yang berbeda dari koin yang baru saja diperdagangkan (`rank1Coin !== last_bought_symbol`):
+  2. **Instant MARKET BUY:** Bot seketika membuka posisi BUY (Long) di Binance Futures dengan nominal notional USD dan leverage yang telah dikonfigurasi.
+  3. **Hitung Mundur 20 Detik (Hold Duration):** Bot menahan (*holding*) posisi selama tepat 20 detik (durasi dapat dikonfigurasi, default 20 detik).
+  4. **Instant MARKET CLOSE:** Tepat saat waktu mencapai 20 detik, bot langsung mengirimkan order MARKET SELL dengan flag `reduceOnly: true` untuk menutup posisi dan mengunci profit/rugi scalping.
+  5. **Continuous Loop (Siklus Berulang):** Koin yang baru saja selesai ditutup disimpan dalam riwayat (`last_bought_symbol`). Bot tidak akan membeli koin yang sama berulang kali di detik berikutnya, melainkan siap menyergap koin berikutnya yang baru menyalip masuk ke peringkat 1.
+- **Konfigurasi & Pengaturan Fleksibel:**
+  - **Ukuran Notional (USD):** Preset chips `$20`, `$50`, `$100`, `$250`, `$500` USD atau custom input.
+  - **Leverage:** `3x`, `5x`, `10x`, `20x`.
+  - **Durasi Hold Scalp:** Preset `10s`, `15s`, `20s` (default), `30s`, `60s`.
+  - **Filter Minimal Gain 24h (+%):** Memastikan koin juara memiliki gain minimal (misal min `+3.0%`) agar tidak masuk saat pasar sedang lesu.
+  - **Emergency Stop Loss (-% ROE):** Proteksi darurat jika koin mendadak dump tajam sebelum 20 detik tercapai (misal -3.0% ROE).
+  - **Fitur Auto-Compound:** Jika diaktifkan, profit bersih otomatis ditambahkan ke modal notional berikutnya.
+
+#### 2. Antarmuka UI/UX Premium (`/crypto/top-gainer`)
+- **Live Active Scalp Card:** Menampilkan countdown timer 20 detik real-time, progress bar visual, harga entri, harga mark live Binance, floating PnL ($ dan % ROE), serta tombol *Emergency Close*.
+- **Podium Juara 1, 2, 3:** Visual kartu peringkat Top Gainers teratas lengkap dengan label koin yang sedang diperdagangkan (*In Progress*) atau koin target berikutnya.
+- **Tabel Top 10 Gainers:** Tabel real-time 10 koin futures dengan kenaikan tertinggi hari ini.
+- **Interactive Monospace Terminal Logs:** Konsol live auto-scroll dengan penanda kategori warna (`[BUY_TRIGGER]`, `[BUY_OPENED]`, `[SCALPING]`, `[CLOSE_TRIGGER]`, `[CYCLE_COMPLETE]`, `[LEADER_SHIFT]`).
+- **Tabel Riwayat Trade & Download Excel:** Merekam setiap siklus trade scalping lengkap dengan harga entri, harga exit, durasi hold, realized PnL, komisi bursa, serta tombol download ke file Excel (`.xlsx`).
+
+#### 3. Background Runner Daemon 24/7 (`cron_top_gainer_bot.js` & `run_top_gainer_bot.bat`)
+- Layanan background mandiri Node.js yang men-tick setiap **1.5 detik** untuk mendeteksi pergeseran juara #1 secara instan.
+- Dilengkapi sistem **Auto-Fallback** cerdas: otomatis beralih ke `https://demo.erpproapp.com` jika port 3000 mengembalikan 404 atau ECONNREFUSED.
+
+---
+
 ### [2026-09-12] - Hedge Fund Buy Radar & Binance Futures 1-Click Order Execution
 
 #### 1. Menu Baru: Hedge Fund Buy Radar (`/crypto/hedgefund-buy`)
