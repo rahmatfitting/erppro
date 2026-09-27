@@ -1,4 +1,5 @@
 import { executeQuery } from '@/lib/db';
+import { fetchFapiWithFallback } from '@/lib/futures';
 import {
   getBinanceCredentials,
   callBinanceFutures,
@@ -414,19 +415,24 @@ export async function addTopGainerBotLog(
   }
 }
 
+let cachedTopGainers: { data: TopGainerCoin[]; timestamp: number } | null = null;
+const TOP_GAINERS_CACHE_TTL_MS = 2500; // 2.5 seconds cache to avoid Binance IP weight limit exhaustion
+
 /**
- * Fetch 24hr Top Gainers from Binance Futures FAPI
+ * Fetch 24hr Top Gainers from Binance Futures FAPI with caching & host fallback
  */
 export async function fetchTopGainersFromBinance(): Promise<TopGainerCoin[]> {
+  const now = Date.now();
+  if (cachedTopGainers && (now - cachedTopGainers.timestamp < TOP_GAINERS_CACHE_TTL_MS)) {
+    return cachedTopGainers.data;
+  }
+
   try {
-    const res = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr', {
-      cache: 'no-store'
-    });
-    if (!res.ok) {
-      throw new Error(`Binance 24hr Ticker API returned ${res.status}`);
+    const data = await fetchFapiWithFallback('/fapi/v1/ticker/24hr');
+    if (!Array.isArray(data)) {
+      if (cachedTopGainers) return cachedTopGainers.data;
+      return [];
     }
-    const data = await res.json();
-    if (!Array.isArray(data)) return [];
 
     // Filter USDT contracts with valid trading volume
     const usdtCoins = data
@@ -448,12 +454,16 @@ export async function fetchTopGainersFromBinance(): Promise<TopGainerCoin[]> {
     // Sort descending by 24h percentage gain
     usdtCoins.sort((a, b) => b.priceChangePercent - a.priceChangePercent);
 
-    return usdtCoins.map((coin, index) => ({
+    const result = usdtCoins.map((coin, index) => ({
       ...coin,
       rank: index + 1
     }));
+
+    cachedTopGainers = { data: result, timestamp: now };
+    return result;
   } catch (err: any) {
     console.error("fetchTopGainersFromBinance error:", err);
+    if (cachedTopGainers) return cachedTopGainers.data;
     return [];
   }
 }
@@ -921,18 +931,32 @@ export async function executeTopGainerMarketBuy(params: {
     console.warn(`ticker/price fetch warning for ${symbol}:`, err);
   }
 
+  // Fallback to fetchFapiWithFallback if direct fetch failed
+  if (refPrice <= 0) {
+    try {
+      const fapiData = await fetchFapiWithFallback(`/fapi/v1/ticker/price?symbol=${symbol}`);
+      const p = parseFloat(fapiData?.price) || 0;
+      if (p > 0) refPrice = p;
+    } catch (err) {
+      console.warn(`fetchFapiWithFallback ticker warning for ${symbol}:`, err);
+    }
+  }
+
   // Fallback to markPrice from premiumIndex if still 0
   if (refPrice <= 0) {
     try {
-      const markRes = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`, { cache: 'no-store' });
-      if (markRes.ok) {
-        const markData = await markRes.json();
-        const p = parseFloat(markData.markPrice) || 0;
-        if (p > 0) refPrice = p;
-      }
+      const markData = await fetchFapiWithFallback(`/fapi/v1/premiumIndex?symbol=${symbol}`);
+      const p = parseFloat(markData?.markPrice) || 0;
+      if (p > 0) refPrice = p;
     } catch (err) {
       console.warn(`premiumIndex fetch warning for ${symbol}:`, err);
     }
+  }
+
+  // Fallback to cached top gainer lastPrice if still 0
+  if (refPrice <= 0 && cachedTopGainers) {
+    const coin = cachedTopGainers.data.find(c => c.symbol === symbol);
+    if (coin && coin.lastPrice > 0) refPrice = coin.lastPrice;
   }
 
   if (refPrice <= 0) {

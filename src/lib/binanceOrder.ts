@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { fetchFapiWithFallback } from './futures';
 
 // Helper to reliably load and sanitize Binance API credentials (trims Windows \r, quotes, spaces)
 export function getBinanceCredentials() {
@@ -1134,8 +1135,9 @@ export async function executeFundingOrderWithRR(params: {
   rrRatio?: '1:1' | '1:2' | '1:3' | 'NONE';
   baseSlPercent?: number;
   isReverse?: boolean;
+  referencePrice?: number;
 }) {
-  const { symbol, side, notionalUsd, leverage, rrRatio = 'NONE', baseSlPercent = 1.5, isReverse = false } = params;
+  const { symbol, side, notionalUsd, leverage, rrRatio = 'NONE', baseSlPercent = 1.5, isReverse = false, referencePrice } = params;
   const { apiKey, apiSecret } = getBinanceCredentials();
 
   if (!apiKey || !apiSecret) {
@@ -1144,10 +1146,37 @@ export async function executeFundingOrderWithRR(params: {
 
   const prec = await getSymbolPrecision(symbol);
 
-  // 1. Live market price
-  const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
-  const tickerData = await tickerRes.json();
-  const refPrice = parseFloat(tickerData.price) || 0;
+  // 1. Live market price with multi-host fallback
+  let refPrice = referencePrice && referencePrice > 0 ? referencePrice : 0;
+  try {
+    const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
+    if (tickerRes.ok) {
+      const tickerData = await tickerRes.json();
+      refPrice = parseFloat(tickerData.price) || 0;
+    }
+  } catch (err) {
+    console.warn(`Direct ticker fetch warning for ${symbol}:`, err);
+  }
+
+  // Fallback to fetchFapiWithFallback if direct fetch failed (e.g. rate limit 429)
+  if (refPrice <= 0) {
+    try {
+      const fapiData = await fetchFapiWithFallback(`/fapi/v1/ticker/price?symbol=${symbol}`);
+      refPrice = parseFloat(fapiData?.price) || 0;
+    } catch (err) {
+      console.warn(`fetchFapiWithFallback warning for ${symbol}:`, err);
+    }
+  }
+
+  // Fallback to markPrice from premiumIndex if still 0
+  if (refPrice <= 0) {
+    try {
+      const markData = await fetchFapiWithFallback(`/fapi/v1/premiumIndex?symbol=${symbol}`);
+      refPrice = parseFloat(markData?.markPrice) || 0;
+    } catch (err) {
+      console.warn(`premiumIndex markPrice fallback warning for ${symbol}:`, err);
+    }
+  }
 
   if (refPrice <= 0) {
     throw new Error('Gagal mendapatkan harga pasar untuk ' + symbol);

@@ -1088,7 +1088,8 @@ export async function tickFundingBot() {
           leverage,
           rrRatio,
           baseSlPercent,
-          isReverse
+          isReverse,
+          referencePrice: targetCandidate.markPrice
         });
 
         const nextRoundNumber = (parseInt(config.round_number) || 0) + 1;
