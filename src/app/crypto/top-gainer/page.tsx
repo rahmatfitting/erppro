@@ -1575,8 +1575,11 @@ export default function TopGainerBotPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Emergency Stop Loss (-% ROE)
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                    <span>Emergency Stop Loss (-% ROE)</span>
+                    <span className={`text-[10px] font-bold ${emergencySlPercent > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {emergencySlPercent > 0 ? `-${emergencySlPercent}% ROE` : '⚡ Tanpa SL (Off)'}
+                    </span>
                   </label>
                   <input
                     type="number"
@@ -1584,8 +1587,13 @@ export default function TopGainerBotPage() {
                     value={emergencySlPercent}
                     onChange={(e) => setEmergencySlPercent(parseFloat(e.target.value) || 0)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
-                    placeholder="Misal: 3.0 (-3% ROE)"
+                    placeholder="0 = Tanpa Stop Loss"
                   />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    {emergencySlPercent > 0 
+                      ? `Bot otomatis cut loss jika minus mencapai -${emergencySlPercent}% ROE.` 
+                      : '💡 Diisi 0 = Stop Loss dinonaktifkan (posisi ditahan sampai akhir sesi/scalp).'}
+                  </span>
                 </div>
               </div>
 

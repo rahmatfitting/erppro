@@ -483,7 +483,7 @@ export async function getTopGainerBotState() {
     hold_seconds: parseInt(configRow.hold_seconds) || 20,
     min_gain_percent: parseFloat(configRow.min_gain_percent) || 3.0,
     is_compound: configRow.is_compound === 1 || configRow.is_compound === true || configRow.is_compound === '1' || String(configRow.is_compound) === 'true',
-    emergency_sl_percent: configRow.emergency_sl_percent ? parseFloat(configRow.emergency_sl_percent) : null,
+    emergency_sl_percent: (configRow.emergency_sl_percent && parseFloat(configRow.emergency_sl_percent) > 0) ? parseFloat(configRow.emergency_sl_percent) : null,
     current_state: configRow.current_state || 'IDLE',
     current_symbol: configRow.current_symbol || null,
     current_side: 'BUY',
@@ -627,7 +627,9 @@ export async function startTopGainerBot(params?: {
   const isCompound = params?.isCompound !== undefined 
     ? Boolean(params.isCompound) 
     : (c.is_compound === 1 || c.is_compound === true || c.is_compound === '1');
-  const emergencySl = params?.emergencySlPercent ?? (c.emergency_sl_percent ? parseFloat(c.emergency_sl_percent) : 3.0);
+  const emergencySl = (params?.emergencySlPercent !== undefined && params.emergencySlPercent > 0)
+    ? params.emergencySlPercent
+    : (params?.emergencySlPercent === 0 ? null : ((c.emergency_sl_percent && parseFloat(c.emergency_sl_percent) > 0) ? parseFloat(c.emergency_sl_percent) : null));
   const strategyMode = params?.strategyMode ?? c.strategy_mode ?? 'FLASH_SCALP';
   const sessionPreset = params?.sessionPreset ?? c.session_preset ?? 'NEW_YORK';
   const sessionStartTime = params?.sessionStartTime ?? c.session_start_time ?? '20:00';
@@ -808,7 +810,9 @@ export async function updateTopGainerBotConfig(params: {
   const holdSeconds = params.holdSeconds !== undefined ? params.holdSeconds : parseInt(c.hold_seconds);
   const minGain = params.minGainPercent !== undefined ? params.minGainPercent : parseFloat(c.min_gain_percent);
   const isCompound = params.isCompound !== undefined ? params.isCompound : Boolean(c.is_compound);
-  const emergencySl = params.emergencySlPercent !== undefined ? params.emergencySlPercent : parseFloat(c.emergency_sl_percent);
+  const emergencySl = (params.emergencySlPercent !== undefined && params.emergencySlPercent > 0)
+    ? params.emergencySlPercent
+    : (params.emergencySlPercent === 0 ? null : ((c.emergency_sl_percent && parseFloat(c.emergency_sl_percent) > 0) ? parseFloat(c.emergency_sl_percent) : null));
   const strategyMode = params.strategyMode !== undefined ? params.strategyMode : (c.strategy_mode || 'FLASH_SCALP');
   const sessionPreset = params.sessionPreset !== undefined ? params.sessionPreset : (c.session_preset || 'NEW_YORK');
   const sessionStartTime = params.sessionStartTime !== undefined ? params.sessionStartTime : (c.session_start_time || '20:00');
@@ -1140,9 +1144,9 @@ export async function tickTopGainerBot() {
       const isTrailingActivated = peakProfitPercent >= trailingActivationPercent;
       const isTrailingStopTriggered = trailingStopEnabled && isTrailingActivated && (dropFromPeakPercent >= trailingCallbackPercent);
 
-      // Check Emergency Stop Loss if configured
-      const emergencySl = config.emergency_sl_percent ? parseFloat(config.emergency_sl_percent) : null;
-      const isEmergencyHit = emergencySl && livePos && livePos.roePercent <= -emergencySl;
+      // Check Emergency Stop Loss if configured (> 0)
+      const emergencySl = (config.emergency_sl_percent && parseFloat(config.emergency_sl_percent) > 0) ? parseFloat(config.emergency_sl_percent) : null;
+      const isEmergencyHit = Boolean(emergencySl && livePos && livePos.roePercent <= -emergencySl);
 
       // Check Session End Exit
       const isSessionEnded = strategyMode === 'SESSION_HOURS' && (!isInSession || (config.session_last_open_slot && config.session_last_open_slot !== currentSlotKey));
