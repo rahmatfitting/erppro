@@ -875,8 +875,9 @@ export async function executeTopGainerMarketBuy(params: {
   symbol: string;
   notionalUsd: number;
   leverage: number;
+  referencePrice?: number;
 }) {
-  const { symbol, notionalUsd, leverage } = params;
+  const { symbol, notionalUsd, leverage, referencePrice } = params;
   const { apiKey, apiSecret } = getBinanceCredentials();
 
   if (!apiKey || !apiSecret) {
@@ -885,10 +886,33 @@ export async function executeTopGainerMarketBuy(params: {
 
   const prec = await getSymbolPrecision(symbol);
 
-  // 1. Get Live Market Price
-  const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
-  const tickerData = await tickerRes.json();
-  const refPrice = parseFloat(tickerData.price) || 0;
+  // 1. Get Live Market Price with multi-layer fallback
+  let refPrice = referencePrice && referencePrice > 0 ? referencePrice : 0;
+
+  try {
+    const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
+    if (tickerRes.ok) {
+      const tickerData = await tickerRes.json();
+      const p = parseFloat(tickerData.price) || 0;
+      if (p > 0) refPrice = p;
+    }
+  } catch (err) {
+    console.warn(`ticker/price fetch warning for ${symbol}:`, err);
+  }
+
+  // Fallback to markPrice from premiumIndex if still 0
+  if (refPrice <= 0) {
+    try {
+      const markRes = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`, { cache: 'no-store' });
+      if (markRes.ok) {
+        const markData = await markRes.json();
+        const p = parseFloat(markData.markPrice) || 0;
+        if (p > 0) refPrice = p;
+      }
+    } catch (err) {
+      console.warn(`premiumIndex fetch warning for ${symbol}:`, err);
+    }
+  }
 
   if (refPrice <= 0) {
     throw new Error(`Gagal mendapatkan harga pasar untuk ${symbol}`);
@@ -1438,7 +1462,8 @@ export async function tickTopGainerBot() {
         const buyRes = await executeTopGainerMarketBuy({
           symbol: rank1Coin.symbol,
           notionalUsd,
-          leverage
+          leverage,
+          referencePrice: rank1Coin.lastPrice
         });
 
         const entryTimestamp = Date.now();
@@ -1492,6 +1517,14 @@ export async function tickTopGainerBot() {
         };
       } catch (buyError: any) {
         console.error("Error executing top gainer buy order:", buyError);
+
+        // Cooldown: mark last_bought_symbol to prevent hammering Binance every 1.5s on same failing coin
+        await executeQuery(`
+          UPDATE top_gainer_bot_config 
+          SET last_bought_symbol = ?, last_check_at = NOW() 
+          WHERE id = 1
+        `, [rank1Coin.symbol]);
+
         await addTopGainerBotLog(
           'ERROR',
           `Gagal membuka BUY ${rank1Coin.symbol}: ${buyError.message}`,
