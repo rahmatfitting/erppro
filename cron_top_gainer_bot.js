@@ -43,7 +43,7 @@ async function runTick() {
         const pnlSign = (tickResult.unrealizedPnl || 0) >= 0 ? '+' : '';
         const roeSign = (tickResult.roePercent || 0) >= 0 ? '+' : '';
         const modeTag = tickResult.strategyMode === 'SESSION_HOURS'
-          ? `🏛️ [SESI ${tickResult.sessionInfo?.preset || 'TRADING'} ${tickResult.symbol}]`
+          ? `🏛️ [${tickResult.sessionInfo?.name || tickResult.sessionInfo?.preset || 'SESI'} | ${tickResult.symbol}]`
           : `⚡ [SCALPING ${tickResult.symbol}]`;
         const timeTag = tickResult.strategyMode === 'SESSION_HOURS'
           ? `Tutup Sesi: ${tickResult.sessionInfo?.endTime} WIB`

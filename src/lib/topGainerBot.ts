@@ -21,11 +21,23 @@ export interface TopGainerCoin {
   rank: number;
 }
 
+export type TopGainerSessionPreset =
+  | 'NEW_YORK'
+  | 'NEW_YORK_PRIME'
+  | 'LONDON'
+  | 'LONDON_OPEN'
+  | 'ASIA'
+  | 'ASIA_MORNING'
+  | 'ASIA_LONDON'
+  | 'OVERLAP'
+  | 'ALL_3_SESSIONS'
+  | 'CUSTOM';
+
 export interface TopGainerBotConfig {
   id: number;
   is_active: boolean;
   strategy_mode: 'FLASH_SCALP' | 'SESSION_HOURS';
-  session_preset: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM';
+  session_preset: TopGainerSessionPreset;
   session_start_time: string;
   session_end_time: string;
   session_last_open_slot: string | null;
@@ -151,6 +163,92 @@ export function getSessionSlotKey(startTime: string, endTime: string, date: Date
     return `${prevDateStr}_${startTime}`;
   }
   return `${dateString}_${startTime}`;
+}
+
+export interface ActiveSessionInfo {
+  name: string;
+  preset: TopGainerSessionPreset;
+  startTime: string;
+  endTime: string;
+  slotKey: string;
+  isInSession: boolean;
+  wibTime: string;
+}
+
+/**
+ * Determine the currently active trading session window based on current WIB time
+ */
+export function getCurrentActiveSession(config: {
+  session_preset: string;
+  session_start_time: string;
+  session_end_time: string;
+}, date: Date = new Date()): ActiveSessionInfo {
+  const wibInfo = getWibTimeInfo(date);
+  const currentWibTime = wibInfo.timeString;
+
+  if (config.session_preset === 'ALL_3_SESSIONS') {
+    // 3 Sessions schedule:
+    // Sesi 1: Asia (07:00 - 14:00)
+    // Sesi 2: London (14:00 - 20:00)
+    // Sesi 3: New York (20:00 - 04:00)
+    const sessions: Array<{ name: string; preset: TopGainerSessionPreset; start: string; end: string }> = [
+      { name: 'Sesi Asia', preset: 'ASIA', start: '07:00', end: '14:00' },
+      { name: 'Sesi London', preset: 'LONDON', start: '14:00', end: '20:00' },
+      { name: 'Sesi New York', preset: 'NEW_YORK', start: '20:00', end: '04:00' },
+    ];
+
+    for (const s of sessions) {
+      if (isWithinSessionTime(currentWibTime, s.start, s.end)) {
+        return {
+          name: s.name,
+          preset: s.preset,
+          startTime: s.start,
+          endTime: s.end,
+          slotKey: getSessionSlotKey(s.start, s.end, date),
+          isInSession: true,
+          wibTime: currentWibTime
+        };
+      }
+    }
+
+    // Between 04:00 and 07:00 WIB (waiting for Asia session)
+    return {
+      name: 'Menunggu Sesi Asia (07:00 WIB)',
+      preset: 'ASIA',
+      startTime: '07:00',
+      endTime: '14:00',
+      slotKey: getSessionSlotKey('07:00', '14:00', date),
+      isInSession: false,
+      wibTime: currentWibTime
+    };
+  }
+
+  // Single session mode
+  const sStart = config.session_start_time || '20:00';
+  const sEnd = config.session_end_time || '04:00';
+  const inSession = isWithinSessionTime(currentWibTime, sStart, sEnd);
+
+  let name = 'Sesi Kustom';
+  switch (config.session_preset) {
+    case 'NEW_YORK': name = 'Sesi New York (Full)'; break;
+    case 'NEW_YORK_PRIME': name = 'Sesi New York (Prime)'; break;
+    case 'LONDON': name = 'Sesi London (Full)'; break;
+    case 'LONDON_OPEN': name = 'Sesi London (Open Killzone)'; break;
+    case 'ASIA': name = 'Sesi Asia (Full)'; break;
+    case 'ASIA_MORNING': name = 'Sesi Asia (Pagi Tokyo)'; break;
+    case 'ASIA_LONDON': name = 'Sesi Asia-London Crossover'; break;
+    case 'OVERLAP': name = 'Sesi London-NY Overlap'; break;
+  }
+
+  return {
+    name,
+    preset: (config.session_preset as TopGainerSessionPreset) || 'CUSTOM',
+    startTime: sStart,
+    endTime: sEnd,
+    slotKey: getSessionSlotKey(sStart, sEnd, date),
+    isInSession: inSession,
+    wibTime: currentWibTime
+  };
 }
 
 /**
@@ -507,7 +605,7 @@ export async function startTopGainerBot(params?: {
   isCompound?: boolean;
   emergencySlPercent?: number;
   strategyMode?: 'FLASH_SCALP' | 'SESSION_HOURS';
-  sessionPreset?: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM';
+  sessionPreset?: TopGainerSessionPreset;
   sessionStartTime?: string;
   sessionEndTime?: string;
   trailingStopEnabled?: boolean;
@@ -692,7 +790,7 @@ export async function updateTopGainerBotConfig(params: {
   isCompound?: boolean;
   emergencySlPercent?: number;
   strategyMode?: 'FLASH_SCALP' | 'SESSION_HOURS';
-  sessionPreset?: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM';
+  sessionPreset?: TopGainerSessionPreset;
   sessionStartTime?: string;
   sessionEndTime?: string;
   trailingStopEnabled?: boolean;
@@ -991,18 +1089,18 @@ export async function tickTopGainerBot() {
     const holdSeconds = parseInt(config.hold_seconds) || 20;
     const minGainPercent = parseFloat(config.min_gain_percent) || 3.0;
     const strategyMode: 'FLASH_SCALP' | 'SESSION_HOURS' = config.strategy_mode || 'FLASH_SCALP';
-    const sessionPreset = config.session_preset || 'NEW_YORK';
-    const sessionStartTime = config.session_start_time || '20:00';
-    const sessionEndTime = config.session_end_time || '04:00';
     const trailingStopEnabled = Boolean(config.trailing_stop_enabled);
     const trailingCallbackPercent = parseFloat(config.trailing_callback_percent) || 1.0;
     const trailingActivationPercent = parseFloat(config.trailing_activation_percent) || 1.0;
 
-    // Current WIB Time info
-    const wibInfo = getWibTimeInfo(new Date());
-    const currentWibTime = wibInfo.timeString;
-    const currentSlotKey = getSessionSlotKey(sessionStartTime, sessionEndTime, new Date());
-    const isInSession = isWithinSessionTime(currentWibTime, sessionStartTime, sessionEndTime);
+    // Active session information dynamically determined based on preset / schedule
+    const activeSession = getCurrentActiveSession(config, new Date());
+    const sessionStartTime = activeSession.startTime;
+    const sessionEndTime = activeSession.endTime;
+    const currentSlotKey = activeSession.slotKey;
+    const isInSession = activeSession.isInSession;
+    const currentWibTime = activeSession.wibTime;
+    const sessionDisplayName = activeSession.name;
 
     // ─────────────────────────────────────────────────────────────
     // CASE A: Bot is currently HOLDING a position
@@ -1047,7 +1145,7 @@ export async function tickTopGainerBot() {
       const isEmergencyHit = emergencySl && livePos && livePos.roePercent <= -emergencySl;
 
       // Check Session End Exit
-      const isSessionEnded = strategyMode === 'SESSION_HOURS' && !isInSession;
+      const isSessionEnded = strategyMode === 'SESSION_HOURS' && (!isInSession || (config.session_last_open_slot && config.session_last_open_slot !== currentSlotKey));
 
       // Check Flash Scalp Time Exit
       const isTimeExit = strategyMode === 'FLASH_SCALP' && elapsedSeconds >= holdSeconds;
@@ -1214,7 +1312,8 @@ export async function tickTopGainerBot() {
           holdSeconds,
           strategyMode,
           sessionInfo: {
-            preset: sessionPreset,
+            preset: activeSession.preset,
+            name: sessionDisplayName,
             startTime: sessionStartTime,
             endTime: sessionEndTime,
             currentWibTime,
@@ -1246,7 +1345,7 @@ export async function tickTopGainerBot() {
         `);
         return {
           status: 'WAITING_SESSION',
-          message: `Menunggu Jadwal Sesi Trading ${sessionPreset} (${sessionStartTime} - ${sessionEndTime} WIB). Jam saat ini: ${currentWibTime} WIB.`
+          message: `Menunggu Jadwal ${sessionDisplayName} (${sessionStartTime} - ${sessionEndTime} WIB). Jam saat ini: ${currentWibTime} WIB.`
         };
       }
 
@@ -1259,7 +1358,7 @@ export async function tickTopGainerBot() {
         `);
         return {
           status: 'SESSION_COMPLETED',
-          message: `Sesi ${sessionPreset} (${sessionStartTime} - ${sessionEndTime} WIB) untuk slot hari ini telah selesai diperdagangkan. Menunggu sesi berikutnya.`
+          message: `${sessionDisplayName} (${sessionStartTime} - ${sessionEndTime} WIB) untuk slot hari ini telah selesai diperdagangkan. Menunggu sesi berikutnya.`
         };
       }
     }
@@ -1318,7 +1417,7 @@ export async function tickTopGainerBot() {
 
     if (shouldOpenBuy) {
       const triggerContext = strategyMode === 'SESSION_HOURS'
-        ? `🏛️ [SESI ${sessionPreset} AKTIF] Koin Juara #1: ${rank1Coin.symbol} (+${rank1Coin.priceChangePercent.toFixed(2)}%)`
+        ? `🏛️ [${sessionDisplayName.toUpperCase()} AKTIF] Koin Juara #1: ${rank1Coin.symbol} (+${rank1Coin.priceChangePercent.toFixed(2)}%)`
         : `🚀 KOIN BARU MASUK URUTAN PERTAMA: ${rank1Coin.symbol} (+${rank1Coin.priceChangePercent.toFixed(2)}%)`;
 
       const targetDesc = strategyMode === 'SESSION_HOURS'

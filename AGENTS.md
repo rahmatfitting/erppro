@@ -35,10 +35,16 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 - **Deskripsi:** Pilihan strategi baru selain 20-Second Flash Scalp. Bot dapat dikonfigurasi untuk beroperasi pada jam sesi trading global tertentu (seperti Sesi New York, Sesi London, Sesi Asia, atau kustom jam WIB).
 - **Mekanisme Kerja Sesi:**
   1. **Preset Sesi Populer & Jam WIB:**
-     - **Sesi New York (US High Volatility):** `20:00 - 04:00 WIB` (menangani lintas tengah malam / *overnight*).
-     - **Sesi London (European Session):** `14:00 - 22:00 WIB`.
-     - **Sesi Asia (Tokyo / Sydney / HK):** `07:00 - 15:00 WIB`.
-     - **Sesi Kustom:** Bebas menentukan jam buka (`HH:mm`) dan jam tutup (`HH:mm`) sendiri.
+     - ⛩️ **Sesi Asia Pagi (Tokyo Open):** `06:00 - 12:00 WIB` (awal ledakan volume bursa Asia).
+     - ⛩️ **Sesi Asia Full Day:** `07:00 - 15:00 WIB` (sesi perdagangan Asia lengkap).
+     - 🌏 **Sesi Asia-London Crossover:** `11:00 - 17:00 WIB` (transisi likuiditas Asia menuju Eropa).
+     - 🏰 **Sesi London Open (Killzone):** `14:00 - 18:00 WIB` (4 jam awal pembukaan Eropa bervolatilitas tinggi).
+     - 🏰 **Sesi London Full:** `14:00 - 22:00 WIB` (sesi Eropa menyeluruh).
+     - ⚡ **Sesi London-NY Overlap:** `19:00 - 23:00 WIB` (puncak likuiditas global).
+     - 🗽 **Sesi New York Prime:** `20:00 - 00:00 WIB` (jam awal pembukaan pasar Wall Street AS).
+     - 🗽 **Sesi New York Full:** `20:00 - 04:00 WIB` (sesi Amerika semalam suntuk / lintas tengah malam).
+     - 🌍 **Multi-Sesi Harian (3 Sesi Sehari Otomatis):** Bot secara cerdas mengeksekusi 3x dalam 24 jam: masuk di Sesi Asia (`07:00 - 14:00`), lanjut Sesi London (`14:00 - 20:00`), lalu Sesi New York (`20:00 - 04:00`).
+     - ⚙️ **Sesi Kustom:** Bebas menentukan jam buka (`HH:mm`) dan jam tutup (`HH:mm`) sendiri.
   2. **Entry Juara Peringkat #1:** Saat jendela jam sesi aktif, bot secara otomatis memindai seluruh pair futures dan mengeksekusi order MARKET BUY pada pair yang sedang berada di **Peringkat #1 (Top Gainer #1)**. Bot mencatat slot sesi (`session_last_open_slot`) agar tidak membuka order ganda pada sesi yang sama.
   3. **Auto-Close Saat Jam Tutup Tiba:** Posisi dipertahankan selama sesi trading. Begitu jam tutup sesi berakhir (`session_end_time`), bot secara otomatis mengirimkan order MARKET CLOSE (`reduceOnly: true`) untuk menutup posisi koin tersebut dan mengunci hasil perdagangan dengan alasan exit `SESSION_END`.
 

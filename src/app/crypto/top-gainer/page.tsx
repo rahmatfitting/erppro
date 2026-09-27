@@ -39,11 +39,23 @@ interface TopGainerCoin {
   rank: number;
 }
 
+export type TopGainerSessionPreset =
+  | 'NEW_YORK'
+  | 'NEW_YORK_PRIME'
+  | 'LONDON'
+  | 'LONDON_OPEN'
+  | 'ASIA'
+  | 'ASIA_MORNING'
+  | 'ASIA_LONDON'
+  | 'OVERLAP'
+  | 'ALL_3_SESSIONS'
+  | 'CUSTOM';
+
 interface TopGainerBotConfig {
   id: number;
   is_active: boolean;
   strategy_mode: 'FLASH_SCALP' | 'SESSION_HOURS';
-  session_preset: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM';
+  session_preset: TopGainerSessionPreset;
   session_start_time: string;
   session_end_time: string;
   session_last_open_slot: string | null;
@@ -110,6 +122,21 @@ interface TopGainerBotLog {
   created_at: string;
 }
 
+const getSessionPresetLabel = (preset?: string, start?: string, end?: string) => {
+  switch (preset) {
+    case 'ASIA_MORNING': return `Asia Pagi (${start || '06:00'} - ${end || '12:00'} WIB)`;
+    case 'ASIA': return `Asia Full (${start || '07:00'} - ${end || '15:00'} WIB)`;
+    case 'ASIA_LONDON': return `Asia-London Pre (${start || '11:00'} - ${end || '17:00'} WIB)`;
+    case 'LONDON_OPEN': return `London Open (${start || '14:00'} - ${end || '18:00'} WIB)`;
+    case 'LONDON': return `London Full (${start || '14:00'} - ${end || '22:00'} WIB)`;
+    case 'OVERLAP': return `London-NY Overlap (${start || '19:00'} - ${end || '23:00'} WIB)`;
+    case 'NEW_YORK_PRIME': return `New York Prime (${start || '20:00'} - ${end || '00:00'} WIB)`;
+    case 'NEW_YORK': return `New York Full (${start || '20:00'} - ${end || '04:00'} WIB)`;
+    case 'ALL_3_SESSIONS': return '🌍 3 Sesi Sehari (Asia, Lon & NY)';
+    default: return `${preset || 'Kustom'} (${start || '20:00'} - ${end || '04:00'} WIB)`;
+  }
+};
+
 export default function TopGainerBotPage() {
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<TopGainerBotConfig | null>(null);
@@ -137,7 +164,7 @@ export default function TopGainerBotPage() {
 
   // Strategy & Session states
   const [strategyMode, setStrategyMode] = useState<'FLASH_SCALP' | 'SESSION_HOURS'>('FLASH_SCALP');
-  const [sessionPreset, setSessionPreset] = useState<'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM'>('NEW_YORK');
+  const [sessionPreset, setSessionPreset] = useState<TopGainerSessionPreset>('NEW_YORK');
   const [sessionStartTime, setSessionStartTime] = useState('20:00');
   const [sessionEndTime, setSessionEndTime] = useState('04:00');
   const [trailingStopEnabled, setTrailingStopEnabled] = useState(false);
@@ -157,20 +184,35 @@ export default function TopGainerBotPage() {
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
   // Apply session preset
-  const applySessionPreset = (preset: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM') => {
+  const applySessionPreset = (preset: TopGainerSessionPreset) => {
     setSessionPreset(preset);
     if (preset === 'NEW_YORK') {
       setSessionStartTime('20:00');
       setSessionEndTime('04:00');
+    } else if (preset === 'NEW_YORK_PRIME') {
+      setSessionStartTime('20:00');
+      setSessionEndTime('00:00');
     } else if (preset === 'LONDON') {
       setSessionStartTime('14:00');
       setSessionEndTime('22:00');
+    } else if (preset === 'LONDON_OPEN') {
+      setSessionStartTime('14:00');
+      setSessionEndTime('18:00');
     } else if (preset === 'ASIA') {
       setSessionStartTime('07:00');
       setSessionEndTime('15:00');
+    } else if (preset === 'ASIA_MORNING') {
+      setSessionStartTime('06:00');
+      setSessionEndTime('12:00');
+    } else if (preset === 'ASIA_LONDON') {
+      setSessionStartTime('11:00');
+      setSessionEndTime('17:00');
     } else if (preset === 'OVERLAP') {
       setSessionStartTime('19:00');
       setSessionEndTime('23:00');
+    } else if (preset === 'ALL_3_SESSIONS') {
+      setSessionStartTime('07:00');
+      setSessionEndTime('04:00');
     }
   };
 
@@ -477,7 +519,7 @@ export default function TopGainerBotPage() {
                 {config?.strategy_mode === 'SESSION_HOURS' ? (
                   <>
                     <Globe className="w-3.5 h-3.5 text-indigo-400" />
-                    Sesi: <strong>{config?.session_preset} ({config?.session_start_time} - {config?.session_end_time} WIB)</strong>
+                    Sesi: <strong>{getSessionPresetLabel(config?.session_preset, config?.session_start_time, config?.session_end_time)}</strong>
                   </>
                 ) : (
                   <>
@@ -560,10 +602,7 @@ export default function TopGainerBotPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-white">Mode Sesi Jam Trading Aktif: {config.session_preset}</h3>
-                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  {config.session_start_time} - {config.session_end_time} WIB
-                </span>
+                <h3 className="text-base font-bold text-white">Mode Sesi Jam Trading Aktif: {getSessionPresetLabel(config.session_preset, config.session_start_time, config.session_end_time)}</h3>
               </div>
               <p className="text-xs text-slate-400 mt-1">
                 Bot akan otomatis membuka posisi BUY untuk koin urutan #1 (Top Gainer) saat sesi dibuka, menahannya selama sesi berjalan, dan otomatis menutup order saat jam tutup selesai.
@@ -588,7 +627,7 @@ export default function TopGainerBotPage() {
                 {config.strategy_mode === 'SESSION_HOURS' ? (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-500 text-white animate-pulse">
                     <Globe className="w-3.5 h-3.5" />
-                    SESI {config.session_preset} IN PROGRESS
+                    {getSessionPresetLabel(config.session_preset, config.session_start_time, config.session_end_time).toUpperCase()} IN PROGRESS
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500 text-slate-950 animate-pulse">
@@ -1158,62 +1197,150 @@ export default function TopGainerBotPage() {
               {strategyMode === 'SESSION_HOURS' && (
                 <div className="p-4 rounded-xl bg-indigo-950/30 border border-indigo-500/40 space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-indigo-300 mb-1.5 flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-indigo-300 mb-2 flex items-center justify-between">
                       <span>Pilih Preset Sesi Jam Pasar (WIB)</span>
                       <span className="text-[10px] text-slate-400 font-normal">Waktu Indonesia Barat (UTC+7)</span>
                     </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => applySessionPreset('NEW_YORK')}
-                        className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
-                          sessionPreset === 'NEW_YORK'
-                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
-                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
-                        }`}
-                      >
-                        🗽 New York
-                        <span className="block text-[10px] opacity-75 font-mono">20:00 - 04:00</span>
-                      </button>
 
-                      <button
-                        type="button"
-                        onClick={() => applySessionPreset('LONDON')}
-                        className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
-                          sessionPreset === 'LONDON'
-                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
-                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
-                        }`}
-                      >
-                        🏰 London
-                        <span className="block text-[10px] opacity-75 font-mono">14:00 - 22:00</span>
-                      </button>
+                    {/* Sesi Asia */}
+                    <div className="mb-2.5">
+                      <div className="text-[11px] font-bold text-amber-400 mb-1 flex items-center gap-1.5">
+                        <span>⛩️ Sesi Asia (Tokyo / Sydney / HK)</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('ASIA_MORNING')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'ASIA_MORNING'
+                              ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          Asia Pagi (Tokyo)
+                          <span className="block text-[10px] opacity-80 font-mono">06:00 - 12:00</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => applySessionPreset('ASIA')}
-                        className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
-                          sessionPreset === 'ASIA'
-                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
-                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
-                        }`}
-                      >
-                        ⛩️ Asia/Tokyo
-                        <span className="block text-[10px] opacity-75 font-mono">07:00 - 15:00</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('ASIA')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'ASIA'
+                              ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          Asia Full Day
+                          <span className="block text-[10px] opacity-80 font-mono">07:00 - 15:00</span>
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => applySessionPreset('OVERLAP')}
-                        className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
-                          sessionPreset === 'OVERLAP'
-                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
-                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
-                        }`}
-                      >
-                        ⚡ Overlap
-                        <span className="block text-[10px] opacity-75 font-mono">19:00 - 23:00</span>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('ASIA_LONDON')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'ASIA_LONDON'
+                              ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          Asia-London Pre
+                          <span className="block text-[10px] opacity-80 font-mono">11:00 - 17:00</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Sesi London / Eropa */}
+                    <div className="mb-2.5">
+                      <div className="text-[11px] font-bold text-sky-400 mb-1 flex items-center gap-1.5">
+                        <span>🏰 Sesi London (European Market)</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('LONDON_OPEN')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'LONDON_OPEN'
+                              ? 'bg-sky-600 text-white border-sky-400 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          London Open
+                          <span className="block text-[10px] opacity-80 font-mono">14:00 - 18:00</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('LONDON')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'LONDON'
+                              ? 'bg-sky-600 text-white border-sky-400 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          London Full
+                          <span className="block text-[10px] opacity-80 font-mono">14:00 - 22:00</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('OVERLAP')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'OVERLAP'
+                              ? 'bg-sky-600 text-white border-sky-400 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          London-NY Overlap
+                          <span className="block text-[10px] opacity-80 font-mono">19:00 - 23:00</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Sesi New York & Multi Sesi */}
+                    <div>
+                      <div className="text-[11px] font-bold text-indigo-400 mb-1 flex items-center justify-between">
+                        <span>🗽 Sesi New York & Multi-Sesi 24H</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('NEW_YORK_PRIME')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'NEW_YORK_PRIME'
+                              ? 'bg-indigo-600 text-white border-indigo-400 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          NY Prime Open
+                          <span className="block text-[10px] opacity-80 font-mono">20:00 - 00:00</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('NEW_YORK')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'NEW_YORK'
+                              ? 'bg-indigo-600 text-white border-indigo-400 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          NY Full Night
+                          <span className="block text-[10px] opacity-80 font-mono">20:00 - 04:00</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => applySessionPreset('ALL_3_SESSIONS')}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold border transition text-center ${
+                            sessionPreset === 'ALL_3_SESSIONS'
+                              ? 'bg-emerald-600 text-white border-emerald-400 shadow-md font-bold'
+                              : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                          }`}
+                        >
+                          🌍 3 Sesi Sehari
+                          <span className="block text-[10px] opacity-80 font-mono">Asia + Lon + NY</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
