@@ -69,6 +69,7 @@ interface TopGainerBotConfig {
   min_gain_percent: number;
   is_compound: boolean;
   emergency_sl_percent: number | null;
+  target_profit_percent: number | null;
   current_state: 'IDLE' | 'SCANNING' | 'HOLDING' | 'CLOSING';
   current_symbol: string | null;
   current_side: 'BUY' | null;
@@ -160,6 +161,7 @@ export default function TopGainerBotPage() {
   const [minGainPercent, setMinGainPercent] = useState(3.0);
   const [isCompound, setIsCompound] = useState(false);
   const [emergencySlPercent, setEmergencySlPercent] = useState(3.0);
+  const [targetProfitPercent, setTargetProfitPercent] = useState<number>(1.0);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
   // Strategy & Session states
@@ -237,6 +239,9 @@ export default function TopGainerBotPage() {
           setMinGainPercent(json.data.config.min_gain_percent || 3.0);
           setIsCompound(Boolean(json.data.config.is_compound));
           setEmergencySlPercent(json.data.config.emergency_sl_percent || 3.0);
+          if (json.data.config.target_profit_percent !== undefined) {
+            setTargetProfitPercent(json.data.config.target_profit_percent !== null ? json.data.config.target_profit_percent : 0);
+          }
           setStrategyMode(json.data.config.strategy_mode || 'FLASH_SCALP');
           setSessionPreset(json.data.config.session_preset || 'NEW_YORK');
           setSessionStartTime(json.data.config.session_start_time || '20:00');
@@ -289,6 +294,7 @@ export default function TopGainerBotPage() {
           minGainPercent,
           isCompound,
           emergencySlPercent,
+          targetProfitPercent,
           strategyMode,
           sessionPreset,
           sessionStartTime,
@@ -349,6 +355,7 @@ export default function TopGainerBotPage() {
           minGainPercent,
           isCompound,
           emergencySlPercent,
+          targetProfitPercent,
           strategyMode,
           sessionPreset,
           sessionStartTime,
@@ -412,7 +419,7 @@ export default function TopGainerBotPage() {
         { header: "Trade #", key: "round_number" },
         { header: "Symbol", key: "symbol" },
         { header: "Strategi", key: "strategy_mode", format: (v) => v === 'SESSION_HOURS' ? 'Sesi Jam Trading' : 'Flash Scalp (20s)' },
-        { header: "Exit Reason", key: "exit_reason", format: (v) => v === 'TRAILING_STOP' ? 'Trailing Stop Hit' : v === 'SESSION_END' ? 'Tutup Sesi Selesai' : v === 'STOP_LOSS' ? 'Stop Loss Darurat' : v === 'TIME_EXIT' ? 'Scalp Time Exit' : (v || '-') },
+        { header: "Exit Reason", key: "exit_reason", format: (v) => v === 'TARGET_PROFIT' ? 'Flash Target Profit (+1%)' : v === 'TRAILING_STOP' ? 'Trailing Stop Hit' : v === 'SESSION_END' ? 'Tutup Sesi Selesai' : v === 'STOP_LOSS' ? 'Stop Loss Darurat' : v === 'TIME_EXIT' ? 'Scalp Time Exit' : (v || '-') },
         { header: "Notional USD", key: "notional_usd", format: (v) => `$${parseFloat(v).toFixed(2)}` },
         { header: "Leverage", key: "leverage", format: (v) => `${v}x` },
         { header: "Entry Price", key: "entry_price", format: (v) => parseFloat(v).toFixed(4) },
@@ -534,6 +541,19 @@ export default function TopGainerBotPage() {
                 <span className="px-3 py-1 rounded-full text-xs bg-teal-500/20 border border-teal-500/40 text-teal-300 flex items-center gap-1.5">
                   <Target className="w-3.5 h-3.5 text-teal-400" />
                   Trailing: <strong>{config?.trailing_callback_percent}% Callback (+{config?.trailing_activation_percent}% Aktif)</strong>
+                </span>
+              )}
+
+              {/* Flash Target Badge */}
+              {config?.target_profit_percent && config.target_profit_percent > 0 ? (
+                <span className="px-3 py-1 rounded-full text-xs bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-emerald-400" />
+                  Flash Target: <strong>+{config.target_profit_percent}% Auto-Close</strong>
+                </span>
+              ) : (
+                <span className="px-3 py-1 rounded-full text-xs bg-slate-800/80 border border-slate-700 text-slate-400 flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-slate-500" />
+                  Target: <strong>OFF</strong>
                 </span>
               )}
 
@@ -725,6 +745,54 @@ export default function TopGainerBotPage() {
               </div>
             </div>
           </div>
+
+          {/* Flash Target Profit Real-Time Card */}
+          {Boolean(config.target_profit_percent && config.target_profit_percent > 0) && (() => {
+            const targetPct = config.target_profit_percent!;
+            const entry = config.entry_price || 0;
+            const currentMark = realPos?.markPrice || config.entry_price || 0;
+            const targetExitPrice = entry > 0 ? entry * (1 + targetPct / 100) : 0;
+            const currentGainPct = entry > 0 ? ((currentMark - entry) / entry) * 100 : 0;
+            const targetProgress = Math.min(100, Math.max(0, (currentGainPct / targetPct) * 100));
+            const isTargetHit = currentGainPct >= targetPct;
+
+            return (
+              <div className="mt-4 p-4 rounded-xl bg-slate-950/80 border border-emerald-500/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    <Target className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">Flash Target Profit (+{targetPct}%)</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        isTargetHit 
+                          ? 'bg-emerald-500 text-slate-950 font-black animate-bounce' 
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      }`}>
+                        {isTargetHit ? '🎯 TARGET TERCAPAI! AUTO-CLOSING...' : `⏳ MENUJU TARGET (+${targetPct}%)`}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-1">
+                      Harga Target Exit: <strong className="text-emerald-300 font-mono">${targetExitPrice ? targetExitPrice.toFixed(4) : '-'}</strong> | Gain Saat Ini: <strong className={`font-mono ${currentGainPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{currentGainPct >= 0 ? '+' : ''}{currentGainPct.toFixed(2)}%</strong>
+                    </div>
+                  </div>
+                </div>
+                <div className="w-full md:w-56 bg-slate-900 px-3.5 py-2 rounded-lg border border-slate-800">
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1">
+                    <span>Progress Target (+{targetPct}%)</span>
+                    <span className="font-mono text-emerald-400 font-bold">{targetProgress.toFixed(0)}%</span>
+                  </div>
+                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-300"
+                      style={{ width: `${targetProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Trailing Stop Real-Time Card */}
           {config.trailing_stop_enabled && (() => {
@@ -1080,7 +1148,9 @@ export default function TopGainerBotPage() {
                       </td>
                       <td className="py-3 px-3">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          item.exit_reason === 'TRAILING_STOP'
+                          item.exit_reason === 'TARGET_PROFIT'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : item.exit_reason === 'TRAILING_STOP'
                             ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
                             : item.exit_reason === 'SESSION_END'
                             ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
@@ -1088,7 +1158,9 @@ export default function TopGainerBotPage() {
                             ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                             : 'bg-slate-800 text-slate-300 border border-slate-700'
                         }`}>
-                          {item.exit_reason === 'TRAILING_STOP'
+                          {item.exit_reason === 'TARGET_PROFIT'
+                            ? '🎯 Target Profit'
+                            : item.exit_reason === 'TRAILING_STOP'
                             ? '🎯 Trailing Stop'
                             : item.exit_reason === 'SESSION_END'
                             ? '🏁 Tutup Sesi'
@@ -1415,7 +1487,73 @@ export default function TopGainerBotPage() {
                 </div>
               )}
 
-              {/* 4. TRAILING STOP SECTION */}
+              {/* 4. FLASH TARGET PROFIT SECTION */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-emerald-500/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                      <Target className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
+                        <span>Flash Target Profit Auto-Close</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          targetProfitPercent > 0 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {targetProfitPercent > 0 ? `+${targetProfitPercent}% dari Open` : 'OFF'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">Tutup posisi instan saat harga naik mencapai target profit % dari open</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+                    Target Profit (+% dari Harga Entry)
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {[0.5, 1.0, 1.5, 2.0, 3.0].map((tp) => (
+                      <button
+                        key={tp}
+                        type="button"
+                        onClick={() => setTargetProfitPercent(tp)}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold border transition ${
+                          targetProfitPercent === tp
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold shadow-md'
+                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
+                      >
+                        +{tp}%
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setTargetProfitPercent(0)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold border transition ${
+                        targetProfitPercent === 0
+                          ? 'bg-slate-700 text-white border-slate-500 font-bold'
+                          : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800'
+                      }`}
+                    >
+                      ⚡ Off (0%)
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={targetProfitPercent}
+                    onChange={(e) => setTargetProfitPercent(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-400 font-mono"
+                    placeholder="Contoh: 1.0 (%)"
+                  />
+                  <span className="text-[11px] text-emerald-300/80 block mt-1.5 leading-relaxed">
+                    💡 Begitu harga koin naik mencapai target (misal <strong>+1.0%</strong> dari harga open), bot seketika mengirimkan order Market Close (<code className="text-emerald-200">reduceOnly: true</code>) untuk mengunci cuan. Isi 0 jika ingin menonaktifkan target profit.
+                  </span>
+                </div>
+              </div>
+
+              {/* 5. TRAILING STOP SECTION */}
               <div className="p-4 rounded-xl bg-slate-950 border border-teal-500/40 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">

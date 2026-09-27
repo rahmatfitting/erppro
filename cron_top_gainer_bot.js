@@ -51,9 +51,12 @@ async function runTick() {
         const trailingTag = tickResult.trailingInfo?.enabled
           ? ` | Peak: $${tickResult.peakPrice} (Pullback: ${tickResult.trailingInfo?.dropFromPeakPercent?.toFixed(2)}% / ${tickResult.trailingInfo?.callbackPercent}%)`
           : '';
+        const targetTag = tickResult.targetProfitInfo?.targetPercent
+          ? ` | Target: +${tickResult.targetProfitInfo.targetPercent}% ($${tickResult.targetProfitInfo.targetExitPrice ? tickResult.targetProfitInfo.targetExitPrice.toFixed(4) : '-'}) [Gain: +${(tickResult.targetProfitInfo.currentGainPercent || 0).toFixed(2)}%]`
+          : '';
 
         console.log(
-          `[${now}] ${modeTag} ${timeTag} | Entry: $${tickResult.entryPrice} | Live: $${tickResult.markPrice}${trailingTag} | PnL: ${pnlSign}$${(tickResult.unrealizedPnl || 0).toFixed(4)} (${roeSign}${(tickResult.roePercent || 0).toFixed(2)}%)`
+          `[${now}] ${modeTag} ${timeTag} | Entry: $${tickResult.entryPrice} | Live: $${tickResult.markPrice}${targetTag}${trailingTag} | PnL: ${pnlSign}$${(tickResult.unrealizedPnl || 0).toFixed(4)} (${roeSign}${(tickResult.roePercent || 0).toFixed(2)}%)`
         );
       } else if (tickResult?.status === 'ORDER_OPENED') {
         const isSession = tickResult.strategyMode === 'SESSION_HOURS';
@@ -61,6 +64,9 @@ async function runTick() {
         console.log(`[${now}] 🚀 ${isSession ? 'SESI TRADING DIMULAI! BUY ORDER OPENED!' : 'NEW #1 TOP GAINER DETECTED! ORDER BUY OPENED!'}`);
         console.log(`🪙 Koin: ${tickResult.symbol} | Sisi: ${tickResult.side}`);
         console.log(`💵 Harga Entry: $${tickResult.entryPrice} | Qty: ${tickResult.quantity}`);
+        if (tickResult.targetProfitVal) {
+          console.log(`🎯 Flash Target Profit: +${tickResult.targetProfitVal}% ($${tickResult.targetExitPrice ? tickResult.targetExitPrice.toFixed(4) : '-'}) ➔ Auto Close`);
+        }
         if (isSession) {
           console.log(`🏛️ Target Exit: Ditahan Hingga Jam Tutup Sesi (${tickResult.sessionEndTime} WIB)`);
         } else {
@@ -70,7 +76,9 @@ async function runTick() {
         console.log('====================================================\n');
       } else if (tickResult?.status === 'ROUND_COMPLETED') {
         const pnlSign = (tickResult.netPnl || 0) >= 0 ? '+' : '';
-        const exitLabel = tickResult.exitReason === 'TRAILING_STOP'
+        const exitLabel = tickResult.exitReason === 'TARGET_PROFIT'
+          ? '🎯 FLASH TARGET PROFIT HIT'
+          : tickResult.exitReason === 'TRAILING_STOP'
           ? '🎯 TRAILING STOP HIT'
           : tickResult.exitReason === 'SESSION_END'
           ? '🏁 JAM TUTUP SESI TERCAPAI'

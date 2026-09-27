@@ -55,9 +55,17 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
   2. **Persentase Penarikan Balik (*Callback Rate %*):** Preset pilihan penarikan `0.5%`, `1.0%`, `1.5%`, `2.0%`, atau input manual. Jika harga turun sebesar X% dari titik tertinggi `peak_price`, posisi seketika ditutup di Binance via Market Sell (`reduceOnly: true`) dengan alasan exit `TRAILING_STOP`.
   3. **Ambang Aktivasi Minimal (*Activation Gain %*):** Opsi untuk hanya mengaktifkan Trailing Stop setelah posisi memperoleh gain minimal tertentu (misal setelah profit mencapai `+1.0%`), sehingga fluktuasi minor di awal entri tidak langsung memicu penutupan premature.
 
-#### 5. Background Runner Daemon 24/7 (`cron_top_gainer_bot.js` & `run_top_gainer_bot.bat`)
+#### 5. Fitur Flash Target Profit (+1% dari Harga Open, Auto-Close)
+- **Deskripsi:** Mekanisme penguncian keuntungan cepat di mana bot memantau kenaikan persentase harga live dari harga buka/entri posisi (`((markPrice - entryPrice) / entryPrice) * 100`).
+- **Mekanisme Target Profit:**
+  1. **Konfigurasi Fleksibel:** Preset chip `+0.5%`, `+1.0%` (default), `+1.5%`, `+2.0%`, `+3.0%`, custom input, atau `0` untuk menonaktifkan (*Tanpa Target*).
+  2. **Auto-Close Instan:** Begitu gain harga live koin menyentuh atau melampaui target (misal $\ge +1.0\%$), bot seketika mengirimkan order MARKET CLOSE (`reduceOnly: true`) ke Binance tanpa perlu menunggu sisa detik scalping atau jam sesi selesai, dengan alasan exit `TARGET_PROFIT`.
+  3. **Visual Real-Time Indicator:** Ditampilkan pada Live Active Scalp Card lengkap dengan target exit price, gain saat ini, serta progress bar persentase menuju target keuntungan.
+  4. **Kompatibilitas:** Bekerja harmonis baik pada mode `FLASH_SCALP` maupun `SESSION_HOURS`, serta dapat dikombinasikan bersama Stop Loss Darurat dan Trailing Stop.
+
+#### 6. Background Runner Daemon 24/7 (`cron_top_gainer_bot.js` & `run_top_gainer_bot.bat`)
 - Layanan background mandiri Node.js yang men-tick setiap **1.5 detik** untuk mendeteksi pergeseran juara #1 secara instan.
-- Mendukung evaluasi multi-mode (`FLASH_SCALP` vs `SESSION_HOURS`) serta pemantauan `peak_price`, jarak `pullback %` trailing stop, dan trigger jam sesi secara real-time di terminal background.
+- Mendukung evaluasi multi-mode (`FLASH_SCALP` vs `SESSION_HOURS`) serta pemantauan `peak_price`, target exit price (`targetExitPrice`), jarak `pullback %` trailing stop, dan trigger jam sesi secara real-time di terminal background.
 - Dilengkapi sistem **Auto-Fallback** cerdas: otomatis beralih ke `https://demo.erpproapp.com` jika port 3000 mengembalikan 404 atau ECONNREFUSED.
 
 ---

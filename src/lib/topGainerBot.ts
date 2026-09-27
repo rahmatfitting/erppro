@@ -51,6 +51,7 @@ export interface TopGainerBotConfig {
   min_gain_percent: number;
   is_compound: boolean;
   emergency_sl_percent: number | null;
+  target_profit_percent: number | null;
   current_state: 'IDLE' | 'SCANNING' | 'HOLDING' | 'CLOSING';
   current_symbol: string | null;
   current_side: 'BUY' | null;
@@ -274,6 +275,7 @@ export async function ensureTopGainerBotTables() {
       min_gain_percent DECIMAL(8, 2) DEFAULT 3.00,
       is_compound BOOLEAN DEFAULT false,
       emergency_sl_percent DECIMAL(8, 2) DEFAULT 3.00,
+      target_profit_percent DECIMAL(8, 2) DEFAULT 1.00,
       current_state VARCHAR(30) DEFAULT 'IDLE',
       current_symbol VARCHAR(30) DEFAULT NULL,
       current_side VARCHAR(10) DEFAULT 'BUY',
@@ -358,6 +360,9 @@ export async function ensureTopGainerBotTables() {
   try {
     await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN peak_price DECIMAL(18, 8) DEFAULT NULL`);
   } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN target_profit_percent DECIMAL(8, 2) DEFAULT 1.00`);
+  } catch {}
 
   try {
     await executeQuery(`ALTER TABLE top_gainer_bot_history ADD COLUMN exit_reason VARCHAR(50) DEFAULT 'TIME_EXIT'`);
@@ -374,9 +379,9 @@ export async function ensureTopGainerBotTables() {
   if (!existing || existing[0].count === 0) {
     await executeQuery(`
       INSERT INTO top_gainer_bot_config 
-        (id, is_active, strategy_mode, session_preset, session_start_time, session_end_time, trailing_stop_enabled, trailing_callback_percent, trailing_activation_percent, notional_usd, leverage, hold_seconds, min_gain_percent, is_compound, emergency_sl_percent, current_state)
+        (id, is_active, strategy_mode, session_preset, session_start_time, session_end_time, trailing_stop_enabled, trailing_callback_percent, trailing_activation_percent, notional_usd, leverage, hold_seconds, min_gain_percent, is_compound, emergency_sl_percent, target_profit_percent, current_state)
       VALUES 
-        (1, false, 'FLASH_SCALP', 'NEW_YORK', '20:00', '04:00', false, 1.00, 1.00, 50.00, 10, 20, 3.00, false, 3.00, 'IDLE')
+        (1, false, 'FLASH_SCALP', 'NEW_YORK', '20:00', '04:00', false, 1.00, 1.00, 50.00, 10, 20, 3.00, false, 3.00, 1.00, 'IDLE')
     `);
   }
 }
@@ -484,6 +489,9 @@ export async function getTopGainerBotState() {
     min_gain_percent: parseFloat(configRow.min_gain_percent) || 3.0,
     is_compound: configRow.is_compound === 1 || configRow.is_compound === true || configRow.is_compound === '1' || String(configRow.is_compound) === 'true',
     emergency_sl_percent: (configRow.emergency_sl_percent && parseFloat(configRow.emergency_sl_percent) > 0) ? parseFloat(configRow.emergency_sl_percent) : null,
+    target_profit_percent: configRow.target_profit_percent !== undefined && configRow.target_profit_percent !== null
+      ? (parseFloat(configRow.target_profit_percent) > 0 ? parseFloat(configRow.target_profit_percent) : null)
+      : 1.0,
     current_state: configRow.current_state || 'IDLE',
     current_symbol: configRow.current_symbol || null,
     current_side: 'BUY',
@@ -611,6 +619,7 @@ export async function startTopGainerBot(params?: {
   trailingStopEnabled?: boolean;
   trailingCallbackPercent?: number;
   trailingActivationPercent?: number;
+  targetProfitPercent?: number;
 }) {
   await ensureTopGainerBotTables();
 
@@ -637,6 +646,9 @@ export async function startTopGainerBot(params?: {
   const trailingEnabled = params?.trailingStopEnabled !== undefined ? Boolean(params.trailingStopEnabled) : Boolean(c.trailing_stop_enabled);
   const trailingCallback = params?.trailingCallbackPercent ?? parseFloat(c.trailing_callback_percent) ?? 1.0;
   const trailingActivation = params?.trailingActivationPercent ?? parseFloat(c.trailing_activation_percent) ?? 1.0;
+  const targetProfit = (params?.targetProfitPercent !== undefined && params.targetProfitPercent > 0)
+    ? params.targetProfitPercent
+    : (params?.targetProfitPercent === 0 ? null : (c.target_profit_percent !== undefined && c.target_profit_percent !== null ? (parseFloat(c.target_profit_percent) > 0 ? parseFloat(c.target_profit_percent) : null) : 1.0));
 
   // Determine state: if already in position, maintain HOLDING; otherwise SCANNING
   const nextState = c.current_state === 'HOLDING' ? 'HOLDING' : 'SCANNING';
@@ -658,6 +670,7 @@ export async function startTopGainerBot(params?: {
         min_gain_percent = ?,
         is_compound = ?,
         emergency_sl_percent = ?,
+        target_profit_percent = ?,
         current_state = ?,
         last_check_at = NOW()
     WHERE id = 1
@@ -675,6 +688,7 @@ export async function startTopGainerBot(params?: {
     minGain,
     isCompound,
     emergencySl,
+    targetProfit,
     nextState
   ]);
 
@@ -798,6 +812,7 @@ export async function updateTopGainerBotConfig(params: {
   trailingStopEnabled?: boolean;
   trailingCallbackPercent?: number;
   trailingActivationPercent?: number;
+  targetProfitPercent?: number;
 }) {
   await ensureTopGainerBotTables();
 
@@ -820,6 +835,9 @@ export async function updateTopGainerBotConfig(params: {
   const trailingEnabled = params.trailingStopEnabled !== undefined ? Boolean(params.trailingStopEnabled) : Boolean(c.trailing_stop_enabled);
   const trailingCallback = params.trailingCallbackPercent !== undefined ? params.trailingCallbackPercent : parseFloat(c.trailing_callback_percent || 1.0);
   const trailingActivation = params.trailingActivationPercent !== undefined ? params.trailingActivationPercent : parseFloat(c.trailing_activation_percent || 1.0);
+  const targetProfit = (params.targetProfitPercent !== undefined && params.targetProfitPercent > 0)
+    ? params.targetProfitPercent
+    : (params.targetProfitPercent === 0 ? null : (c.target_profit_percent !== undefined && c.target_profit_percent !== null ? (parseFloat(c.target_profit_percent) > 0 ? parseFloat(c.target_profit_percent) : null) : 1.0));
 
   await executeQuery(`
     UPDATE top_gainer_bot_config
@@ -836,6 +854,7 @@ export async function updateTopGainerBotConfig(params: {
         trailing_stop_enabled = ?,
         trailing_callback_percent = ?,
         trailing_activation_percent = ?,
+        target_profit_percent = ?,
         last_check_at = NOW()
     WHERE id = 1
   `, [
@@ -851,17 +870,19 @@ export async function updateTopGainerBotConfig(params: {
     sessionEndTime,
     trailingEnabled,
     trailingCallback,
-    trailingActivation
+    trailingActivation,
+    targetProfit
   ]);
 
   const modeDesc = strategyMode === 'SESSION_HOURS'
     ? `Sesi ${sessionPreset} (${sessionStartTime}-${sessionEndTime} WIB)`
     : `Flash Scalp ${holdSeconds}s`;
   const trailingDesc = trailingEnabled ? ` | Trailing Stop: ON (${trailingCallback}%)` : '';
+  const targetDesc = targetProfit ? ` | Flash Target: +${targetProfit}%` : ' | Target: OFF';
 
   await addTopGainerBotLog(
     'CONFIG',
-    `⚙️ Pengaturan diperbarui: Mode: ${modeDesc} | Notional: $${notional} USD (${leverage}x)${trailingDesc}`,
+    `⚙️ Pengaturan diperbarui: Mode: ${modeDesc} | Notional: $${notional} USD (${leverage}x)${targetDesc}${trailingDesc}`,
     'INFO'
   );
 
@@ -1172,6 +1193,16 @@ export async function tickTopGainerBot() {
       const emergencySl = (config.emergency_sl_percent && parseFloat(config.emergency_sl_percent) > 0) ? parseFloat(config.emergency_sl_percent) : null;
       const isEmergencyHit = Boolean(emergencySl && livePos && livePos.roePercent <= -emergencySl);
 
+      // Check Flash Target Profit (% gain from entry price)
+      const targetProfitPercent = (config.target_profit_percent && parseFloat(config.target_profit_percent) > 0)
+        ? parseFloat(config.target_profit_percent)
+        : null;
+      const currentPriceGainPercent = entryPrice > 0 ? ((markPrice - entryPrice) / entryPrice) * 100 : 0;
+      const targetExitPrice = (targetProfitPercent && entryPrice > 0)
+        ? entryPrice * (1 + targetProfitPercent / 100)
+        : null;
+      const isTargetProfitHit = Boolean(targetProfitPercent && currentPriceGainPercent >= targetProfitPercent);
+
       // Check Session End Exit
       const isSessionEnded = strategyMode === 'SESSION_HOURS' && (!isInSession || (config.session_last_open_slot && config.session_last_open_slot !== currentSlotKey));
 
@@ -1189,6 +1220,11 @@ export async function tickTopGainerBot() {
         exitReason = 'STOP_LOSS';
         closeLogMessage = `🛑 STOP LOSS DARURAT (-${emergencySl}% ROE)`;
         logType = 'WARN';
+      } else if (isTargetProfitHit) {
+        shouldClose = true;
+        exitReason = 'TARGET_PROFIT';
+        closeLogMessage = `🎯 FLASH TARGET HIT! Gain +${currentPriceGainPercent.toFixed(2)}% (Target: +${targetProfitPercent}% | Mark: $${markPrice.toFixed(4)} >= Target: $${targetExitPrice?.toFixed(4)})`;
+        logType = 'SUCCESS';
       } else if (isTrailingStopTriggered) {
         shouldClose = true;
         exitReason = 'TRAILING_STOP';
@@ -1293,7 +1329,15 @@ export async function tickTopGainerBot() {
           `, [symbol, roundNum, nextNotionalUsd, newTotalProfit, newWinCount, newLossCount]);
 
           const pnlSign = netPnl >= 0 ? '+' : '';
-          const exitLabel = exitReason === 'TRAILING_STOP' ? '🎯 Trailing Stop' : exitReason === 'SESSION_END' ? '🏁 Tutup Sesi' : exitReason === 'STOP_LOSS' ? '🛑 Stop Loss' : '⏱️ Scalp 20s';
+          const exitLabel = exitReason === 'TARGET_PROFIT'
+            ? '🎯 Flash Target Profit'
+            : exitReason === 'TRAILING_STOP'
+            ? '🎯 Trailing Stop'
+            : exitReason === 'SESSION_END'
+            ? '🏁 Tutup Sesi'
+            : exitReason === 'STOP_LOSS'
+            ? '🛑 Stop Loss'
+            : '⏱️ Scalp 20s';
 
           await addTopGainerBotLog(
             'CYCLE_COMPLETE',
@@ -1346,6 +1390,13 @@ export async function tickTopGainerBot() {
             endTime: sessionEndTime,
             currentWibTime,
             isInSession
+          },
+          targetProfitInfo: {
+            targetPercent: targetProfitPercent,
+            targetExitPrice,
+            currentGainPercent: currentPriceGainPercent,
+            isHit: isTargetProfitHit,
+            progressPercent: targetProfitPercent ? Math.min(100, Math.max(0, (currentPriceGainPercent / targetProfitPercent) * 100)) : 0
           },
           trailingInfo: {
             enabled: trailingStopEnabled,
@@ -1494,13 +1545,20 @@ export async function tickTopGainerBot() {
           rank1Coin.symbol
         ]);
 
+        const targetProfitVal = (config.target_profit_percent && parseFloat(config.target_profit_percent) > 0)
+          ? parseFloat(config.target_profit_percent)
+          : null;
+        const targetProfitLog = targetProfitVal
+          ? ` | Flash Target: +${targetProfitVal}% ($${(buyRes.fillPrice * (1 + targetProfitVal / 100)).toFixed(4)})`
+          : '';
+
         const trailingInfoLog = trailingStopEnabled
           ? ` | Trailing Stop: ON (${trailingCallbackPercent}% callback)`
           : '';
 
         await addTopGainerBotLog(
           'BUY_OPENED',
-          `✅ Posisi BUY Berhasil Dibuka! ${rank1Coin.symbol} @ $${buyRes.fillPrice} | Notional: $${notionalUsd} USD (${leverage}x) | Target Exit: ${targetDesc}${trailingInfoLog}`,
+          `✅ Posisi BUY Berhasil Dibuka! ${rank1Coin.symbol} @ $${buyRes.fillPrice} | Notional: $${notionalUsd} USD (${leverage}x) | Target Exit: ${targetDesc}${targetProfitLog}${trailingInfoLog}`,
           'SUCCESS'
         );
 
@@ -1513,7 +1571,9 @@ export async function tickTopGainerBot() {
           orderId: buyRes.orderId,
           strategyMode,
           holdSeconds: strategyMode === 'SESSION_HOURS' ? undefined : holdSeconds,
-          sessionEndTime: strategyMode === 'SESSION_HOURS' ? sessionEndTime : undefined
+          sessionEndTime: strategyMode === 'SESSION_HOURS' ? sessionEndTime : undefined,
+          targetProfitVal,
+          targetExitPrice: targetProfitVal ? buyRes.fillPrice * (1 + targetProfitVal / 100) : undefined
         };
       } catch (buyError: any) {
         console.error("Error executing top gainer buy order:", buyError);
