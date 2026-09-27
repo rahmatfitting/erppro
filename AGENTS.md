@@ -31,8 +31,27 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 - **Interactive Monospace Terminal Logs:** Konsol live auto-scroll dengan penanda kategori warna (`[BUY_TRIGGER]`, `[BUY_OPENED]`, `[SCALPING]`, `[CLOSE_TRIGGER]`, `[CYCLE_COMPLETE]`, `[LEADER_SHIFT]`).
 - **Tabel Riwayat Trade & Download Excel:** Merekam setiap siklus trade scalping lengkap dengan harga entri, harga exit, durasi hold, realized PnL, komisi bursa, serta tombol download ke file Excel (`.xlsx`).
 
-#### 3. Background Runner Daemon 24/7 (`cron_top_gainer_bot.js` & `run_top_gainer_bot.bat`)
+#### 3. Fitur Eksekusi Berdasarkan Jam Sesi Trading (Session Hours Mode)
+- **Deskripsi:** Pilihan strategi baru selain 20-Second Flash Scalp. Bot dapat dikonfigurasi untuk beroperasi pada jam sesi trading global tertentu (seperti Sesi New York, Sesi London, Sesi Asia, atau kustom jam WIB).
+- **Mekanisme Kerja Sesi:**
+  1. **Preset Sesi Populer & Jam WIB:**
+     - **Sesi New York (US High Volatility):** `20:00 - 04:00 WIB` (menangani lintas tengah malam / *overnight*).
+     - **Sesi London (European Session):** `14:00 - 22:00 WIB`.
+     - **Sesi Asia (Tokyo / Sydney / HK):** `07:00 - 15:00 WIB`.
+     - **Sesi Kustom:** Bebas menentukan jam buka (`HH:mm`) dan jam tutup (`HH:mm`) sendiri.
+  2. **Entry Juara Peringkat #1:** Saat jendela jam sesi aktif, bot secara otomatis memindai seluruh pair futures dan mengeksekusi order MARKET BUY pada pair yang sedang berada di **Peringkat #1 (Top Gainer #1)**. Bot mencatat slot sesi (`session_last_open_slot`) agar tidak membuka order ganda pada sesi yang sama.
+  3. **Auto-Close Saat Jam Tutup Tiba:** Posisi dipertahankan selama sesi trading. Begitu jam tutup sesi berakhir (`session_end_time`), bot secara otomatis mengirimkan order MARKET CLOSE (`reduceOnly: true`) untuk menutup posisi koin tersebut dan mengunci hasil perdagangan dengan alasan exit `SESSION_END`.
+
+#### 4. Fitur Trailing Stop Otomatis (Peak Profit Maximizer)
+- **Deskripsi:** Algoritma penguncian keuntungan dinamis yang dapat diaktifkan baik pada mode Sesi Jam maupun Flash Scalp untuk mengamankan profit maksimal sebelum terjadi pembalikan harga (*trend reversal*).
+- **Mekanisme Trailing Stop:**
+  1. **Pelacakan Harga Puncak (*Peak Price Tracking*):** Setiap kali harga koin mencetak titik tertinggi baru, sistem memperbarui nilai acuan `peak_price`.
+  2. **Persentase Penarikan Balik (*Callback Rate %*):** Preset pilihan penarikan `0.5%`, `1.0%`, `1.5%`, `2.0%`, atau input manual. Jika harga turun sebesar X% dari titik tertinggi `peak_price`, posisi seketika ditutup di Binance via Market Sell (`reduceOnly: true`) dengan alasan exit `TRAILING_STOP`.
+  3. **Ambang Aktivasi Minimal (*Activation Gain %*):** Opsi untuk hanya mengaktifkan Trailing Stop setelah posisi memperoleh gain minimal tertentu (misal setelah profit mencapai `+1.0%`), sehingga fluktuasi minor di awal entri tidak langsung memicu penutupan premature.
+
+#### 5. Background Runner Daemon 24/7 (`cron_top_gainer_bot.js` & `run_top_gainer_bot.bat`)
 - Layanan background mandiri Node.js yang men-tick setiap **1.5 detik** untuk mendeteksi pergeseran juara #1 secara instan.
+- Mendukung evaluasi multi-mode (`FLASH_SCALP` vs `SESSION_HOURS`) serta pemantauan `peak_price`, jarak `pullback %` trailing stop, dan trigger jam sesi secara real-time di terminal background.
 - Dilengkapi sistem **Auto-Fallback** cerdas: otomatis beralih ke `https://demo.erpproapp.com` jika port 3000 mengembalikan 404 atau ECONNREFUSED.
 
 ---

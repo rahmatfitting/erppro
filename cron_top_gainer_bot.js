@@ -42,29 +42,64 @@ async function runTick() {
       if (tickResult?.status === 'HOLDING') {
         const pnlSign = (tickResult.unrealizedPnl || 0) >= 0 ? '+' : '';
         const roeSign = (tickResult.roePercent || 0) >= 0 ? '+' : '';
+        const modeTag = tickResult.strategyMode === 'SESSION_HOURS'
+          ? `🏛️ [SESI ${tickResult.sessionInfo?.preset || 'TRADING'} ${tickResult.symbol}]`
+          : `⚡ [SCALPING ${tickResult.symbol}]`;
+        const timeTag = tickResult.strategyMode === 'SESSION_HOURS'
+          ? `Tutup Sesi: ${tickResult.sessionInfo?.endTime} WIB`
+          : `Sisa: ${tickResult.secondsLeft}s / ${tickResult.holdSeconds}s`;
+        const trailingTag = tickResult.trailingInfo?.enabled
+          ? ` | Peak: $${tickResult.peakPrice} (Pullback: ${tickResult.trailingInfo?.dropFromPeakPercent?.toFixed(2)}% / ${tickResult.trailingInfo?.callbackPercent}%)`
+          : '';
+
         console.log(
-          `[${now}] ⚡ [SCALPING ${tickResult.symbol}] Sisa Waktu: ${tickResult.secondsLeft}s / ${tickResult.holdSeconds}s | Entry: $${tickResult.entryPrice} | Live: $${tickResult.markPrice} | PnL: ${pnlSign}$${(tickResult.unrealizedPnl || 0).toFixed(4)} (${roeSign}${(tickResult.roePercent || 0).toFixed(2)}%)`
+          `[${now}] ${modeTag} ${timeTag} | Entry: $${tickResult.entryPrice} | Live: $${tickResult.markPrice}${trailingTag} | PnL: ${pnlSign}$${(tickResult.unrealizedPnl || 0).toFixed(4)} (${roeSign}${(tickResult.roePercent || 0).toFixed(2)}%)`
         );
       } else if (tickResult?.status === 'ORDER_OPENED') {
+        const isSession = tickResult.strategyMode === 'SESSION_HOURS';
         console.log('\n====================================================');
-        console.log(`[${now}] 🚀 NEW #1 TOP GAINER DETECTED! ORDER BUY OPENED!`);
+        console.log(`[${now}] 🚀 ${isSession ? 'SESI TRADING DIMULAI! BUY ORDER OPENED!' : 'NEW #1 TOP GAINER DETECTED! ORDER BUY OPENED!'}`);
         console.log(`🪙 Koin: ${tickResult.symbol} | Sisi: ${tickResult.side}`);
         console.log(`💵 Harga Entry: $${tickResult.entryPrice} | Qty: ${tickResult.quantity}`);
-        console.log(`⏱️ Scalp Countdown: ${tickResult.holdSeconds} Detik Dimulai!`);
+        if (isSession) {
+          console.log(`🏛️ Target Exit: Ditahan Hingga Jam Tutup Sesi (${tickResult.sessionEndTime} WIB)`);
+        } else {
+          console.log(`⏱️ Scalp Countdown: ${tickResult.holdSeconds} Detik Dimulai!`);
+        }
         console.log(`🆔 Binance Order ID: ${tickResult.orderId}`);
         console.log('====================================================\n');
       } else if (tickResult?.status === 'ROUND_COMPLETED') {
         const pnlSign = (tickResult.netPnl || 0) >= 0 ? '+' : '';
+        const exitLabel = tickResult.exitReason === 'TRAILING_STOP'
+          ? '🎯 TRAILING STOP HIT'
+          : tickResult.exitReason === 'SESSION_END'
+          ? '🏁 JAM TUTUP SESI TERCAPAI'
+          : tickResult.exitReason === 'STOP_LOSS'
+          ? '🛑 STOP LOSS DARURAT'
+          : '⏱️ SCALP FLASH SELESAI';
+
         console.log('\n====================================================');
-        console.log(`[${now}] 🎉 SCALP ROUND #${tickResult.roundNumber} COMPLETED (${tickResult.elapsedSeconds}s)!`);
-        console.log(`🪙 Koin: ${tickResult.symbol} | Entry: $${tickResult.entryPrice} ➔ Exit: $${tickResult.exitPrice}`);
+        console.log(`[${now}] 🎉 [${exitLabel}] ROUND #${tickResult.roundNumber} COMPLETED (${tickResult.elapsedSeconds}s)!`);
+        console.log(`🪙 Koin: ${tickResult.symbol} | Entry: $${tickResult.entryPrice} ➔ Exit: $${tickResult.exitPrice} (Peak: $${tickResult.peakPrice})`);
         console.log(`📊 Price Trade PnL: $${tickResult.tradePnl?.toFixed(4)} USDT`);
         console.log(`✨ Net Realized PnL: ${pnlSign}$${tickResult.netPnl?.toFixed(4)} USDT (${pnlSign}${tickResult.netPnlPercent?.toFixed(2)}%)`);
         if (config?.is_compound && (tickResult.netPnl || 0) > 0) {
           console.log(`📈 Auto-Compound: Modal Notional berikutnya: $${config.notional_usd} USD`);
         }
-        console.log('🔍 Kembali ke mode radar, menunggu koin baru menyalip ke urutan #1...');
+        console.log('🔍 Menunggu peluang atau siklus berikutnya...');
         console.log('====================================================\n');
+      } else if (tickResult?.status === 'WAITING_SESSION') {
+        const timeNow = Date.now();
+        if (timeNow - lastMonitoringLog > 15000) {
+          console.log(`[${now}] ⏳ ${tickResult.message}`);
+          lastMonitoringLog = timeNow;
+        }
+      } else if (tickResult?.status === 'SESSION_COMPLETED') {
+        const timeNow = Date.now();
+        if (timeNow - lastMonitoringLog > 25000) {
+          console.log(`[${now}] 💤 ${tickResult.message}`);
+          lastMonitoringLog = timeNow;
+        }
       } else if (tickResult?.status === 'MONITORING') {
         const timeNow = Date.now();
         if (timeNow - lastMonitoringLog > 10000) {

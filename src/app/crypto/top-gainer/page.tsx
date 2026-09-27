@@ -22,7 +22,10 @@ import {
   ChevronRight,
   CheckCircle2,
   XCircle,
-  AlertTriangle
+  AlertTriangle,
+  Globe,
+  Sliders,
+  Target
 } from "lucide-react";
 import { exportToExcel } from "@/lib/exportUtils";
 
@@ -39,6 +42,15 @@ interface TopGainerCoin {
 interface TopGainerBotConfig {
   id: number;
   is_active: boolean;
+  strategy_mode: 'FLASH_SCALP' | 'SESSION_HOURS';
+  session_preset: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM';
+  session_start_time: string;
+  session_end_time: string;
+  session_last_open_slot: string | null;
+  trailing_stop_enabled: boolean;
+  trailing_callback_percent: number;
+  trailing_activation_percent: number;
+  peak_price: number | null;
   notional_usd: number;
   leverage: number;
   hold_seconds: number;
@@ -74,6 +86,7 @@ interface TopGainerBotHistory {
   leverage: number;
   entry_price: number;
   exit_price: number | null;
+  peak_price: number | null;
   quantity: number;
   hold_seconds: number;
   trade_pnl_usd: number;
@@ -81,6 +94,8 @@ interface TopGainerBotHistory {
   net_pnl_usd: number;
   net_pnl_percent: number;
   status: string;
+  exit_reason: string;
+  strategy_mode: string;
   binance_open_order_id: string | null;
   binance_close_order_id: string | null;
   opened_at: string;
@@ -120,6 +135,15 @@ export default function TopGainerBotPage() {
   const [emergencySlPercent, setEmergencySlPercent] = useState(3.0);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
+  // Strategy & Session states
+  const [strategyMode, setStrategyMode] = useState<'FLASH_SCALP' | 'SESSION_HOURS'>('FLASH_SCALP');
+  const [sessionPreset, setSessionPreset] = useState<'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM'>('NEW_YORK');
+  const [sessionStartTime, setSessionStartTime] = useState('20:00');
+  const [sessionEndTime, setSessionEndTime] = useState('04:00');
+  const [trailingStopEnabled, setTrailingStopEnabled] = useState(false);
+  const [trailingCallbackPercent, setTrailingCallbackPercent] = useState(1.0);
+  const [trailingActivationPercent, setTrailingActivationPercent] = useState(1.0);
+
   // Stop Confirmation Modal
   const [showStopModal, setShowStopModal] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
@@ -131,6 +155,24 @@ export default function TopGainerBotPage() {
   // Real-time ticking time
   const [now, setNow] = useState(Date.now());
   const logsContainerRef = useRef<HTMLDivElement>(null);
+
+  // Apply session preset
+  const applySessionPreset = (preset: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM') => {
+    setSessionPreset(preset);
+    if (preset === 'NEW_YORK') {
+      setSessionStartTime('20:00');
+      setSessionEndTime('04:00');
+    } else if (preset === 'LONDON') {
+      setSessionStartTime('14:00');
+      setSessionEndTime('22:00');
+    } else if (preset === 'ASIA') {
+      setSessionStartTime('07:00');
+      setSessionEndTime('15:00');
+    } else if (preset === 'OVERLAP') {
+      setSessionStartTime('19:00');
+      setSessionEndTime('23:00');
+    }
+  };
 
   // Fetch full state from backend
   const fetchBotState = async () => {
@@ -153,6 +195,13 @@ export default function TopGainerBotPage() {
           setMinGainPercent(json.data.config.min_gain_percent || 3.0);
           setIsCompound(Boolean(json.data.config.is_compound));
           setEmergencySlPercent(json.data.config.emergency_sl_percent || 3.0);
+          setStrategyMode(json.data.config.strategy_mode || 'FLASH_SCALP');
+          setSessionPreset(json.data.config.session_preset || 'NEW_YORK');
+          setSessionStartTime(json.data.config.session_start_time || '20:00');
+          setSessionEndTime(json.data.config.session_end_time || '04:00');
+          setTrailingStopEnabled(Boolean(json.data.config.trailing_stop_enabled));
+          setTrailingCallbackPercent(json.data.config.trailing_callback_percent || 1.0);
+          setTrailingActivationPercent(json.data.config.trailing_activation_percent || 1.0);
         }
       }
     } catch (err) {
@@ -197,7 +246,14 @@ export default function TopGainerBotPage() {
           holdSeconds,
           minGainPercent,
           isCompound,
-          emergencySlPercent
+          emergencySlPercent,
+          strategyMode,
+          sessionPreset,
+          sessionStartTime,
+          sessionEndTime,
+          trailingStopEnabled,
+          trailingCallbackPercent,
+          trailingActivationPercent
         })
       });
       const json = await res.json();
@@ -250,7 +306,14 @@ export default function TopGainerBotPage() {
           holdSeconds,
           minGainPercent,
           isCompound,
-          emergencySlPercent
+          emergencySlPercent,
+          strategyMode,
+          sessionPreset,
+          sessionStartTime,
+          sessionEndTime,
+          trailingStopEnabled,
+          trailingCallbackPercent,
+          trailingActivationPercent
         })
       });
       const json = await res.json();
@@ -300,16 +363,19 @@ export default function TopGainerBotPage() {
   const handleExportExcel = () => {
     if (!history || history.length === 0) return;
     exportToExcel({
-      title: "Top Gainer Scalper Bot History (20s)",
+      title: "Top Gainer Scalper Bot History",
       subtitle: `Total Trades: ${history.length} | Net PnL: $${stats.totalNetProfit.toFixed(4)} USDT`,
       fileName: `Top_Gainer_Bot_History_${new Date().toISOString().split('T')[0]}`,
       columns: [
         { header: "Trade #", key: "round_number" },
         { header: "Symbol", key: "symbol" },
+        { header: "Strategi", key: "strategy_mode", format: (v) => v === 'SESSION_HOURS' ? 'Sesi Jam Trading' : 'Flash Scalp (20s)' },
+        { header: "Exit Reason", key: "exit_reason", format: (v) => v === 'TRAILING_STOP' ? 'Trailing Stop Hit' : v === 'SESSION_END' ? 'Tutup Sesi Selesai' : v === 'STOP_LOSS' ? 'Stop Loss Darurat' : v === 'TIME_EXIT' ? 'Scalp Time Exit' : (v || '-') },
         { header: "Notional USD", key: "notional_usd", format: (v) => `$${parseFloat(v).toFixed(2)}` },
         { header: "Leverage", key: "leverage", format: (v) => `${v}x` },
         { header: "Entry Price", key: "entry_price", format: (v) => parseFloat(v).toFixed(4) },
         { header: "Exit Price", key: "exit_price", format: (v) => v ? parseFloat(v).toFixed(4) : '-' },
+        { header: "Peak Price", key: "peak_price", format: (v) => v ? parseFloat(v).toFixed(4) : '-' },
         { header: "Hold (s)", key: "hold_seconds", format: (v) => `${v}s` },
         { header: "Trade PnL ($)", key: "trade_pnl_usd", format: (v) => `$${parseFloat(v).toFixed(4)}` },
         { header: "Commission ($)", key: "commission_usd", format: (v) => `-$${parseFloat(v).toFixed(4)}` },
@@ -402,6 +468,33 @@ export default function TopGainerBotPage() {
                 {config?.is_active ? 'BOT ACTIVE (AUTONOMOUS)' : 'BOT STOPPED'}
               </span>
 
+              {/* Strategy Mode Badge */}
+              <span className={`px-3 py-1 rounded-full text-xs flex items-center gap-1.5 border font-semibold ${
+                config?.strategy_mode === 'SESSION_HOURS'
+                  ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
+                  : 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+              }`}>
+                {config?.strategy_mode === 'SESSION_HOURS' ? (
+                  <>
+                    <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                    Sesi: <strong>{config?.session_preset} ({config?.session_start_time} - {config?.session_end_time} WIB)</strong>
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    Mode: <strong>Flash Scalp ({config?.hold_seconds || 20}s)</strong>
+                  </>
+                )}
+              </span>
+
+              {/* Trailing Stop Badge */}
+              {config?.trailing_stop_enabled && (
+                <span className="px-3 py-1 rounded-full text-xs bg-teal-500/20 border border-teal-500/40 text-teal-300 flex items-center gap-1.5">
+                  <Target className="w-3.5 h-3.5 text-teal-400" />
+                  Trailing: <strong>{config?.trailing_callback_percent}% Callback (+{config?.trailing_activation_percent}% Aktif)</strong>
+                </span>
+              )}
+
               <span className="px-3 py-1 rounded-full text-xs bg-slate-800/80 border border-slate-700 text-slate-300 flex items-center gap-1.5">
                 <DollarSign className="w-3.5 h-3.5 text-amber-400" />
                 Notional: <strong className="text-white">${config?.notional_usd || 50} USD</strong>
@@ -410,11 +503,6 @@ export default function TopGainerBotPage() {
               <span className="px-3 py-1 rounded-full text-xs bg-slate-800/80 border border-slate-700 text-slate-300 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-cyan-400" />
                 Leverage: <strong className="text-white">{config?.leverage || 10}x</strong>
-              </span>
-
-              <span className="px-3 py-1 rounded-full text-xs bg-slate-800/80 border border-slate-700 text-slate-300 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-rose-400" />
-                Scalp: <strong className="text-white">{config?.hold_seconds || 20} Detik</strong>
               </span>
 
               <span className="px-3 py-1 rounded-full text-xs bg-slate-800/80 border border-slate-700 text-slate-300 flex items-center gap-1.5">
@@ -456,12 +544,38 @@ export default function TopGainerBotPage() {
                 className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-sm rounded-xl flex items-center gap-2 shadow-lg shadow-amber-900/30 transition transform hover:-translate-y-0.5 disabled:opacity-50"
               >
                 <Play className="w-4 h-4 fill-slate-950" />
-                {isStarting ? 'Memulai...' : 'START SCALPER'}
+                {isStarting ? 'Memulai...' : 'START BOT'}
               </button>
             )}
           </div>
         </div>
       </div>
+
+      {/* Session Waiting Alert if bot is active in SESSION_HOURS and scanning */}
+      {config?.is_active && !isHolding && config?.strategy_mode === 'SESSION_HOURS' && (
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-950/60 via-slate-900 to-slate-900 border border-indigo-500/40 p-5 mb-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+              <Globe className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">Mode Sesi Jam Trading Aktif: {config.session_preset}</h3>
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  {config.session_start_time} - {config.session_end_time} WIB
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">
+                Bot akan otomatis membuka posisi BUY untuk koin urutan #1 (Top Gainer) saat sesi dibuka, menahannya selama sesi berjalan, dan otomatis menutup order saat jam tutup selesai.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-300 bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 shrink-0">
+            <Clock className="w-4 h-4 text-indigo-400" />
+            <span>Target Tutup: <strong className="text-white font-mono">{config.session_end_time} WIB</strong></span>
+          </div>
+        </div>
+      )}
 
       {/* ─────────────────────────────────────────────────────────────
           LIVE ACTIVE SCALPING CARD (IF CURRENTLY HOLDING POSITION)
@@ -471,13 +585,26 @@ export default function TopGainerBotPage() {
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-6 border-b border-amber-500/20">
             <div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500 text-slate-950 animate-pulse">
-                  <Flame className="w-3.5 h-3.5" />
-                  FLASH SCALP IN PROGRESS
-                </span>
+                {config.strategy_mode === 'SESSION_HOURS' ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-indigo-500 text-white animate-pulse">
+                    <Globe className="w-3.5 h-3.5" />
+                    SESI {config.session_preset} IN PROGRESS
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500 text-slate-950 animate-pulse">
+                    <Flame className="w-3.5 h-3.5" />
+                    FLASH SCALP IN PROGRESS
+                  </span>
+                )}
                 <span className="text-xs font-medium text-amber-300/80 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20">
                   Round #{config.round_number || 1}
                 </span>
+                {config.trailing_stop_enabled && (
+                  <span className="text-xs font-bold text-teal-300 bg-teal-500/10 px-2.5 py-1 rounded-md border border-teal-500/30 flex items-center gap-1">
+                    <Target className="w-3 h-3" />
+                    Trailing Stop ON
+                  </span>
+                )}
               </div>
               <h2 className="text-3xl md:text-4xl font-black tracking-tight text-white mt-2 flex items-center gap-3">
                 {config.current_symbol}
@@ -487,21 +614,41 @@ export default function TopGainerBotPage() {
               </h2>
             </div>
 
-            {/* Countdown Badge */}
+            {/* Countdown or Session Badge */}
             <div className="flex flex-col items-end">
-              <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Sisa Waktu Hold</div>
-              <div className="text-4xl md:text-5xl font-extrabold text-amber-400 font-mono tracking-tight flex items-baseline gap-1 mt-1">
-                {secondsRemaining}
-                <span className="text-lg font-normal text-slate-400">/ {targetHold}s</span>
-              </div>
+              {config.strategy_mode === 'SESSION_HOURS' ? (
+                <>
+                  <div className="text-xs uppercase tracking-wider text-indigo-300 font-medium flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" /> Target Jam Tutup Sesi
+                  </div>
+                  <div className="text-3xl md:text-4xl font-extrabold text-indigo-300 font-mono tracking-tight flex items-baseline gap-1 mt-1">
+                    {config.session_end_time} <span className="text-sm font-normal text-slate-400">WIB</span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    Order otomatis di-close saat sesi berakhir
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Sisa Waktu Hold</div>
+                  <div className="text-4xl md:text-5xl font-extrabold text-amber-400 font-mono tracking-tight flex items-baseline gap-1 mt-1">
+                    {secondsRemaining}
+                    <span className="text-lg font-normal text-slate-400">/ {targetHold}s</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Progress Bar (Countdown 20s) */}
+          {/* Progress Bar */}
           <div className="w-full bg-slate-800/80 h-3 rounded-full mt-4 overflow-hidden relative border border-slate-700">
             <div
-              className="bg-gradient-to-r from-amber-500 to-orange-500 h-full transition-all duration-300 rounded-full"
-              style={{ width: `${progressPercent}%` }}
+              className={`h-full transition-all duration-300 rounded-full ${
+                config.strategy_mode === 'SESSION_HOURS'
+                  ? 'bg-gradient-to-r from-indigo-500 via-purple-500 to-amber-500 animate-pulse w-full'
+                  : 'bg-gradient-to-r from-amber-500 to-orange-500'
+              }`}
+              style={{ width: config.strategy_mode === 'SESSION_HOURS' ? '100%' : `${progressPercent}%` }}
             ></div>
           </div>
 
@@ -539,6 +686,47 @@ export default function TopGainerBotPage() {
               </div>
             </div>
           </div>
+
+          {/* Trailing Stop Real-Time Card */}
+          {config.trailing_stop_enabled && (() => {
+            const peakPrice = config.peak_price || config.entry_price || 0;
+            const currentMark = realPos?.markPrice || config.entry_price || 0;
+            const pullbackPct = peakPrice > 0 ? ((peakPrice - currentMark) / peakPrice) * 100 : 0;
+            const trailingTriggerPrice = peakPrice > 0 ? peakPrice * (1 - (config.trailing_callback_percent || 1.0) / 100) : 0;
+            const peakGainPct = config.entry_price ? ((peakPrice - config.entry_price) / config.entry_price) * 100 : 0;
+            const isActivated = peakGainPct >= (config.trailing_activation_percent || 1.0);
+
+            return (
+              <div className="mt-4 p-4 rounded-xl bg-slate-950/80 border border-teal-500/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-lg bg-teal-500/20 text-teal-400 border border-teal-500/30">
+                    <Target className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">Trailing Stop Real-Time</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        isActivated ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}>
+                        {isActivated ? '🟢 AKTIF MENGUNCI PUNCAK' : `⏳ MENUNGGU TRIGGER (+${config.trailing_activation_percent}%)`}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-1">
+                      Harga Puncak: <strong className="text-white font-mono">${peakPrice ? peakPrice.toFixed(4) : '-'}</strong> | Trigger Close: <strong className="text-amber-300 font-mono">${trailingTriggerPrice ? trailingTriggerPrice.toFixed(4) : '-'}</strong> (-{config.trailing_callback_percent}% dari puncak)
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4 text-xs font-mono bg-slate-900 px-3.5 py-2 rounded-lg border border-slate-800">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-sans">Pullback dari Puncak</span>
+                    <span className={`text-sm font-bold ${pullbackPct >= (config.trailing_callback_percent || 1.0) ? 'text-rose-400' : 'text-teal-300'}`}>
+                      {pullbackPct.toFixed(2)}% / {config.trailing_callback_percent}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="flex justify-end mt-4">
             <button
@@ -796,13 +984,13 @@ export default function TopGainerBotPage() {
       <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-xl">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
           <div>
-            <h3 className="font-bold text-white text-base">Riwayat Trade Scalping (20s)</h3>
-            <p className="text-xs text-slate-400">Setiap order open & auto-close dicatat secara akurat dari Binance.</p>
+            <h3 className="font-bold text-white text-base">Riwayat Trade Top Gainer Bot</h3>
+            <p className="text-xs text-slate-400">Setiap order open, jam sesi, exit trailing stop, & auto-close dicatat secara akurat dari Binance.</p>
           </div>
           <button
             onClick={handleExportExcel}
             disabled={history.length === 0}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold flex items-center gap-2 transition shadow-lg shadow-emerald-950/30"
           >
             <Download className="w-4 h-4" />
             Download Excel (.xlsx)
@@ -815,9 +1003,12 @@ export default function TopGainerBotPage() {
               <tr className="border-b border-slate-800 text-slate-400">
                 <th className="py-2.5 px-3">Round #</th>
                 <th className="py-2.5 px-3">Koin</th>
+                <th className="py-2.5 px-3">Strategi</th>
+                <th className="py-2.5 px-3">Alasan Exit</th>
                 <th className="py-2.5 px-3">Notional & Lev</th>
                 <th className="py-2.5 px-3">Entry Price</th>
                 <th className="py-2.5 px-3">Exit Price</th>
+                <th className="py-2.5 px-3">Puncak (Peak)</th>
                 <th className="py-2.5 px-3">Durasi</th>
                 <th className="py-2.5 px-3 text-right">Net PnL ($)</th>
                 <th className="py-2.5 px-3 text-right">ROE %</th>
@@ -828,8 +1019,8 @@ export default function TopGainerBotPage() {
             <tbody className="divide-y divide-slate-800/60 font-mono">
               {history.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-8 text-center text-slate-500 italic">
-                    Belum ada riwayat scalp yang selesai. Jalankan bot untuk memulai!
+                  <td colSpan={13} className="py-8 text-center text-slate-500 italic">
+                    Belum ada riwayat trade yang selesai. Jalankan bot untuk memulai!
                   </td>
                 </tr>
               ) : (
@@ -839,11 +1030,44 @@ export default function TopGainerBotPage() {
                     <tr key={item.id} className="hover:bg-slate-800/30 transition">
                       <td className="py-3 px-3 font-bold text-slate-300">#{item.round_number}</td>
                       <td className="py-3 px-3 text-white font-sans font-bold">{item.symbol}</td>
+                      <td className="py-3 px-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          item.strategy_mode === 'SESSION_HOURS'
+                            ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {item.strategy_mode === 'SESSION_HOURS' ? '🏛️ Sesi' : '⚡ 20s Scalp'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          item.exit_reason === 'TRAILING_STOP'
+                            ? 'bg-teal-500/20 text-teal-300 border border-teal-500/30'
+                            : item.exit_reason === 'SESSION_END'
+                            ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                            : item.exit_reason === 'STOP_LOSS'
+                            ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            : 'bg-slate-800 text-slate-300 border border-slate-700'
+                        }`}>
+                          {item.exit_reason === 'TRAILING_STOP'
+                            ? '🎯 Trailing Stop'
+                            : item.exit_reason === 'SESSION_END'
+                            ? '🏁 Tutup Sesi'
+                            : item.exit_reason === 'STOP_LOSS'
+                            ? '🛑 Stop Loss'
+                            : item.exit_reason === 'MANUAL_CLOSED'
+                            ? '✋ Manual'
+                            : '⏱️ Time Exit'}
+                        </span>
+                      </td>
                       <td className="py-3 px-3 text-slate-300">
                         ${item.notional_usd} <span className="text-slate-500">({item.leverage}x)</span>
                       </td>
                       <td className="py-3 px-3 text-slate-300">${item.entry_price}</td>
                       <td className="py-3 px-3 text-slate-300">${item.exit_price || '-'}</td>
+                      <td className="py-3 px-3 text-cyan-300 font-mono">
+                        {item.peak_price ? `$${item.peak_price}` : '-'}
+                      </td>
                       <td className="py-3 px-3 text-amber-300">{item.hold_seconds}s</td>
                       <td className={`py-3 px-3 text-right font-bold ${isWin ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {isWin ? '+' : ''}${item.net_pnl_usd.toFixed(4)}
@@ -874,137 +1098,371 @@ export default function TopGainerBotPage() {
           SETTINGS MODAL
       ───────────────────────────────────────────────────────────── */}
       {showConfigModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-xl rounded-2xl p-6 shadow-2xl relative my-8">
             <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
               <Settings className="w-5 h-5 text-amber-400" />
-              Pengaturan Top Gainer Scalper
+              Pengaturan Top Gainer Scalper & Sesi Trading
             </h3>
-            <p className="text-xs text-slate-400 mb-6">
-              Konfigurasi modal notional, leverage, durasi scalp, dan pengaman stop loss.
+            <p className="text-xs text-slate-400 mb-5">
+              Pilih mode strategi perdagangan, sesi jam trading, fitur trailing stop, serta manajemen modal.
             </p>
 
-            <div className="space-y-4">
-              {/* Notional USD */}
+            <div className="space-y-5">
+              {/* 1. STRATEGY MODE SELECTOR */}
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Ukuran Posisi Notional (USD)
+                <label className="block text-xs font-bold text-slate-200 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                  Mode Strategi Perdagangan
                 </label>
-                <div className="flex gap-2 mb-2">
-                  {[20, 50, 100, 250, 500].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setNotionalUsd(val)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                        notionalUsd === val
-                          ? 'bg-amber-500 text-slate-950 border-amber-400'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                      }`}
-                    >
-                      ${val}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="number"
-                  value={notionalUsd}
-                  onChange={(e) => setNotionalUsd(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
-                  placeholder="Custom nominal USD"
-                />
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setStrategyMode('FLASH_SCALP')}
+                    className={`p-3.5 rounded-xl border text-left transition ${
+                      strategyMode === 'FLASH_SCALP'
+                        ? 'bg-amber-500/20 border-amber-500/80 text-white shadow-lg shadow-amber-950/30'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Flame className={`w-4 h-4 ${strategyMode === 'FLASH_SCALP' ? 'text-amber-400 animate-pulse' : 'text-slate-500'}`} />
+                      <span className="font-bold text-xs text-white">⚡ Flash Scalp 20s</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      Buka BUY instan saat ada koin baru menduduki peringkat #1, tahan {holdSeconds}s, lalu auto-close.
+                    </p>
+                  </button>
 
-              {/* Leverage */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Leverage Akun
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[3, 5, 10, 20].map((lev) => (
-                    <button
-                      key={lev}
-                      type="button"
-                      onClick={() => setLeverage(lev)}
-                      className={`py-2 rounded-xl text-xs font-bold border transition ${
-                        leverage === lev
-                          ? 'bg-amber-500 text-slate-950 border-amber-400'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                      }`}
-                    >
-                      {lev}x
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setStrategyMode('SESSION_HOURS')}
+                    className={`p-3.5 rounded-xl border text-left transition ${
+                      strategyMode === 'SESSION_HOURS'
+                        ? 'bg-indigo-500/20 border-indigo-500/80 text-white shadow-lg shadow-indigo-950/30'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Globe className={`w-4 h-4 ${strategyMode === 'SESSION_HOURS' ? 'text-indigo-400 animate-pulse' : 'text-slate-500'}`} />
+                      <span className="font-bold text-xs text-white">🏛️ Sesi Jam Trading</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                      Buka BUY koin #1 saat jam buka sesi, tahan selama sesi, & auto-close saat jam tutup selesai.
+                    </p>
+                  </button>
                 </div>
               </div>
 
-              {/* Hold Duration */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Durasi Hold Scalp (Detik)
-                </label>
-                <div className="flex gap-2 mb-2">
-                  {[10, 15, 20, 30, 60].map((sec) => (
-                    <button
-                      key={sec}
-                      type="button"
-                      onClick={() => setHoldSeconds(sec)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
-                        holdSeconds === sec
-                          ? 'bg-amber-500 text-slate-950 border-amber-400'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                      }`}
-                    >
-                      {sec}s
-                    </button>
-                  ))}
+              {/* 2. IF SESSION_HOURS SELECTED: SESSION CONFIGURATION */}
+              {strategyMode === 'SESSION_HOURS' && (
+                <div className="p-4 rounded-xl bg-indigo-950/30 border border-indigo-500/40 space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-indigo-300 mb-1.5 flex items-center justify-between">
+                      <span>Pilih Preset Sesi Jam Pasar (WIB)</span>
+                      <span className="text-[10px] text-slate-400 font-normal">Waktu Indonesia Barat (UTC+7)</span>
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => applySessionPreset('NEW_YORK')}
+                        className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
+                          sessionPreset === 'NEW_YORK'
+                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
+                      >
+                        🗽 New York
+                        <span className="block text-[10px] opacity-75 font-mono">20:00 - 04:00</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => applySessionPreset('LONDON')}
+                        className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
+                          sessionPreset === 'LONDON'
+                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
+                      >
+                        🏰 London
+                        <span className="block text-[10px] opacity-75 font-mono">14:00 - 22:00</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => applySessionPreset('ASIA')}
+                        className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
+                          sessionPreset === 'ASIA'
+                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
+                      >
+                        ⛩️ Asia/Tokyo
+                        <span className="block text-[10px] opacity-75 font-mono">07:00 - 15:00</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => applySessionPreset('OVERLAP')}
+                        className={`py-2 px-2.5 rounded-xl text-xs font-semibold border transition text-center ${
+                          sessionPreset === 'OVERLAP'
+                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+                            : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
+                      >
+                        ⚡ Overlap
+                        <span className="block text-[10px] opacity-75 font-mono">19:00 - 23:00</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Jam Open & Jam Tutup Inputs */}
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Jam Open Sesi (HH:mm WIB)
+                      </label>
+                      <input
+                        type="text"
+                        value={sessionStartTime}
+                        onChange={(e) => {
+                          setSessionStartTime(e.target.value);
+                          setSessionPreset('CUSTOM');
+                        }}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-400 font-mono text-center"
+                        placeholder="Misal: 20:00"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                        Jam Tutup Sesi (HH:mm WIB)
+                      </label>
+                      <input
+                        type="text"
+                        value={sessionEndTime}
+                        onChange={(e) => {
+                          setSessionEndTime(e.target.value);
+                          setSessionPreset('CUSTOM');
+                        }}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-400 font-mono text-center"
+                        placeholder="Misal: 04:00"
+                      />
+                    </div>
+                  </div>
+                  <span className="text-[11px] text-indigo-300/80 block">
+                    💡 Saat jam open tiba, bot akan menyergap pair peringkat #1. Begitu jam tutup tercapai, bot langsung mengeksekusi Market Sell untuk mengunci hasil.
+                  </span>
                 </div>
-                <input
-                  type="number"
-                  value={holdSeconds}
-                  onChange={(e) => setHoldSeconds(parseInt(e.target.value) || 20)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
-                  placeholder="Durasi detik (default 20)"
-                />
+              )}
+
+              {/* 3. IF FLASH_SCALP SELECTED: HOLD SECONDS */}
+              {strategyMode === 'FLASH_SCALP' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Durasi Hold Scalp (Detik)
+                  </label>
+                  <div className="flex gap-2 mb-2">
+                    {[10, 15, 20, 30, 60].map((sec) => (
+                      <button
+                        key={sec}
+                        type="button"
+                        onClick={() => setHoldSeconds(sec)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${
+                          holdSeconds === sec
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        {sec}s
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    value={holdSeconds}
+                    onChange={(e) => setHoldSeconds(parseInt(e.target.value) || 20)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
+                    placeholder="Durasi detik (default 20)"
+                  />
+                </div>
+              )}
+
+              {/* 4. TRAILING STOP SECTION */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-teal-500/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-teal-500/20 text-teal-400">
+                      <Target className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">Trailing Stop Otomatis</div>
+                      <div className="text-[11px] text-slate-400">Maksimalkan profit dengan mengunci harga puncak tertinggi (Peak)</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setTrailingStopEnabled(!trailingStopEnabled)}
+                    className={`w-12 h-6 flex items-center rounded-full p-1 transition duration-300 ${
+                      trailingStopEnabled ? 'bg-teal-500' : 'bg-slate-700'
+                    }`}
+                  >
+                    <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition duration-300 ${
+                      trailingStopEnabled ? 'translate-x-6' : 'translate-x-0'
+                    }`} />
+                  </button>
+                </div>
+
+                {trailingStopEnabled && (
+                  <div className="pt-2 border-t border-slate-800/80 space-y-3 animate-in fade-in duration-200">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+                        Toleransi Callback dari Puncak (-% Pullback)
+                      </label>
+                      <div className="flex gap-2 mb-2">
+                        {[0.5, 1.0, 1.5, 2.0, 3.0].map((rate) => (
+                          <button
+                            key={rate}
+                            type="button"
+                            onClick={() => setTrailingCallbackPercent(rate)}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold border transition ${
+                              trailingCallbackPercent === rate
+                                ? 'bg-teal-500 text-slate-950 border-teal-400 font-bold'
+                                : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                            }`}
+                          >
+                            {rate}%
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="number"
+                        step="0.1"
+                        value={trailingCallbackPercent}
+                        onChange={(e) => setTrailingCallbackPercent(parseFloat(e.target.value) || 1.0)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-teal-400 font-mono"
+                        placeholder="Contoh: 1.0 (%)"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-300 mb-1.5">
+                        Ambang Aktivasi Trailing (+% Profit)
+                      </label>
+                      <div className="flex gap-2 mb-2">
+                        {[0.0, 0.5, 1.0, 1.5, 2.0].map((act) => (
+                          <button
+                            key={act}
+                            type="button"
+                            onClick={() => setTrailingActivationPercent(act)}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold border transition ${
+                              trailingActivationPercent === act
+                                ? 'bg-teal-500 text-slate-950 border-teal-400 font-bold'
+                                : 'bg-slate-900 text-slate-300 border-slate-800 hover:bg-slate-800'
+                            }`}
+                          >
+                            {act === 0 ? 'Langsung (0%)' : `+${act}%`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <span className="text-[11px] text-teal-300/80 block leading-relaxed">
+                      🎯 Saat profit mencapai ambang aktivasi, bot mengunci harga tertinggi (peak). Jika harga berbalik turun sebesar callback % dari puncak, order seketika ditutup untuk mengunci cuan maksimal!
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Min Gain Filter */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Filter Minimal 24h Gain (+%)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={minGainPercent}
-                  onChange={(e) => setMinGainPercent(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
-                  placeholder="Misal: 3.0 (%)"
-                />
-                <span className="text-[11px] text-slate-500 block mt-1">
-                  Koin #1 harus memiliki gain minimal sebesar ini agar bot mengeksekusi buy.
-                </span>
+              {/* 5. NOTIONAL USD & LEVERAGE */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Ukuran Notional (USD)
+                  </label>
+                  <div className="flex gap-1.5 mb-2">
+                    {[20, 50, 100, 250, 500].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setNotionalUsd(val)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition ${
+                          notionalUsd === val
+                            ? 'bg-amber-500 text-slate-950 border-amber-400 font-bold'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        ${val}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    value={notionalUsd}
+                    onChange={(e) => setNotionalUsd(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
+                    placeholder="Custom nominal USD"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Leverage Akun
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    {[3, 5, 10, 20].map((lev) => (
+                      <button
+                        key={lev}
+                        type="button"
+                        onClick={() => setLeverage(lev)}
+                        className={`py-1 rounded-lg text-xs font-bold border transition ${
+                          leverage === lev
+                            ? 'bg-amber-500 text-slate-950 border-amber-400'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        {lev}x
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-2">
+                    Margin terpakai: <strong className="text-white font-mono">${(notionalUsd / leverage).toFixed(2)} USDT</strong>
+                  </div>
+                </div>
               </div>
 
-              {/* Emergency Stop Loss */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Emergency Stop Loss (-% ROE)
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={emergencySlPercent}
-                  onChange={(e) => setEmergencySlPercent(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
-                  placeholder="Misal: 3.0 (-3% ROE)"
-                />
-                <span className="text-[11px] text-slate-500 block mt-1">
-                  Tutup darurat jika dalam 20 detik harga anjlok drastis melebihi batas ini.
-                </span>
+              {/* 6. MIN GAIN FILTER & EMERGENCY SL */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Filter Minimal 24h Gain (+%)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={minGainPercent}
+                    onChange={(e) => setMinGainPercent(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
+                    placeholder="Misal: 3.0 (%)"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Emergency Stop Loss (-% ROE)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={emergencySlPercent}
+                    onChange={(e) => setEmergencySlPercent(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
+                    placeholder="Misal: 3.0 (-3% ROE)"
+                  />
+                </div>
               </div>
 
-              {/* Auto-Compound Toggle */}
+              {/* 7. AUTO-COMPOUND TOGGLE */}
               <div className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
                 <div>
                   <div className="text-xs font-bold text-white">Auto-Compound Profit</div>
@@ -1036,7 +1494,7 @@ export default function TopGainerBotPage() {
                 type="button"
                 onClick={handleSaveConfig}
                 disabled={isSavingConfig}
-                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl transition disabled:opacity-50"
+                className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl transition disabled:opacity-50 shadow-lg shadow-amber-950/30"
               >
                 {isSavingConfig ? 'Menyimpan...' : 'Simpan Pengaturan'}
               </button>
@@ -1056,7 +1514,7 @@ export default function TopGainerBotPage() {
               <h3 className="text-lg font-bold text-white">Hentikan Top Gainer Bot?</h3>
             </div>
             <p className="text-xs text-slate-300 mb-6 leading-relaxed">
-              Apakah Anda ingin menghentikan bot sekarang? Jika sedang ada posisi scalp aktif, Anda dapat memilih untuk langsung menutupnya di Binance atau membiarkannya berjalan.
+              Apakah Anda ingin menghentikan bot sekarang? Jika sedang ada posisi aktif, Anda dapat memilih untuk langsung menutupnya di Binance atau membiarkannya berjalan.
             </p>
 
             <div className="flex flex-col gap-2.5">
@@ -1093,3 +1551,4 @@ export default function TopGainerBotPage() {
     </div>
   );
 }
+

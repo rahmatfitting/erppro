@@ -24,6 +24,15 @@ export interface TopGainerCoin {
 export interface TopGainerBotConfig {
   id: number;
   is_active: boolean;
+  strategy_mode: 'FLASH_SCALP' | 'SESSION_HOURS';
+  session_preset: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM';
+  session_start_time: string;
+  session_end_time: string;
+  session_last_open_slot: string | null;
+  trailing_stop_enabled: boolean;
+  trailing_callback_percent: number;
+  trailing_activation_percent: number;
+  peak_price: number | null;
   notional_usd: number;
   leverage: number;
   hold_seconds: number;
@@ -59,6 +68,7 @@ export interface TopGainerBotHistory {
   leverage: number;
   entry_price: number;
   exit_price: number | null;
+  peak_price: number | null;
   quantity: number;
   hold_seconds: number;
   trade_pnl_usd: number;
@@ -66,6 +76,8 @@ export interface TopGainerBotHistory {
   net_pnl_usd: number;
   net_pnl_percent: number;
   status: string;
+  exit_reason: string;
+  strategy_mode: string;
   binance_open_order_id: string | null;
   binance_close_order_id: string | null;
   opened_at: string;
@@ -83,6 +95,65 @@ export interface TopGainerBotLog {
 let isTickingTopGainer = false;
 
 /**
+ * Helper to get current WIB (UTC+7) Date and Time information
+ */
+export function getWibTimeInfo(date: Date = new Date()) {
+  const utc = date.getTime() + date.getTimezoneOffset() * 60000;
+  const wib = new Date(utc + 7 * 3600000);
+  const hours = wib.getHours();
+  const minutes = wib.getMinutes();
+  const seconds = wib.getSeconds();
+  const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  const dateString = `${wib.getFullYear()}-${String(wib.getMonth() + 1).padStart(2, '0')}-${String(wib.getDate()).padStart(2, '0')}`;
+  const totalMinutes = hours * 60 + minutes;
+  return { wib, hours, minutes, seconds, timeString, dateString, totalMinutes };
+}
+
+/**
+ * Check if the given HH:mm time is within the session start and end window
+ */
+export function isWithinSessionTime(currentTime: string, startTime: string, endTime: string): boolean {
+  if (!startTime || !endTime) return true;
+  if (startTime === endTime) return true;
+
+  const [cHour, cMin] = (currentTime || '00:00').split(':').map(Number);
+  const [sHour, sMin] = (startTime || '20:00').split(':').map(Number);
+  const [eHour, eMin] = (endTime || '04:00').split(':').map(Number);
+
+  const cTotal = cHour * 60 + cMin;
+  const sTotal = sHour * 60 + sMin;
+  const eTotal = eHour * 60 + eMin;
+
+  if (sTotal < eTotal) {
+    // Normal single-day session, e.g. 14:00 to 22:00
+    return cTotal >= sTotal && cTotal < eTotal;
+  } else {
+    // Overnight session crossing midnight, e.g. 20:00 to 04:00
+    return cTotal >= sTotal || cTotal < eTotal;
+  }
+}
+
+/**
+ * Get a unique slot identifier for the active or current trading session date
+ * E.g. "2026-09-27_20:00"
+ */
+export function getSessionSlotKey(startTime: string, endTime: string, date: Date = new Date()): string {
+  const { hours, minutes, dateString, totalMinutes, wib } = getWibTimeInfo(date);
+  const [sHour, sMin] = (startTime || '20:00').split(':').map(Number);
+  const [eHour, eMin] = (endTime || '04:00').split(':').map(Number);
+  const sTotal = sHour * 60 + sMin;
+  const eTotal = eHour * 60 + eMin;
+
+  if (sTotal > eTotal && totalMinutes < eTotal) {
+    // After midnight of overnight session: slot began yesterday
+    const prevDay = new Date(wib.getTime() - 24 * 3600000);
+    const prevDateStr = `${prevDay.getFullYear()}-${String(prevDay.getMonth() + 1).padStart(2, '0')}-${String(prevDay.getDate()).padStart(2, '0')}`;
+    return `${prevDateStr}_${startTime}`;
+  }
+  return `${dateString}_${startTime}`;
+}
+
+/**
  * Ensure database tables exist for Top Gainer Scalper Bot
  */
 export async function ensureTopGainerBotTables() {
@@ -90,6 +161,15 @@ export async function ensureTopGainerBotTables() {
     CREATE TABLE IF NOT EXISTS top_gainer_bot_config (
       id INT PRIMARY KEY,
       is_active BOOLEAN DEFAULT false,
+      strategy_mode VARCHAR(30) DEFAULT 'FLASH_SCALP',
+      session_preset VARCHAR(30) DEFAULT 'NEW_YORK',
+      session_start_time VARCHAR(10) DEFAULT '20:00',
+      session_end_time VARCHAR(10) DEFAULT '04:00',
+      session_last_open_slot VARCHAR(50) DEFAULT NULL,
+      trailing_stop_enabled BOOLEAN DEFAULT false,
+      trailing_callback_percent DECIMAL(8, 2) DEFAULT 1.00,
+      trailing_activation_percent DECIMAL(8, 2) DEFAULT 1.00,
+      peak_price DECIMAL(18, 8) DEFAULT NULL,
       notional_usd DECIMAL(10, 2) DEFAULT 50.00,
       leverage INT DEFAULT 10,
       hold_seconds INT DEFAULT 20,
@@ -125,6 +205,7 @@ export async function ensureTopGainerBotTables() {
       leverage INT NOT NULL,
       entry_price DECIMAL(18, 8) NOT NULL,
       exit_price DECIMAL(18, 8) DEFAULT NULL,
+      peak_price DECIMAL(18, 8) DEFAULT NULL,
       quantity DECIMAL(18, 8) NOT NULL,
       hold_seconds INT DEFAULT 20,
       trade_pnl_usd DECIMAL(18, 4) DEFAULT 0.0000,
@@ -132,6 +213,8 @@ export async function ensureTopGainerBotTables() {
       net_pnl_usd DECIMAL(18, 4) DEFAULT 0.0000,
       net_pnl_percent DECIMAL(8, 2) DEFAULT 0.00,
       status VARCHAR(30) DEFAULT 'OPEN',
+      exit_reason VARCHAR(50) DEFAULT 'TIME_EXIT',
+      strategy_mode VARCHAR(30) DEFAULT 'FLASH_SCALP',
       binance_open_order_id VARCHAR(100) DEFAULT NULL,
       binance_close_order_id VARCHAR(100) DEFAULT NULL,
       opened_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -149,14 +232,53 @@ export async function ensureTopGainerBotTables() {
     )
   `);
 
+  // Auto-migration columns for existing databases
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN strategy_mode VARCHAR(30) DEFAULT 'FLASH_SCALP'`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN session_preset VARCHAR(30) DEFAULT 'NEW_YORK'`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN session_start_time VARCHAR(10) DEFAULT '20:00'`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN session_end_time VARCHAR(10) DEFAULT '04:00'`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN session_last_open_slot VARCHAR(50) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN trailing_stop_enabled BOOLEAN DEFAULT false`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN trailing_callback_percent DECIMAL(8, 2) DEFAULT 1.00`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN trailing_activation_percent DECIMAL(8, 2) DEFAULT 1.00`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_config ADD COLUMN peak_price DECIMAL(18, 8) DEFAULT NULL`);
+  } catch {}
+
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_history ADD COLUMN exit_reason VARCHAR(50) DEFAULT 'TIME_EXIT'`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_history ADD COLUMN peak_price DECIMAL(18, 8) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE top_gainer_bot_history ADD COLUMN strategy_mode VARCHAR(30) DEFAULT 'FLASH_SCALP'`);
+  } catch {}
+
   // Ensure initial config row exists
   const existing: any = await executeQuery(`SELECT count(*) as count FROM top_gainer_bot_config`);
   if (!existing || existing[0].count === 0) {
     await executeQuery(`
       INSERT INTO top_gainer_bot_config 
-        (id, is_active, notional_usd, leverage, hold_seconds, min_gain_percent, is_compound, emergency_sl_percent, current_state)
+        (id, is_active, strategy_mode, session_preset, session_start_time, session_end_time, trailing_stop_enabled, trailing_callback_percent, trailing_activation_percent, notional_usd, leverage, hold_seconds, min_gain_percent, is_compound, emergency_sl_percent, current_state)
       VALUES 
-        (1, false, 50.00, 10, 20, 3.00, false, 3.00, 'IDLE')
+        (1, false, 'FLASH_SCALP', 'NEW_YORK', '20:00', '04:00', false, 1.00, 1.00, 50.00, 10, 20, 3.00, false, 3.00, 'IDLE')
     `);
   }
 }
@@ -249,6 +371,15 @@ export async function getTopGainerBotState() {
   const config: TopGainerBotConfig = {
     id: configRow.id,
     is_active: Boolean(configRow.is_active),
+    strategy_mode: configRow.strategy_mode || 'FLASH_SCALP',
+    session_preset: configRow.session_preset || 'NEW_YORK',
+    session_start_time: configRow.session_start_time || '20:00',
+    session_end_time: configRow.session_end_time || '04:00',
+    session_last_open_slot: configRow.session_last_open_slot || null,
+    trailing_stop_enabled: Boolean(configRow.trailing_stop_enabled),
+    trailing_callback_percent: parseFloat(configRow.trailing_callback_percent) || 1.0,
+    trailing_activation_percent: parseFloat(configRow.trailing_activation_percent) || 1.0,
+    peak_price: configRow.peak_price ? parseFloat(configRow.peak_price) : null,
     notional_usd: parseFloat(configRow.notional_usd) || 50,
     leverage: parseInt(configRow.leverage) || 10,
     hold_seconds: parseInt(configRow.hold_seconds) || 20,
@@ -312,6 +443,7 @@ export async function getTopGainerBotState() {
     leverage: parseInt(r.leverage) || 10,
     entry_price: parseFloat(r.entry_price) || 0,
     exit_price: r.exit_price ? parseFloat(r.exit_price) : null,
+    peak_price: r.peak_price ? parseFloat(r.peak_price) : null,
     quantity: parseFloat(r.quantity) || 0,
     hold_seconds: parseInt(r.hold_seconds) || 20,
     trade_pnl_usd: parseFloat(r.trade_pnl_usd) || 0,
@@ -319,6 +451,8 @@ export async function getTopGainerBotState() {
     net_pnl_usd: parseFloat(r.net_pnl_usd) || 0,
     net_pnl_percent: parseFloat(r.net_pnl_percent) || 0,
     status: r.status,
+    exit_reason: r.exit_reason || 'TIME_EXIT',
+    strategy_mode: r.strategy_mode || 'FLASH_SCALP',
     binance_open_order_id: r.binance_open_order_id,
     binance_close_order_id: r.binance_close_order_id,
     opened_at: r.opened_at,
@@ -372,6 +506,13 @@ export async function startTopGainerBot(params?: {
   minGainPercent?: number;
   isCompound?: boolean;
   emergencySlPercent?: number;
+  strategyMode?: 'FLASH_SCALP' | 'SESSION_HOURS';
+  sessionPreset?: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM';
+  sessionStartTime?: string;
+  sessionEndTime?: string;
+  trailingStopEnabled?: boolean;
+  trailingCallbackPercent?: number;
+  trailingActivationPercent?: number;
 }) {
   await ensureTopGainerBotTables();
 
@@ -380,21 +521,37 @@ export async function startTopGainerBot(params?: {
     throw new Error('Config not found');
   }
 
-  const notional = params?.notionalUsd ?? parseFloat(current[0].notional_usd) ?? 50;
-  const leverage = params?.leverage ?? parseInt(current[0].leverage) ?? 10;
-  const holdSeconds = params?.holdSeconds ?? parseInt(current[0].hold_seconds) ?? 20;
-  const minGain = params?.minGainPercent ?? parseFloat(current[0].min_gain_percent) ?? 3.0;
+  const c = current[0];
+  const notional = params?.notionalUsd ?? parseFloat(c.notional_usd) ?? 50;
+  const leverage = params?.leverage ?? parseInt(c.leverage) ?? 10;
+  const holdSeconds = params?.holdSeconds ?? parseInt(c.hold_seconds) ?? 20;
+  const minGain = params?.minGainPercent ?? parseFloat(c.min_gain_percent) ?? 3.0;
   const isCompound = params?.isCompound !== undefined 
     ? Boolean(params.isCompound) 
-    : (current[0].is_compound === 1 || current[0].is_compound === true || current[0].is_compound === '1');
-  const emergencySl = params?.emergencySlPercent ?? parseFloat(current[0].emergency_sl_percent) ?? 3.0;
+    : (c.is_compound === 1 || c.is_compound === true || c.is_compound === '1');
+  const emergencySl = params?.emergencySlPercent ?? (c.emergency_sl_percent ? parseFloat(c.emergency_sl_percent) : 3.0);
+  const strategyMode = params?.strategyMode ?? c.strategy_mode ?? 'FLASH_SCALP';
+  const sessionPreset = params?.sessionPreset ?? c.session_preset ?? 'NEW_YORK';
+  const sessionStartTime = params?.sessionStartTime ?? c.session_start_time ?? '20:00';
+  const sessionEndTime = params?.sessionEndTime ?? c.session_end_time ?? '04:00';
+  const trailingEnabled = params?.trailingStopEnabled !== undefined ? Boolean(params.trailingStopEnabled) : Boolean(c.trailing_stop_enabled);
+  const trailingCallback = params?.trailingCallbackPercent ?? parseFloat(c.trailing_callback_percent) ?? 1.0;
+  const trailingActivation = params?.trailingActivationPercent ?? parseFloat(c.trailing_activation_percent) ?? 1.0;
 
   // Determine state: if already in position, maintain HOLDING; otherwise SCANNING
-  const nextState = current[0].current_state === 'HOLDING' ? 'HOLDING' : 'SCANNING';
+  const nextState = c.current_state === 'HOLDING' ? 'HOLDING' : 'SCANNING';
 
   await executeQuery(`
     UPDATE top_gainer_bot_config
     SET is_active = true,
+        strategy_mode = ?,
+        session_preset = ?,
+        session_start_time = ?,
+        session_end_time = ?,
+        session_last_open_slot = NULL,
+        trailing_stop_enabled = ?,
+        trailing_callback_percent = ?,
+        trailing_activation_percent = ?,
         notional_usd = ?,
         leverage = ?,
         hold_seconds = ?,
@@ -404,13 +561,32 @@ export async function startTopGainerBot(params?: {
         current_state = ?,
         last_check_at = NOW()
     WHERE id = 1
-  `, [notional, leverage, holdSeconds, minGain, isCompound, emergencySl, nextState]);
+  `, [
+    strategyMode,
+    sessionPreset,
+    sessionStartTime,
+    sessionEndTime,
+    trailingEnabled,
+    trailingCallback,
+    trailingActivation,
+    notional,
+    leverage,
+    holdSeconds,
+    minGain,
+    isCompound,
+    emergencySl,
+    nextState
+  ]);
 
+  const modeText = strategyMode === 'SESSION_HOURS'
+    ? `🏛️ SESI ${sessionPreset} (${sessionStartTime} - ${sessionEndTime} WIB)`
+    : `⚡ FLASH SCALP (${holdSeconds}s)`;
+  const trailingText = trailingEnabled ? ` | Trailing Stop: ON (Callback: ${trailingCallback}%, Trigger: +${trailingActivation}%)` : '';
   const compoundText = isCompound ? ' | Compound: IYA' : ' | Compound: TIDAK';
 
   await addTopGainerBotLog(
     'START',
-    `🟢 Bot Top Gainer Scalper DIAKTIFKAN! Notional: $${notional} USD | Leverage: ${leverage}x | Hold: ${holdSeconds}s | Min Gain: +${minGain}%${compoundText}`,
+    `🟢 Bot Top Gainer [${modeText}] DIAKTIFKAN! Notional: $${notional} USD | Leverage: ${leverage}x | Min Gain: +${minGain}%${trailingText}${compoundText}`,
     'SUCCESS'
   );
 
@@ -445,9 +621,9 @@ export async function stopTopGainerBot(closePosition: boolean = false) {
 
       await executeQuery(`
         INSERT INTO top_gainer_bot_history 
-          (round_number, symbol, gain_percent, notional_usd, leverage, entry_price, exit_price, quantity, hold_seconds, trade_pnl_usd, commission_usd, net_pnl_usd, net_pnl_percent, status, binance_open_order_id, binance_close_order_id, opened_at, closed_at)
+          (round_number, symbol, gain_percent, notional_usd, leverage, entry_price, exit_price, peak_price, quantity, hold_seconds, trade_pnl_usd, commission_usd, net_pnl_usd, net_pnl_percent, status, exit_reason, strategy_mode, binance_open_order_id, binance_close_order_id, opened_at, closed_at)
         VALUES 
-          (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'MANUAL_CLOSED', ?, ?, NOW(), NOW())
+          (?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CLOSED', 'MANUAL_CLOSED', ?, ?, ?, NOW(), NOW())
       `, [
         c.round_number || 1,
         c.current_symbol,
@@ -455,12 +631,14 @@ export async function stopTopGainerBot(closePosition: boolean = false) {
         c.leverage || 10,
         c.entry_price || closeRes.exitPrice,
         closeRes.exitPrice,
+        c.peak_price || closeRes.exitPrice,
         closeRes.quantity,
         c.hold_seconds || 20,
         closeRes.realizedPnl,
         closeRes.commission,
         netPnl,
         netPercent,
+        c.strategy_mode || 'FLASH_SCALP',
         c.binance_order_id || null,
         closeRes.orderId
       ]);
@@ -492,6 +670,7 @@ export async function stopTopGainerBot(closePosition: boolean = false) {
         current_state = 'IDLE',
         current_symbol = NULL,
         entry_price = NULL,
+        peak_price = NULL,
         quantity = NULL,
         binance_order_id = NULL,
         entry_time = NULL,
@@ -512,6 +691,13 @@ export async function updateTopGainerBotConfig(params: {
   minGainPercent?: number;
   isCompound?: boolean;
   emergencySlPercent?: number;
+  strategyMode?: 'FLASH_SCALP' | 'SESSION_HOURS';
+  sessionPreset?: 'NEW_YORK' | 'LONDON' | 'ASIA' | 'OVERLAP' | 'CUSTOM';
+  sessionStartTime?: string;
+  sessionEndTime?: string;
+  trailingStopEnabled?: boolean;
+  trailingCallbackPercent?: number;
+  trailingActivationPercent?: number;
 }) {
   await ensureTopGainerBotTables();
 
@@ -525,6 +711,13 @@ export async function updateTopGainerBotConfig(params: {
   const minGain = params.minGainPercent !== undefined ? params.minGainPercent : parseFloat(c.min_gain_percent);
   const isCompound = params.isCompound !== undefined ? params.isCompound : Boolean(c.is_compound);
   const emergencySl = params.emergencySlPercent !== undefined ? params.emergencySlPercent : parseFloat(c.emergency_sl_percent);
+  const strategyMode = params.strategyMode !== undefined ? params.strategyMode : (c.strategy_mode || 'FLASH_SCALP');
+  const sessionPreset = params.sessionPreset !== undefined ? params.sessionPreset : (c.session_preset || 'NEW_YORK');
+  const sessionStartTime = params.sessionStartTime !== undefined ? params.sessionStartTime : (c.session_start_time || '20:00');
+  const sessionEndTime = params.sessionEndTime !== undefined ? params.sessionEndTime : (c.session_end_time || '04:00');
+  const trailingEnabled = params.trailingStopEnabled !== undefined ? Boolean(params.trailingStopEnabled) : Boolean(c.trailing_stop_enabled);
+  const trailingCallback = params.trailingCallbackPercent !== undefined ? params.trailingCallbackPercent : parseFloat(c.trailing_callback_percent || 1.0);
+  const trailingActivation = params.trailingActivationPercent !== undefined ? params.trailingActivationPercent : parseFloat(c.trailing_activation_percent || 1.0);
 
   await executeQuery(`
     UPDATE top_gainer_bot_config
@@ -534,13 +727,39 @@ export async function updateTopGainerBotConfig(params: {
         min_gain_percent = ?,
         is_compound = ?,
         emergency_sl_percent = ?,
+        strategy_mode = ?,
+        session_preset = ?,
+        session_start_time = ?,
+        session_end_time = ?,
+        trailing_stop_enabled = ?,
+        trailing_callback_percent = ?,
+        trailing_activation_percent = ?,
         last_check_at = NOW()
     WHERE id = 1
-  `, [notional, leverage, holdSeconds, minGain, isCompound, emergencySl]);
+  `, [
+    notional,
+    leverage,
+    holdSeconds,
+    minGain,
+    isCompound,
+    emergencySl,
+    strategyMode,
+    sessionPreset,
+    sessionStartTime,
+    sessionEndTime,
+    trailingEnabled,
+    trailingCallback,
+    trailingActivation
+  ]);
+
+  const modeDesc = strategyMode === 'SESSION_HOURS'
+    ? `Sesi ${sessionPreset} (${sessionStartTime}-${sessionEndTime} WIB)`
+    : `Flash Scalp ${holdSeconds}s`;
+  const trailingDesc = trailingEnabled ? ` | Trailing Stop: ON (${trailingCallback}%)` : '';
 
   await addTopGainerBotLog(
     'CONFIG',
-    `⚙️ Pengaturan diperbarui: Notional $${notional} | ${leverage}x | Hold: ${holdSeconds}s | Min Gain: +${minGain}% | Compound: ${isCompound ? 'IYA' : 'TIDAK'}`,
+    `⚙️ Pengaturan diperbarui: Mode: ${modeDesc} | Notional: $${notional} USD (${leverage}x)${trailingDesc}`,
     'INFO'
   );
 
@@ -742,7 +961,7 @@ export async function executeTopGainerMarketClose(params: {
 }
 
 /**
- * Main Tick Engine: Evaluates Top Gainer #1 coin, fires Market Buy, counts down 20 seconds, and executes Market Sell.
+ * Main Tick Engine: Evaluates Top Gainer #1 coin, fires Market Buy, counts down 20 seconds or session hours, and executes Market Sell or Trailing Stop.
  */
 export async function tickTopGainerBot() {
   if (isTickingTopGainer) {
@@ -771,9 +990,22 @@ export async function tickTopGainerBot() {
     const leverage = parseInt(config.leverage) || 10;
     const holdSeconds = parseInt(config.hold_seconds) || 20;
     const minGainPercent = parseFloat(config.min_gain_percent) || 3.0;
+    const strategyMode: 'FLASH_SCALP' | 'SESSION_HOURS' = config.strategy_mode || 'FLASH_SCALP';
+    const sessionPreset = config.session_preset || 'NEW_YORK';
+    const sessionStartTime = config.session_start_time || '20:00';
+    const sessionEndTime = config.session_end_time || '04:00';
+    const trailingStopEnabled = Boolean(config.trailing_stop_enabled);
+    const trailingCallbackPercent = parseFloat(config.trailing_callback_percent) || 1.0;
+    const trailingActivationPercent = parseFloat(config.trailing_activation_percent) || 1.0;
+
+    // Current WIB Time info
+    const wibInfo = getWibTimeInfo(new Date());
+    const currentWibTime = wibInfo.timeString;
+    const currentSlotKey = getSessionSlotKey(sessionStartTime, sessionEndTime, new Date());
+    const isInSession = isWithinSessionTime(currentWibTime, sessionStartTime, sessionEndTime);
 
     // ─────────────────────────────────────────────────────────────
-    // CASE A: Bot is currently HOLDING a position (20s Scalp in Progress)
+    // CASE A: Bot is currently HOLDING a position
     // ─────────────────────────────────────────────────────────────
     if (config.current_state === 'HOLDING' && config.current_symbol) {
       const entryTime = parseInt(config.entry_time) || now;
@@ -791,23 +1023,75 @@ export async function tickTopGainerBot() {
         console.warn(`fetchRealPosition warning for ${symbol}:`, posErr);
       }
 
+      const markPrice = livePos?.markPrice || entryPrice;
+
+      // Track Peak Price (Highest mark price recorded during position)
+      const storedPeak = config.peak_price ? parseFloat(config.peak_price) : entryPrice;
+      const peakPrice = Math.max(storedPeak, markPrice);
+      if (markPrice > storedPeak) {
+        await executeQuery(`
+          UPDATE top_gainer_bot_config 
+          SET peak_price = ? 
+          WHERE id = 1
+        `, [peakPrice]);
+      }
+
+      // Calculate Trailing Stop status
+      const peakProfitPercent = entryPrice > 0 ? ((peakPrice - entryPrice) / entryPrice) * 100 : 0;
+      const dropFromPeakPercent = peakPrice > 0 ? ((peakPrice - markPrice) / peakPrice) * 100 : 0;
+      const isTrailingActivated = peakProfitPercent >= trailingActivationPercent;
+      const isTrailingStopTriggered = trailingStopEnabled && isTrailingActivated && (dropFromPeakPercent >= trailingCallbackPercent);
+
       // Check Emergency Stop Loss if configured
       const emergencySl = config.emergency_sl_percent ? parseFloat(config.emergency_sl_percent) : null;
       const isEmergencyHit = emergencySl && livePos && livePos.roePercent <= -emergencySl;
 
-      // TIME TO CLOSE! Either 20 seconds passed OR emergency SL triggered
-      if (elapsedSeconds >= holdSeconds || isEmergencyHit) {
+      // Check Session End Exit
+      const isSessionEnded = strategyMode === 'SESSION_HOURS' && !isInSession;
+
+      // Check Flash Scalp Time Exit
+      const isTimeExit = strategyMode === 'FLASH_SCALP' && elapsedSeconds >= holdSeconds;
+
+      // Determine if exit condition is met
+      let shouldClose = false;
+      let exitReason = 'TIME_EXIT';
+      let closeLogMessage = '';
+      let logType: 'INFO' | 'SUCCESS' | 'WARN' | 'ERROR' = 'INFO';
+
+      if (isEmergencyHit) {
+        shouldClose = true;
+        exitReason = 'STOP_LOSS';
+        closeLogMessage = `🛑 STOP LOSS DARURAT (-${emergencySl}% ROE)`;
+        logType = 'WARN';
+      } else if (isTrailingStopTriggered) {
+        shouldClose = true;
+        exitReason = 'TRAILING_STOP';
+        closeLogMessage = `🎯 TRAILING STOP HIT! Puncak $${peakPrice.toFixed(4)} (+${peakProfitPercent.toFixed(2)}%) pullback ${dropFromPeakPercent.toFixed(2)}% (Target Callback: ${trailingCallbackPercent}%)`;
+        logType = 'SUCCESS';
+      } else if (isSessionEnded) {
+        shouldClose = true;
+        exitReason = 'SESSION_END';
+        closeLogMessage = `🏁 JAM TUTUP SESI TERCAPAI (${sessionEndTime} WIB)`;
+        logType = 'INFO';
+      } else if (isTimeExit) {
+        shouldClose = true;
+        exitReason = 'TIME_EXIT';
+        closeLogMessage = `⏱️ Waktu Scalp ${holdSeconds}s Selesai`;
+        logType = 'INFO';
+      }
+
+      // TIME TO CLOSE!
+      if (shouldClose) {
         await executeQuery(`
           UPDATE top_gainer_bot_config
           SET current_state = 'CLOSING', last_check_at = NOW()
           WHERE id = 1
         `);
 
-        const closeReason = isEmergencyHit ? `🛑 STOP LOSS DARURAT (-${emergencySl}% ROE)` : `⏱️ Waktu Scalp ${holdSeconds}s Selesai`;
         await addTopGainerBotLog(
           'CLOSE_TRIGGER',
-          `${closeReason}! Menutup posisi ${symbol} via Market Sell...`,
-          isEmergencyHit ? 'WARN' : 'INFO'
+          `${closeLogMessage}! Menutup posisi ${symbol} via Market Sell...`,
+          logType
         );
 
         try {
@@ -826,23 +1110,26 @@ export async function tickTopGainerBot() {
           // Record Trade History
           await executeQuery(`
             INSERT INTO top_gainer_bot_history 
-              (round_number, symbol, gain_percent, notional_usd, leverage, entry_price, exit_price, quantity, hold_seconds, trade_pnl_usd, commission_usd, net_pnl_usd, net_pnl_percent, status, binance_open_order_id, binance_close_order_id, opened_at, closed_at)
+              (round_number, symbol, gain_percent, notional_usd, leverage, entry_price, exit_price, peak_price, quantity, hold_seconds, trade_pnl_usd, commission_usd, net_pnl_usd, net_pnl_percent, status, exit_reason, strategy_mode, binance_open_order_id, binance_close_order_id, opened_at, closed_at)
             VALUES 
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CLOSED', ?, ?, FROM_UNIXTIME(?), NOW())
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CLOSED', ?, ?, ?, ?, FROM_UNIXTIME(?), NOW())
           `, [
             roundNum,
             symbol,
-            0, // gain percent at open
+            0,
             notionalUsd,
             leverage,
             entryPrice,
             closeRes.exitPrice,
+            peakPrice,
             closeRes.quantity,
             elapsedSeconds,
             tradeRealizedPnl,
             commission,
             netPnl,
             netPnlPercent,
+            exitReason,
+            strategyMode,
             config.binance_order_id || null,
             closeRes.orderId,
             Math.floor(entryTime / 1000)
@@ -859,7 +1146,7 @@ export async function tickTopGainerBot() {
           const newWinCount = (parseInt(config.win_count) || 0) + (isWin ? 1 : 0);
           const newLossCount = (parseInt(config.loss_count) || 0) + (isWin ? 0 : 1);
 
-          // Reset state to SCANNING and remember last_bought_symbol
+          // Reset state to SCANNING
           await executeQuery(`
             UPDATE top_gainer_bot_config
             SET current_state = 'SCANNING',
@@ -868,6 +1155,7 @@ export async function tickTopGainerBot() {
                 quantity = NULL,
                 binance_order_id = NULL,
                 entry_time = NULL,
+                peak_price = NULL,
                 last_bought_symbol = ?,
                 round_number = ?,
                 notional_usd = ?,
@@ -879,9 +1167,11 @@ export async function tickTopGainerBot() {
           `, [symbol, roundNum, nextNotionalUsd, newTotalProfit, newWinCount, newLossCount]);
 
           const pnlSign = netPnl >= 0 ? '+' : '';
+          const exitLabel = exitReason === 'TRAILING_STOP' ? '🎯 Trailing Stop' : exitReason === 'SESSION_END' ? '🏁 Tutup Sesi' : exitReason === 'STOP_LOSS' ? '🛑 Stop Loss' : '⏱️ Scalp 20s';
+
           await addTopGainerBotLog(
             'CYCLE_COMPLETE',
-            `🎉 Scalp Round #${roundNum} Selesai (${elapsedSeconds}s)! ${symbol} Exit @ $${closeRes.exitPrice} | Price PnL: $${tradeRealizedPnl.toFixed(4)} | Net: ${pnlSign}$${netPnl.toFixed(4)} (${pnlSign}${netPnlPercent.toFixed(2)}%)`,
+            `🎉 [${exitLabel}] Round #${roundNum} Selesai (${elapsedSeconds}s)! ${symbol} Entry: $${entryPrice} ➔ Exit: $${closeRes.exitPrice} (Puncak: $${peakPrice.toFixed(4)}) | Net: ${pnlSign}$${netPnl.toFixed(4)} (${pnlSign}${netPnlPercent.toFixed(2)}%)`,
             netPnl >= 0 ? 'SUCCESS' : 'WARN'
           );
 
@@ -891,6 +1181,9 @@ export async function tickTopGainerBot() {
             symbol,
             entryPrice,
             exitPrice: closeRes.exitPrice,
+            peakPrice,
+            exitReason,
+            strategyMode,
             elapsedSeconds,
             tradePnl: tradeRealizedPnl,
             commission,
@@ -907,17 +1200,34 @@ export async function tickTopGainerBot() {
           return { status: 'CLOSE_FAILED', error: closeError.message };
         }
       } else {
-        // Still holding, waiting for 20s countdown
+        // Still holding position
         return {
           status: 'HOLDING',
           symbol,
           entryPrice,
-          markPrice: livePos ? livePos.markPrice : entryPrice,
+          markPrice,
+          peakPrice,
           unrealizedPnl: livePos ? livePos.unRealizedProfit : 0,
           roePercent: livePos ? livePos.roePercent : 0,
           elapsedSeconds,
           secondsLeft,
-          holdSeconds
+          holdSeconds,
+          strategyMode,
+          sessionInfo: {
+            preset: sessionPreset,
+            startTime: sessionStartTime,
+            endTime: sessionEndTime,
+            currentWibTime,
+            isInSession
+          },
+          trailingInfo: {
+            enabled: trailingStopEnabled,
+            activationPercent: trailingActivationPercent,
+            callbackPercent: trailingCallbackPercent,
+            peakProfitPercent,
+            dropFromPeakPercent,
+            isActivated: isTrailingActivated
+          }
         };
       }
     }
@@ -925,6 +1235,36 @@ export async function tickTopGainerBot() {
     // ─────────────────────────────────────────────────────────────
     // CASE B: Bot is SCANNING for Top Gainer #1 Coin
     // ─────────────────────────────────────────────────────────────
+
+    // If Strategy Mode is SESSION_HOURS:
+    if (strategyMode === 'SESSION_HOURS') {
+      if (!isInSession) {
+        await executeQuery(`
+          UPDATE top_gainer_bot_config 
+          SET current_state = 'SCANNING', last_check_at = NOW() 
+          WHERE id = 1
+        `);
+        return {
+          status: 'WAITING_SESSION',
+          message: `Menunggu Jadwal Sesi Trading ${sessionPreset} (${sessionStartTime} - ${sessionEndTime} WIB). Jam saat ini: ${currentWibTime} WIB.`
+        };
+      }
+
+      // Check if session slot was already opened
+      if (config.session_last_open_slot === currentSlotKey) {
+        await executeQuery(`
+          UPDATE top_gainer_bot_config 
+          SET current_state = 'SCANNING', last_check_at = NOW() 
+          WHERE id = 1
+        `);
+        return {
+          status: 'SESSION_COMPLETED',
+          message: `Sesi ${sessionPreset} (${sessionStartTime} - ${sessionEndTime} WIB) untuk slot hari ini telah selesai diperdagangkan. Menunggu sesi berikutnya.`
+        };
+      }
+    }
+
+    // Fetch Top Gainers from Binance Futures
     const topGainers = await fetchTopGainersFromBinance();
     if (topGainers.length === 0) {
       await executeQuery(`
@@ -954,11 +1294,7 @@ export async function tickTopGainerBot() {
       };
     }
 
-    // Check if a NEW coin has entered Rank #1:
-    // It must be DIFFERENT from the coin we last bought, and different from previous leader
-    const isNewLeader = rank1Coin.symbol !== lastBought;
-
-    // Update last_leader_symbol in database
+    // Leader shift log
     if (rank1Coin.symbol !== prevLeader) {
       await executeQuery(`
         UPDATE top_gainer_bot_config 
@@ -973,11 +1309,25 @@ export async function tickTopGainerBot() {
       );
     }
 
-    if (isNewLeader) {
-      // 🚀 TRIGGER NEW SCALP BUY!
+    // Determine if we should open BUY order:
+    // For FLASH_SCALP: triggers if rank1Coin is different from lastBought coin
+    // For SESSION_HOURS: triggers because we are in session and haven't opened yet for this slot
+    const shouldOpenBuy = strategyMode === 'SESSION_HOURS'
+      ? (config.session_last_open_slot !== currentSlotKey)
+      : (rank1Coin.symbol !== lastBought);
+
+    if (shouldOpenBuy) {
+      const triggerContext = strategyMode === 'SESSION_HOURS'
+        ? `🏛️ [SESI ${sessionPreset} AKTIF] Koin Juara #1: ${rank1Coin.symbol} (+${rank1Coin.priceChangePercent.toFixed(2)}%)`
+        : `🚀 KOIN BARU MASUK URUTAN PERTAMA: ${rank1Coin.symbol} (+${rank1Coin.priceChangePercent.toFixed(2)}%)`;
+
+      const targetDesc = strategyMode === 'SESSION_HOURS'
+        ? `sesi hingga pukul ${sessionEndTime} WIB`
+        : `scalp ${holdSeconds} detik`;
+
       await addTopGainerBotLog(
         'BUY_TRIGGER',
-        `🚀 KOIN BARU MASUK URUTAN PERTAMA! Membuka BUY ${rank1Coin.symbol} (+${rank1Coin.priceChangePercent.toFixed(2)}%) untuk scalp ${holdSeconds} detik...`,
+        `${triggerContext}! Membuka BUY untuk ${targetDesc}...`,
         'SUCCESS'
       );
 
@@ -995,9 +1345,11 @@ export async function tickTopGainerBot() {
           SET current_state = 'HOLDING',
               current_symbol = ?,
               entry_price = ?,
+              peak_price = ?,
               quantity = ?,
               binance_order_id = ?,
               entry_time = ?,
+              session_last_open_slot = ?,
               last_leader_symbol = ?,
               last_bought_symbol = ?,
               last_check_at = NOW()
@@ -1005,16 +1357,22 @@ export async function tickTopGainerBot() {
         `, [
           rank1Coin.symbol,
           buyRes.fillPrice,
+          buyRes.fillPrice, // initial peak is fill price
           buyRes.quantity,
           buyRes.orderId,
           entryTimestamp,
+          strategyMode === 'SESSION_HOURS' ? currentSlotKey : config.session_last_open_slot,
           rank1Coin.symbol,
           rank1Coin.symbol
         ]);
 
+        const trailingInfoLog = trailingStopEnabled
+          ? ` | Trailing Stop: ON (${trailingCallbackPercent}% callback)`
+          : '';
+
         await addTopGainerBotLog(
           'BUY_OPENED',
-          `✅ Posisi BUY Berhasil Dibuka! ${rank1Coin.symbol} @ $${buyRes.fillPrice} | Notional: $${notionalUsd} USD (${leverage}x) | Target Exit: ${holdSeconds}s`,
+          `✅ Posisi BUY Berhasil Dibuka! ${rank1Coin.symbol} @ $${buyRes.fillPrice} | Notional: $${notionalUsd} USD (${leverage}x) | Target Exit: ${targetDesc}${trailingInfoLog}`,
           'SUCCESS'
         );
 
@@ -1025,7 +1383,9 @@ export async function tickTopGainerBot() {
           entryPrice: buyRes.fillPrice,
           quantity: buyRes.quantity,
           orderId: buyRes.orderId,
-          holdSeconds
+          strategyMode,
+          holdSeconds: strategyMode === 'SESSION_HOURS' ? undefined : holdSeconds,
+          sessionEndTime: strategyMode === 'SESSION_HOURS' ? sessionEndTime : undefined
         };
       } catch (buyError: any) {
         console.error("Error executing top gainer buy order:", buyError);
@@ -1037,7 +1397,7 @@ export async function tickTopGainerBot() {
         return { status: 'BUY_FAILED', error: buyError.message };
       }
     } else {
-      // #1 Coin is still the same coin we already traded
+      // In FLASH_SCALP: #1 Coin is still the same coin we already traded
       await executeQuery(`
         UPDATE top_gainer_bot_config
         SET current_state = 'SCANNING', last_check_at = NOW()
