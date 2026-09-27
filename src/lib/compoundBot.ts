@@ -1,4 +1,5 @@
 import { executeQuery } from './db';
+import { fetchFapiWithFallback } from './futures';
 import {
   executeCompoundBuyOrder,
   executeCompoundCloseOrder,
@@ -70,8 +71,9 @@ export interface CompoundBotLog {
   created_at: string;
 }
 
-// In-memory mutex flag to avoid concurrent tick execution
+// In-memory mutex flag with self-healing timestamp to avoid concurrent tick execution
 let isTicking = false;
+let lastTickStart = 0;
 
 /**
  * Ensure database tables exist and support multi-coin
@@ -1061,11 +1063,13 @@ export async function cancelAutoDca(symbol: string) {
  * Bot Engine Tick: Evaluates current prices for ALL ACTIVE COINS and performs Compound Re-investing
  */
 export async function tickCompoundBot() {
-  if (isTicking) {
+  const now = Date.now();
+  if (isTicking && (now - lastTickStart < 8000)) {
     return { status: 'BUSY', message: 'Tick sebelumnya masih dalam proses.' };
   }
 
   isTicking = true;
+  lastTickStart = now;
   try {
     await ensureCompoundBotTables();
 
@@ -1081,18 +1085,29 @@ export async function tickCompoundBot() {
     const tickerMap: Record<string, number> = {};
     const realPositionsMap = await fetchAllRealPositions();
 
-    try {
-      const tickerRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price`, { cache: 'no-store' });
-      const tickerData = await tickerRes.json();
-      if (Array.isArray(tickerData)) {
-        for (const t of tickerData) {
-          if (activeSymbols.includes(t.symbol)) {
-            tickerMap[t.symbol] = parseFloat(t.price);
+    if (activeSymbols.length <= 5) {
+      // Lightweight direct ticker per active symbol
+      await Promise.all(activeSymbols.map(async (sym: string) => {
+        try {
+          const tData = await fetchFapiWithFallback(`/fapi/v1/ticker/price?symbol=${sym}`);
+          if (tData && tData.price) {
+            tickerMap[sym] = parseFloat(tData.price);
+          }
+        } catch {}
+      }));
+    } else {
+      try {
+        const tickerData = await fetchFapiWithFallback('/fapi/v1/ticker/price');
+        if (Array.isArray(tickerData)) {
+          for (const t of tickerData) {
+            if (activeSymbols.includes(t.symbol)) {
+              tickerMap[t.symbol] = parseFloat(t.price);
+            }
           }
         }
+      } catch (err) {
+        console.error("Bulk ticker error:", err);
       }
-    } catch (err) {
-      console.error("Bulk ticker error:", err);
     }
 
     const tickResults = [];
@@ -1132,9 +1147,8 @@ export async function tickCompoundBot() {
       let currentPrice = (rp && rp.markPrice > 0) ? rp.markPrice : (tickerMap[symbol] || 0);
       if (!currentPrice) {
         try {
-          const singleRes = await fetch(`https://fapi.binance.com/fapi/v1/ticker/price?symbol=${symbol}`, { cache: 'no-store' });
-          const singleData = await singleRes.json();
-          currentPrice = parseFloat(singleData.price) || 0;
+          const singleData = await fetchFapiWithFallback(`/fapi/v1/ticker/price?symbol=${symbol}`);
+          currentPrice = parseFloat(singleData?.price) || 0;
         } catch {
           // ignore
         }

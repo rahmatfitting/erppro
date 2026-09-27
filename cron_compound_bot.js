@@ -1,8 +1,9 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const API_BASE = process.env.APP_URL || 'http://localhost:3000';
-const TICK_URL = `${API_BASE}/api/crypto/compound-bot/tick`;
+let API_BASE = process.env.APP_URL || 'http://localhost:3000';
+let TICK_URL = `${API_BASE}/api/crypto/compound-bot/tick`;
+let hasFallenBack = false;
 
 let isTicking = false;
 let lastIdleLog = 0;
@@ -18,7 +19,7 @@ async function runTick() {
   isTicking = true;
 
   try {
-    const res = await axios.post(TICK_URL, {}, { timeout: 10000 });
+    const res = await axios.post(TICK_URL, {}, { timeout: 12000 });
     const data = res.data;
 
     if (data && data.success) {
@@ -59,6 +60,13 @@ async function runTick() {
       }
     }
   } catch (err) {
+    if ((err.response?.status === 404 || err.code === 'ECONNREFUSED') && !hasFallenBack && API_BASE === 'http://localhost:3000') {
+      hasFallenBack = true;
+      API_BASE = 'https://demo.erpproapp.com';
+      TICK_URL = `${API_BASE}/api/crypto/compound-bot/tick`;
+      console.log(`\n[Auto-Fallback] Port 3000 ${err.response?.status === 404 ? 'mengembalikan 404 Not Found' : 'gagal terhubung'}. Mengalihkan target otomatis ke live domain: ${TICK_URL}\n`);
+      return;
+    }
     if (err.code === 'ECONNREFUSED') {
       console.error(`[${new Date().toLocaleTimeString('id-ID')}] ❌ Next.js server belum berjalan di ${API_BASE}. Menunggu koneksi...`);
     } else {

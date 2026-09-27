@@ -197,7 +197,15 @@ export async function fetchRealPosition(symbol: string): Promise<BinanceRealPosi
   return null;
 }
 
+let cachedAllPositions: { data: Record<string, BinanceRealPosition>; timestamp: number } | null = null;
+const ALL_POSITIONS_CACHE_TTL_MS = 1500; // 1.5s cache to prevent rapid duplicate /positionRisk calls
+
 export async function fetchAllRealPositions(): Promise<Record<string, BinanceRealPosition>> {
+  const now = Date.now();
+  if (cachedAllPositions && (now - cachedAllPositions.timestamp < ALL_POSITIONS_CACHE_TTL_MS)) {
+    return cachedAllPositions.data;
+  }
+
   const { apiKey, apiSecret } = getBinanceCredentials();
   const positionsMap: Record<string, BinanceRealPosition> = {};
   if (!apiKey || !apiSecret) return positionsMap;
@@ -234,8 +242,10 @@ export async function fetchAllRealPositions(): Promise<Record<string, BinanceRea
         }
       }
     }
+    cachedAllPositions = { data: positionsMap, timestamp: now };
   } catch (err) {
     console.error('fetchAllRealPositions error:', err);
+    if (cachedAllPositions) return cachedAllPositions.data;
   }
   return positionsMap;
 }
