@@ -98,7 +98,7 @@ export default function FundingFarmingPage() {
   const [orderToast, setOrderToast] = useState<{ show: boolean; success: boolean; message: string } | null>(null);
 
   // Terminal Logs autoscroll
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
   const [autoScrollLogs, setAutoScrollLogs] = useState(true);
 
   // Fetch Bot State
@@ -436,12 +436,13 @@ export default function FundingFarmingPage() {
     };
   }, []);
 
-  // Auto-scroll logs
+  // Auto-scroll logs inside container only (do not scroll webpage)
   useEffect(() => {
-    if (autoScrollLogs && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (autoScrollLogs && logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
   }, [botState?.logs, autoScrollLogs]);
+
 
   // Toast Auto-dismiss
   useEffect(() => {
@@ -1203,7 +1204,7 @@ export default function FundingFarmingPage() {
             </div>
 
             {/* Monospace Log Viewer */}
-            <div className="bg-slate-900/60 rounded-3xl p-5 border border-slate-800/80 font-mono text-xs max-h-96 overflow-y-auto space-y-2">
+            <div ref={logsContainerRef} className="bg-slate-900/60 rounded-3xl p-5 border border-slate-800/80 font-mono text-xs max-h-96 overflow-y-auto space-y-2">
               {(!botState?.logs || botState.logs.length === 0) ? (
                 <div className="text-slate-600 text-center py-12 italic">
                   Belum ada log aktivitas bot. Klik "START BOT" untuk memulai pemantauan.
@@ -1234,8 +1235,8 @@ export default function FundingFarmingPage() {
                   );
                 })
               )}
-              <div ref={logsEndRef} />
             </div>
+
           </div>
 
         </div>

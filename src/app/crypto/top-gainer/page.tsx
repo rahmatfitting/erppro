@@ -130,7 +130,7 @@ export default function TopGainerBotPage() {
 
   // Real-time ticking time
   const [now, setNow] = useState(Date.now());
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch full state from backend
   const fetchBotState = async () => {
@@ -340,12 +340,13 @@ export default function TopGainerBotPage() {
     };
   }, []);
 
-  // Autoscroll logs
+  // Autoscroll logs inside container only (do not scroll the webpage)
   useEffect(() => {
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
   }, [logs]);
+
 
   // Compute countdown & active progress if holding
   const isHolding = config?.current_state === 'HOLDING' && config.current_symbol;
@@ -763,7 +764,7 @@ export default function TopGainerBotPage() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto max-h-80 space-y-1.5 text-[11px] pr-2 scrollbar-thin scrollbar-thumb-slate-800">
+          <div ref={logsContainerRef} className="flex-1 overflow-y-auto max-h-80 space-y-1.5 text-[11px] pr-2 scrollbar-thin scrollbar-thumb-slate-800">
             {logs.length === 0 ? (
               <div className="text-slate-600 italic py-8 text-center">Menunggu aktivitas scalp...</div>
             ) : (
@@ -784,8 +785,8 @@ export default function TopGainerBotPage() {
                 );
               })
             )}
-            <div ref={logsEndRef} />
           </div>
+
         </div>
       </div>
 
