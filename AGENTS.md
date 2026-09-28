@@ -6,6 +6,28 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 
 ## 📅 Riwayat Perubahan & Fitur (Changelog)
 
+### [2026-09-29] - Tombol Penghentian Fitur Jam (Cancel Auto-Stop Timer) per Koin pada Bot Compound Future
+
+#### 1. Deskripsi & Mekanisme Penghentian Fitur Jam
+- **Latar Belakang:** Sebelumnya, jika bot koin telah di-START dengan durasi jam tertentu (misal 8 jam), countdown berjalan dan posisi akan otomatis ditutup saat waktu habis. Trader tidak memiliki opsi untuk membatalkan timer di tengah jalan tanpa harus menghentikan (STOP) seluruh bot koin dan menutup posisi di Binance.
+- **Mekanisme Kerja:**
+  1. **Penghentian Timer Real-Time:** Trader dapat mengklik tombol **Hentikan Jam** langsung pada kartu koin yang sedang berjalan.
+  2. **Pembersihan Deadline Database:** Sistem seketika mengosongkan nilai `auto_stop_at = NULL` dan `auto_stop_hours = NULL` pada tabel `compound_bot_config`.
+  3. **Nonstop Continuity:** Bot **tetap berjalan aktif (RUNNING)** tanpa gangguan, posisi aktif di Binance tetap dipertahankan, dan siklus compound terus berlanjut tanpa batas waktu operasional (mode Nonstop).
+  4. **Kompatibilitas Koin Non-Aktif:** Pada koin berstatus STOPPED yang memiliki preset durasi timer, tombol hapus/hentikan jam juga tersedia untuk langsung mereset timer menjadi mode Nonstop tanpa harus membuka modal pengaturan.
+
+#### 2. Antarmuka UI/UX (`/crypto/compound-bot`)
+- **Badge Live Countdown:**
+  - Ditambahkan tombol aksi kompak **Hentikan Jam** dengan ikon `AlarmClockOff` tepat di samping badge countdown waktu tersisa.
+- **Baris Aksi Kartu Koin (Action Controls):**
+  - Pada koin aktif dengan timer, muncul tombol khusus **Hentikan Jam** (amber-themed) di samping tombol DCA dan STOP.
+- **Konfirmasi Keamanan (Safe Confirmation):**
+  - Dilengkapi dialog konfirmasi ramah guna mencegah klik tidak sengaja.
+- **Endpoint API & Logging:**
+  - Endpoint baru `POST /api/crypto/compound-bot/stop-timer` untuk menangani pembatalan timer secara aman dan instan dengan pencatatan log aktivitas sistem.
+
+---
+
 ### [2026-09-28] - Proteksi Bebas Fee Minus pada Order Reverse Bot Funding Farming
 
 #### 1. Deskripsi & Mekanisme Kerja Open Pasca-Settlement (Reverse Mode)

@@ -838,6 +838,51 @@ export async function stopCompoundBot(params: {
 }
 
 /**
+ * Stop / Cancel Auto-Stop Timer for a specific Coin
+ * (Clears auto_stop_at and auto_stop_hours so that the coin runs nonstop without auto-closing positions)
+ */
+export async function stopCoinTimer(symbol: string) {
+  await ensureCompoundBotTables();
+  const cleanSymbol = symbol.toUpperCase().trim();
+
+  const cfgRows: any = await executeQuery(
+    `SELECT is_active, auto_stop_hours, auto_stop_at FROM compound_bot_config WHERE symbol = ?`,
+    [cleanSymbol]
+  );
+  if (!cfgRows || cfgRows.length === 0) {
+    throw new Error(`Koin ${cleanSymbol} tidak ditemukan dalam daftar.`);
+  }
+
+  const prevHours = cfgRows[0].auto_stop_hours;
+  const isActive = Boolean(cfgRows[0].is_active);
+
+  await executeQuery(
+    `UPDATE compound_bot_config 
+     SET auto_stop_at = NULL, auto_stop_hours = NULL 
+     WHERE symbol = ?`,
+    [cleanSymbol]
+  );
+
+  const statusMsg = isActive
+    ? 'Bot tetap berjalan aktif dalam mode Nonstop tanpa batas waktu operasional.'
+    : 'Konfigurasi durasi jam koin dihapus (Mode: Nonstop).';
+
+  await addBotLog(
+    'SYSTEM',
+    `⏱️ Fitur jam/auto-stop untuk koin ${cleanSymbol} dihentikan. ${statusMsg}`,
+    'INFO'
+  );
+
+  return {
+    success: true,
+    symbol: cleanSymbol,
+    isActive,
+    previousHours: prevHours,
+    message: `Fitur jam untuk ${cleanSymbol} berhasil dihentikan. ${statusMsg}`
+  };
+}
+
+/**
  * Delete a Coin from Config (Only allowed if inactive)
  */
 export async function deleteCoinConfig(symbol: string) {

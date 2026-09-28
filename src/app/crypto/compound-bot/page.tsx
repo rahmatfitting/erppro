@@ -27,7 +27,8 @@ import {
   X,
   Coins,
   Settings2,
-  StopCircle
+  StopCircle,
+  AlarmClockOff
 } from "lucide-react";
 
 interface RealPosition {
@@ -420,7 +421,39 @@ export default function CompoundBotPage() {
     }
   };
 
-  // 7. Delete Coin Config
+  // 7. Stop / Cancel Auto-Stop Hourly Timer for a coin
+  const handleStopTimer = async (symbol: string) => {
+    const coin = coins.find((c) => c.symbol === symbol);
+    const isRunning = coin?.is_active;
+
+    const confirmMsg = isRunning
+      ? `Hentikan fitur hitung mundur jam untuk ${symbol}?\n\nBot akan tetap berjalan aktif dalam mode Nonstop tanpa auto-close posisi.`
+      : `Hapus konfigurasi timer auto-stop untuk ${symbol} dan ubah ke mode Nonstop?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    setActionLoading((prev) => ({ ...prev, [symbol]: true }));
+    try {
+      const res = await fetch("/api/crypto/compound-bot/stop-timer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || `Fitur jam untuk ${symbol} berhasil dihentikan.`);
+        await fetchState();
+      } else {
+        alert(`Gagal menghentikan fitur jam: ${data.error}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [symbol]: false }));
+    }
+  };
+
+  // 8. Delete Coin Config
   const handleDeleteCoin = async (sym: string) => {
     if (!window.confirm(`Hapus koin ${sym} dari daftar pemantauan bot?`)) return;
 
@@ -859,26 +892,49 @@ export default function CompoundBotPage() {
 
                         {/* Status Badge, Auto-Stop Countdown & DCA Indicators */}
                         <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                          {/* Live Auto-Stop Countdown Badge */}
+                          {/* Live Auto-Stop Countdown Badge & Stop Timer Button */}
                           {coin.is_active && coin.auto_stop_at && (
-                            <span
-                              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 border border-amber-500/60 text-amber-300 flex items-center gap-1 shadow-sm"
-                              title={`Auto-Stop: Posisi akan otomatis ditutup setelah durasi ${coin.auto_stop_hours} jam habis`}
-                            >
-                              <Clock className="w-3 h-3 text-amber-400 animate-spin-slow" />
-                              <span className="font-mono">{formatCountdown(coin.auto_stop_at)}</span>
-                              <span className="text-[9px] text-amber-400 font-normal">({coin.auto_stop_hours}j)</span>
-                            </span>
+                            <div className="flex items-center gap-1 bg-amber-950/80 border border-amber-500/60 rounded-full pl-2.5 pr-1 py-0.5 shadow-sm">
+                              <div
+                                className="flex items-center gap-1 text-[10px] font-bold text-amber-300"
+                                title={`Auto-Stop: Posisi akan otomatis ditutup setelah durasi ${coin.auto_stop_hours} jam habis`}
+                              >
+                                <Clock className="w-3 h-3 text-amber-400 animate-spin-slow" />
+                                <span className="font-mono">{formatCountdown(coin.auto_stop_at)}</span>
+                                <span className="text-[9px] text-amber-400 font-normal">({coin.auto_stop_hours}j)</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleStopTimer(coin.symbol)}
+                                disabled={actionLoading[coin.symbol] || isLoading}
+                                className="ml-1 px-1.5 py-0.5 rounded-full bg-rose-950 hover:bg-rose-900 border border-rose-600/60 hover:border-rose-400 text-rose-300 hover:text-white text-[9px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                title={`Hentikan fitur hitung mundur jam untuk ${coin.symbol} (Bot tetap aktif berjalan Nonstop)`}
+                              >
+                                <AlarmClockOff className="w-2.5 h-2.5 text-rose-400" />
+                                <span>Hentikan Jam</span>
+                              </button>
+                            </div>
                           )}
 
                           {!coin.is_active && coin.auto_stop_hours && coin.auto_stop_hours > 0 ? (
-                            <span
-                              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1"
-                              title={`Timer Auto-Stop ${coin.auto_stop_hours} jam telah dikonfigurasi dan akan aktif saat bot di-START`}
-                            >
-                              <Clock className="w-2.5 h-2.5 text-amber-400" />
-                              Timer: {coin.auto_stop_hours}j
-                            </span>
+                            <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-full pl-2 pr-1 py-0.5">
+                              <span
+                                className="text-[10px] font-bold text-slate-300 flex items-center gap-1"
+                                title={`Timer Auto-Stop ${coin.auto_stop_hours} jam telah dikonfigurasi dan akan aktif saat bot di-START`}
+                              >
+                                <Clock className="w-2.5 h-2.5 text-amber-400" />
+                                Timer: {coin.auto_stop_hours}j
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleStopTimer(coin.symbol)}
+                                disabled={actionLoading[coin.symbol] || isLoading}
+                                className="p-0.5 rounded-full text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 transition-colors cursor-pointer"
+                                title={`Hentikan fitur jam / hapus timer ${coin.auto_stop_hours}j untuk ${coin.symbol} (Jadikan Nonstop)`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
                           ) : null}
 
                           {coin.dca_auto_enabled && coin.dca_drop_percent && (
@@ -1034,6 +1090,20 @@ export default function CompoundBotPage() {
                           </span>
                         ) : null}
                       </button>
+
+                      {/* Tombol Hentikan Jam (Saat bot aktif berjalan dengan timer) */}
+                      {coin.is_active && coin.auto_stop_at && (
+                        <button
+                          type="button"
+                          onClick={() => handleStopTimer(coin.symbol)}
+                          disabled={actionLoading[coin.symbol] || isLoading}
+                          className="px-3 py-2.5 rounded-xl bg-amber-950/70 hover:bg-amber-900/90 text-amber-300 hover:text-amber-100 border border-amber-600/50 hover:border-amber-400 font-bold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer"
+                          title={`Hentikan fitur hitung mundur jam untuk ${coin.symbol} (Bot tetap aktif berjalan Nonstop)`}
+                        >
+                          <AlarmClockOff className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Hentikan Jam</span>
+                        </button>
+                      )}
 
                       {/* Start / Stop Button */}
                       {coin.is_active ? (
