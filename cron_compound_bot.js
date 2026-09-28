@@ -55,6 +55,13 @@ async function runTick() {
             console.log(`🛑 Durasi operasional ${coin.hours ? coin.hours + ' jam' : ''} telah tercapai.`);
             console.log(`✅ Bot dihentikan dan posisi aktif telah ditutup otomatis di Binance.`);
             console.log('====================================================\n');
+          } else if (coin.status === 'TARGET_CYCLE_REACHED') {
+            console.log('\n====================================================');
+            console.log(`[${now}] 🏆 [${coin.symbol}] TARGET CYCLE TERCAPAI!`);
+            console.log(`🎯 Cycle #${coin.completedCycle} dari target ${coin.targetCycles} cycle berhasil TP!`);
+            console.log(`💰 Realized Profit: +$${coin.realizedPnl?.toFixed(2)} USDT`);
+            console.log(`🛑 Bot otomatis dihentikan (STOPPED) dan seluruh profit telah diamankan.`);
+            console.log('====================================================\n');
           }
         }
       } else if (d.status === 'IDLE' || d.activeCount === 0) {

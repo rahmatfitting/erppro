@@ -38,6 +38,7 @@ export interface CompoundBotConfig {
   dca_count?: number;
   auto_stop_hours?: number | null;
   auto_stop_at?: string | null;
+  target_cycles?: number | null;
 }
 
 export interface CompoundBotCycle {
@@ -91,6 +92,7 @@ export async function ensureCompoundBotTables() {
       leverage INT DEFAULT 20,
       compound_percent DECIMAL(8, 4) DEFAULT 1.0000,
       stop_loss_percent DECIMAL(8, 4) DEFAULT NULL,
+      target_cycles INT DEFAULT NULL,
       current_cycle INT DEFAULT 0,
       total_profit DECIMAL(12, 4) DEFAULT 0.0000,
       entry_price DECIMAL(16, 8) DEFAULT NULL,
@@ -186,6 +188,9 @@ export async function ensureCompoundBotTables() {
   } catch {}
   try {
     await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN auto_stop_at DATETIME DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN target_cycles INT DEFAULT NULL`);
   } catch {}
 
   // Ensure default BTCUSDT coin exists if table completely empty
@@ -304,7 +309,8 @@ export async function getBotState() {
     dca_executed: Boolean(r.dca_executed),
     dca_count: parseInt(r.dca_count) || 0,
     auto_stop_hours: r.auto_stop_hours ? parseFloat(r.auto_stop_hours) : null,
-    auto_stop_at: r.auto_stop_at ? (r.auto_stop_at instanceof Date ? r.auto_stop_at.toISOString() : new Date(r.auto_stop_at).toISOString()) : null
+    auto_stop_at: r.auto_stop_at ? (r.auto_stop_at instanceof Date ? r.auto_stop_at.toISOString() : new Date(r.auto_stop_at).toISOString()) : null,
+    target_cycles: r.target_cycles ? parseInt(r.target_cycles) : null
   }));
 
   // 2. Fetch all active open cycles
@@ -511,10 +517,11 @@ export async function saveCoinConfig(params: {
   compoundPercent: number;
   stopLossPercent?: number | null;
   autoStopHours?: number | null;
+  targetCycles?: number | null;
 }) {
   await ensureCompoundBotTables();
 
-  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours } = params;
+  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles } = params;
   const cleanSymbol = symbol.toUpperCase().trim();
 
   // Validate
@@ -524,19 +531,21 @@ export async function saveCoinConfig(params: {
   }
 
   const stopHoursVal = autoStopHours && autoStopHours > 0 ? autoStopHours : null;
+  const targetCyclesVal = targetCycles && targetCycles > 0 ? Math.floor(targetCycles) : null;
 
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, auto_stop_hours)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, auto_stop_hours, target_cycles)
     VALUES 
-      (?, false, ?, ?, ?, ?, ?, ?)
+      (?, false, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       notional_usd = VALUES(notional_usd),
       current_notional = IF(is_active = true, current_notional, VALUES(notional_usd)),
       leverage = VALUES(leverage),
       compound_percent = VALUES(compound_percent),
       stop_loss_percent = VALUES(stop_loss_percent),
-      auto_stop_hours = VALUES(auto_stop_hours)
+      auto_stop_hours = VALUES(auto_stop_hours),
+      target_cycles = VALUES(target_cycles)
   `, [
     cleanSymbol,
     notionalUsd,
@@ -544,11 +553,13 @@ export async function saveCoinConfig(params: {
     leverage,
     compoundPercent,
     stopLossPercent || null,
-    stopHoursVal
+    stopHoursVal,
+    targetCyclesVal
   ]);
 
-  const timerLogText = stopHoursVal ? `, Auto-Stop: ${stopHoursVal} Jam` : ', Mode: Nonstop';
-  await addBotLog('SYSTEM', `⚙️ Konfigurasi koin ${cleanSymbol} disimpan (Notional: $${notionalUsd}, Leverage: ${leverage}x, Target: +${compoundPercent}%${timerLogText}).`, 'INFO');
+  const timerLogText = stopHoursVal ? `, Auto-Stop: ${stopHoursVal} Jam` : ', Mode: Nonstop Jam';
+  const cycleLogText = targetCyclesVal ? `, Target: ${targetCyclesVal} Cycle (Auto-Stop saat TP)` : '';
+  await addBotLog('SYSTEM', `⚙️ Konfigurasi koin ${cleanSymbol} disimpan (Notional: $${notionalUsd}, Leverage: ${leverage}x, Target: +${compoundPercent}%${timerLogText}${cycleLogText}).`, 'INFO');
 
   return { success: true, symbol: cleanSymbol };
 }
@@ -563,10 +574,11 @@ export async function startCompoundBot(params: {
   compoundPercent: number;
   stopLossPercent?: number | null;
   autoStopHours?: number | null;
+  targetCycles?: number | null;
 }) {
   await ensureCompoundBotTables();
 
-  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours } = params;
+  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles } = params;
   const cleanSymbol = symbol.toUpperCase().trim();
 
   // 1. Pair Validation
@@ -587,7 +599,7 @@ export async function startCompoundBot(params: {
 
   // 2. Check if this coin is currently running active
   const configRows: any = await executeQuery(`
-    SELECT is_active, auto_stop_hours FROM compound_bot_config WHERE symbol = ?
+    SELECT is_active, auto_stop_hours, target_cycles FROM compound_bot_config WHERE symbol = ?
   `, [cleanSymbol]);
 
   if (configRows && configRows.length > 0 && configRows[0].is_active) {
@@ -598,6 +610,12 @@ export async function startCompoundBot(params: {
   let effectiveAutoStopHours = autoStopHours;
   if (effectiveAutoStopHours === undefined && configRows && configRows.length > 0 && configRows[0].auto_stop_hours != null) {
     effectiveAutoStopHours = parseFloat(configRows[0].auto_stop_hours);
+  }
+
+  // Determine effective target cycles
+  let effectiveTargetCycles = targetCycles;
+  if (effectiveTargetCycles === undefined && configRows && configRows.length > 0 && configRows[0].target_cycles != null) {
+    effectiveTargetCycles = parseInt(configRows[0].target_cycles);
   }
 
   let autoStopAtSql: string | null = null;
@@ -620,8 +638,11 @@ export async function startCompoundBot(params: {
   // 3. Execute Initial BUY Order on Binance
   const timerLogText = effectiveAutoStopHours && effectiveAutoStopHours > 0
     ? ` ⏱️ Auto-Stop: ${effectiveAutoStopHours} Jam (Otomatis stop & close pukul ${autoStopAtDisplay})`
-    : ` (Mode Nonstop)`;
-  await addBotLog('START', `🚀 [${cleanSymbol}] Memulai Bot Compound Future (Notional: $${notionalUsd} USD, Leverage: ${leverage}x, Target: +${compoundPercent}%)${timerLogText}...`, 'INFO');
+    : ` (Mode Nonstop Jam)`;
+  const cycleLogText = effectiveTargetCycles && effectiveTargetCycles > 0
+    ? ` 🎯 Target: Max ${effectiveTargetCycles} Cycle (Auto-Stop saat TP)`
+    : '';
+  await addBotLog('START', `🚀 [${cleanSymbol}] Memulai Bot Compound Future (Notional: $${notionalUsd} USD, Leverage: ${leverage}x, Target: +${compoundPercent}%)${timerLogText}${cycleLogText}...`, 'INFO');
 
   const buyResult = await executeCompoundBuyOrder({
     symbol: cleanSymbol,
@@ -655,9 +676,9 @@ export async function startCompoundBot(params: {
   // 5. Update or Insert Bot Config for this coin
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price, auto_stop_hours, auto_stop_at)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price, auto_stop_hours, auto_stop_at, target_cycles)
     VALUES 
-      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL, ?, ?)
+      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       is_active = true,
       notional_usd = VALUES(notional_usd),
@@ -678,7 +699,8 @@ export async function startCompoundBot(params: {
       dca_notional_usd = NULL,
       dca_trigger_price = NULL,
       auto_stop_hours = VALUES(auto_stop_hours),
-      auto_stop_at = VALUES(auto_stop_at)
+      auto_stop_at = VALUES(auto_stop_at),
+      target_cycles = VALUES(target_cycles)
   `, [
     cleanSymbol,
     notionalUsd,
@@ -691,7 +713,8 @@ export async function startCompoundBot(params: {
     slPrice,
     executedQty,
     effectiveAutoStopHours || null,
-    autoStopAtSql
+    autoStopAtSql,
+    effectiveTargetCycles && effectiveTargetCycles > 0 ? Math.floor(effectiveTargetCycles) : null
   ]);
 
   const marginEst = (notionalUsd / leverage).toFixed(2);
@@ -1371,6 +1394,43 @@ export async function tickCompoundBot() {
 
           const pnlSourceTag = closeRes.isRealPnl ? ' (Real Binance)' : '';
           await addBotLog('CLOSE', `💰 [${symbol} #${cycleNum}] Sukses! Posisi ditutup @ $${exitPrice.toFixed(4)}. Profit${pnlSourceTag}: +$${realizedPnl.toFixed(2)} USDT (+${realizedPnlPct.toFixed(2)}%).`, 'SUCCESS');
+
+          // 2.5 Check TARGET CYCLE AUTO-STOP (e.g. Target Cycle 5 -> Bot stops automatically when Cycle 5 hits TP)
+          const targetCycles = coin.target_cycles ? parseInt(coin.target_cycles) : null;
+          if (targetCycles && targetCycles > 0 && cycleNum >= targetCycles) {
+            await executeQuery(`
+              UPDATE compound_bot_config 
+              SET is_active = false,
+                  entry_price = NULL,
+                  target_price = NULL,
+                  sl_price = NULL,
+                  quantity = NULL,
+                  total_profit = total_profit + ?,
+                  dca_auto_enabled = false,
+                  dca_executed = false,
+                  dca_count = 0,
+                  dca_drop_percent = NULL,
+                  dca_notional_usd = NULL,
+                  dca_trigger_price = NULL,
+                  auto_stop_at = NULL
+              WHERE symbol = ?
+            `, [realizedPnl, symbol]);
+
+            await addBotLog(
+              'TARGET',
+              `🏆 [${symbol}] TARGET CYCLE TERCAPAI! Cycle #${cycleNum} dari target ${targetCycles} cycle berhasil diselesaikan dengan Take Profit (+${realizedPnlPct.toFixed(2)}%)! Total Realized PnL: +$${realizedPnl.toFixed(2)} USDT. Bot otomatis STOP.`,
+              'SUCCESS'
+            );
+
+            tickResults.push({
+              symbol,
+              status: 'TARGET_CYCLE_REACHED',
+              completedCycle: cycleNum,
+              targetCycles,
+              realizedPnl
+            });
+            continue;
+          }
 
           // 3. Compute NEXT COMPOUNDED NOTIONAL
           const nextNotionalRaw = currentNotional * (1 + compoundPercent / 100);

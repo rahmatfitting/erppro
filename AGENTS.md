@@ -6,6 +6,34 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 
 ## 📅 Riwayat Perubahan & Fitur (Changelog)
 
+### [2026-09-29] - Fitur Target Cycle (Auto-Stop saat Take Profit) per Koin pada Bot Compound Future
+
+#### 1. Deskripsi & Mekanisme Kerja Target Cycle
+- **Latar Belakang:** Pada strategi Multi-Coin Compound Future, modal reinvesting terus berlanjut tanpa batas (Cycle #1 -> Cycle #2 -> Cycle #3, dst.) kecuali dihentikan manual atau durasi jam habis. Trader membutuhkan fleksibilitas untuk menentukan target siklus tertentu (misal: hanya ingin menjalankan compounding sampai Cycle 5 saja), di mana bot langsung berhenti mengunci seluruh profit begitu Cycle 5 mencapai Take Profit (TP).
+- **Mekanisme Eksekusi:**
+  1. **Konfigurasi Target Cycle:** Trader dapat mengatur target siklus per koin (`target_cycles`), dengan opsi preset `Bebas (Nonstop)`, `3 Cycle`, `5 Cycle ★`, `8 Cycle`, `10 Cycle`, atau angka kustom bebas.
+  2. **Pemantauan Siklus Real-Time:** Engine bot (`tickCompoundBot`) memantau nomor siklus aktif (`cycleNum`).
+  3. **Auto-Stop Pasca Take Profit:** Saat harga koin menyentuh harga target exit (`currentPrice >= targetPrice`), posisi siklus tersebut ditutup dengan sukses di bursa Binance via Market Sell (`reduceOnly: true`) dan profit dikunci (`status: 'TARGET_HIT'`).
+  4. **Pencegahan Re-Open Cycle Berikutnya:** Jika `cycleNum >= target_cycles`, sistem otomatis:
+     - Menghentikan bot koin (`is_active = false`).
+     - Mengosongkan data posisi aktif (`entry_price`, `target_price`, `quantity` = NULL).
+     - Menambahkan realized profit ke akumulasi `total_profit`.
+     - Tidak membuka order BUY baru untuk cycle berikutnya.
+     - Mencatat log perayaan: `🏆 [SYMBOL] TARGET CYCLE TERCAPAI! Cycle #X dari target X cycle berhasil diselesaikan dengan Take Profit! Total Realized PnL: +$Y USDT. Bot otomatis STOP.`
+     - Menghasilkan status `TARGET_CYCLE_REACHED`.
+
+#### 2. Antarmuka UI/UX (`/crypto/compound-bot`)
+- **Modal Tambah & Pengaturan Koin (`showAddModal`):**
+  - Bagian baru **🎯 Target Cycle Bot (Auto-Stop saat TP)** lengkap dengan preset chips `Bebas`, `3 Cycle`, `5 Cycle ★`, `8 Cycle`, `10 Cycle`, dan input custom cycle.
+  - Tombol edit `Settings2` kini dapat diakses baik saat koin STOPPED maupun saat koin sedang RUNNING untuk mengubah target cycle secara langsung.
+- **Kartu Koin Live (Active & Stopped):**
+  - **Badge Target Cycle:** Menampilkan progres target seperti `🎯 Target: C#2/5` pada koin aktif atau `🎯 Target: 5 Cycle` pada koin idle.
+  - **Setup Info Card:** Menampilkan baris `Target Siklus: 5 Cycle (Auto-Stop saat TP)`.
+- **Daemon Background 24/7 (`cron_compound_bot.js`):**
+  - Banner konsol khusus: `🏆 [SYMBOL] TARGET CYCLE TERCAPAI!` saat target cycle berhasil terpenuhi dengan rincian total realized profit.
+
+---
+
 ### [2026-09-29] - Tombol Penghentian Fitur Jam (Cancel Auto-Stop Timer) per Koin pada Bot Compound Future
 
 #### 1. Deskripsi & Mekanisme Penghentian Fitur Jam
