@@ -16,7 +16,18 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
   3. **Hasil:** Posisi trader 100% **BEBAS DARI POTONGAN FUNDING FEE MINUS**, karena snapshot bursa telah selesai dan trader langsung menikmati gelombang pantulan harga atau scalp murni tanpa terbebani pajak funding fee.
   4. **Kalkulasi Zero-Fee Bersih:** Pada posisi Reverse, estimasi fee diatur ke `$0.00` sehingga indikator laba `Total Profit (PnL + Fee)` murni mencerminkan realized/unrealized price PnL yang sebenarnya.
 
-#### 2. Antarmuka UI/UX & Fitur Scheduled Reverse (`/crypto/funding-farming`)
+#### 2. Kustomisasi Persentase Stop Loss (Base SL %) & Take Profit (TP %)
+- **Latar Belakang:** Sebelumnya persentase Base Stop Loss terkunci di 1.5% atau hanya muncul di mode Total Profit, sehingga trader tidak dapat menyetel batas risiko dan reward target saat memilih mode RR 1:1, RR 1:2, atau RR 1:3.
+- **Pembaruan:**
+  1. **Modal Pengaturan Bot Otonom (`showConfigModal`):**
+     - Saat memilih strategi **RR 1:1**, **RR 1:2**, atau **RR 1:3**, kini langsung tampil kartu khusus **🎯 Parameter Risk:Reward (RR)**.
+     - Input persentase **Base Stop Loss (-%)** bebas (misal `1.0%`, `1.5%`, `2.0%`, `2.5%`, `3.0%`, atau input manual).
+     - Live preview target **Take Profit (+%)** yang otomatis dihitung ($\text{Base SL} \times 1$, $\times 2$, atau $\times 3$) serta kalkulasi nominal risiko vs laba dalam mata uang USD berdasarkan ukuran Notional.
+  2. **Modal 1-Click Quick Order (`quickOrderModal`):**
+     - Dilengkapi input interaktif **Batas Stop Loss Dasar (Base SL %)** lengkap dengan chips preset cepat (`0.5%`, `1.0%`, `1.5% ★`, `2.0%`, `2.5%`, `3.0%`).
+     - Tombol RR dan kartu preview live harga SL/TP Binance langsung terkalibrasi secara real-time saat trader mengubah nilai persentase SL.
+
+#### 3. Antarmuka UI/UX & Fitur Scheduled Reverse (`/crypto/funding-farming`)
 - **1-Click Quick Order Modal (Manual Reverse):**
   - Opsi Timing Reverse: `🛡️ Tunggu Fee Selesai (+1s) [Rekomendasi Bebas Fee Minus]` vs `⚡ Eksekusi Sekarang`.
   - Tombol aksi cerdas: `Kunci & Buka Pasca-Fee (00:25)` dengan live countdown.

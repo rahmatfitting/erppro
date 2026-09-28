@@ -2102,35 +2102,80 @@ export default function FundingFarmingPage() {
               </div>
             )}
 
-            {/* Pilihan Risk:Reward (RR 1:1, 1:2, 1:3) */}
-            <div className="space-y-2">
+            {/* Pilihan Risk:Reward (RR 1:1, 1:2, 1:3) & SL/TP Settings */}
+            <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-black uppercase text-slate-400">
                   Pilihan Target Risk:Reward (RR)
                 </label>
-                <span className="text-[10px] font-mono text-slate-400 font-bold">
-                  Base SL: {quickOrderModal.baseSlPercent}%
+                <span className="text-[10px] font-mono text-indigo-400 font-bold">
+                  Target TP: +{(quickOrderModal.baseSlPercent * (quickOrderModal.rrRatio === '1:1' ? 1 : quickOrderModal.rrRatio === '1:2' ? 2 : 3)).toFixed(2)}%
                 </span>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
-                {(['1:1', '1:2', '1:3'] as const).map(rr => (
-                  <button
-                    key={rr}
-                    type="button"
-                    onClick={() => setQuickOrderModal(prev => ({ ...prev, rrRatio: rr }))}
-                    className={`py-3 rounded-2xl font-mono text-xs font-black uppercase transition-all flex flex-col items-center justify-center border ${
-                      quickOrderModal.rrRatio === rr
-                        ? (modalCalculations.effectiveSide === 'BUY' ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/30' : 'bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30')
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-sm font-black">RR {rr}</span>
-                    <span className="text-[9px] font-normal opacity-80">
-                      {rr === '1:1' ? 'TP: +1.5%' : rr === '1:2' ? 'TP: +3.0%' : 'TP: +4.5%'}
-                    </span>
-                  </button>
-                ))}
+                {(['1:1', '1:2', '1:3'] as const).map(rr => {
+                  const mult = rr === '1:1' ? 1 : rr === '1:2' ? 2 : 3;
+                  const tpPct = (quickOrderModal.baseSlPercent * mult).toFixed(1);
+                  return (
+                    <button
+                      key={rr}
+                      type="button"
+                      onClick={() => setQuickOrderModal(prev => ({ ...prev, rrRatio: rr }))}
+                      className={`py-3 rounded-2xl font-mono text-xs font-black uppercase transition-all flex flex-col items-center justify-center border ${
+                        quickOrderModal.rrRatio === rr
+                          ? (modalCalculations.effectiveSide === 'BUY' ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/30' : 'bg-rose-600 text-white border-rose-500 shadow-lg shadow-rose-600/30')
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span className="text-sm font-black">RR {rr}</span>
+                      <span className="text-[9px] font-normal opacity-80">
+                        TP: +{tpPct}% (SL: -{quickOrderModal.baseSlPercent}%)
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Input Ubah Persentase Base Stop Loss (SL %) & TP */}
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[11px] font-black uppercase text-slate-300">
+                    Batas Stop Loss Dasar (Base SL %)
+                  </span>
+                  <span className="font-mono text-rose-400 font-bold text-xs">
+                    -{quickOrderModal.baseSlPercent}% (Maks: -${modalCalculations.maxLossUsd.toFixed(2)})
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.2"
+                    max="20"
+                    value={quickOrderModal.baseSlPercent}
+                    onChange={e => setQuickOrderModal(prev => ({ ...prev, baseSlPercent: Math.max(0.2, parseFloat(e.target.value) || 1.5) }))}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-white font-mono font-bold text-xs focus:ring-2 focus:ring-rose-500 outline-none"
+                  />
+                  <span className="text-slate-400 text-xs font-bold font-mono">%</span>
+                </div>
+                {/* Preset Chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  {[0.5, 1.0, 1.5, 2.0, 2.5, 3.0].map(val => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setQuickOrderModal(prev => ({ ...prev, baseSlPercent: val }))}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                        quickOrderModal.baseSlPercent === val
+                          ? 'bg-rose-600 text-white shadow-sm'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      -{val}%{val === 1.5 ? ' ★' : ''}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -2353,6 +2398,87 @@ export default function FundingFarmingPage() {
                     : `🎯 Mode Target ${botRrRatio}: Bot TIDAK menutup di 10 detik. Posisi di-HOLD di Binance sampai Take Profit atau Stop Loss tersentuh.`}
                 </p>
               </div>
+
+              {/* Dedicated Settings for RR Mode (1:1, 1:2, 1:3) */}
+              {(botRrRatio === '1:1' || botRrRatio === '1:2' || botRrRatio === '1:3') && (
+                <div className="p-5 rounded-3xl bg-indigo-950/30 border border-indigo-500/40 space-y-4 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-8 w-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                        <Target className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-black uppercase text-white block">
+                          Parameter Risk:Reward ({botRrRatio})
+                        </label>
+                        <span className="text-[10px] text-slate-400 block">
+                          Tentukan persentase Stop Loss dan Take Profit yang dipasang di Binance
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">
+                      Target TP: +{(botBaseSlPercent * (botRrRatio === '1:1' ? 1 : botRrRatio === '1:2' ? 2 : 3)).toFixed(2)}%
+                    </span>
+                  </div>
+
+                  {/* Input Base Stop Loss */}
+                  <div>
+                    <label className="text-[11px] font-black uppercase text-slate-300 block mb-1.5 flex items-center justify-between">
+                      <span>Batas Base Stop Loss (-%)</span>
+                      <span className="text-[10px] text-rose-400 font-mono font-bold">
+                        -{botBaseSlPercent}% (Maks: -${((notionalUsd * botBaseSlPercent) / 100).toFixed(2)} USD)
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.2"
+                        max="20"
+                        value={botBaseSlPercent}
+                        onChange={e => setBotBaseSlPercent(Math.max(0.2, parseFloat(e.target.value) || 1.5))}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-mono font-bold text-sm focus:ring-2 focus:ring-rose-500 outline-none"
+                      />
+                      <span className="text-slate-400 text-xs font-bold font-mono">%</span>
+                    </div>
+                    {/* Preset Chips */}
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {[0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 5.0].map(sl => (
+                        <button
+                          key={sl}
+                          type="button"
+                          onClick={() => setBotBaseSlPercent(sl)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                            botBaseSlPercent === sl
+                              ? 'bg-rose-600 text-white shadow-sm'
+                              : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                          }`}
+                        >
+                          -{sl}%{sl === 1.5 ? ' ★' : ''}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Take Profit Preview */}
+                  <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between text-xs">
+                    <div>
+                      <div className="text-[10px] font-black uppercase text-slate-400">Target Take Profit Otomatis ({botRrRatio})</div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        Dihitung dari Base SL ({botBaseSlPercent}%) × {botRrRatio === '1:1' ? '1' : botRrRatio === '1:2' ? '2' : '3'}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-mono font-black text-emerald-400">
+                        +{(botBaseSlPercent * (botRrRatio === '1:1' ? 1 : botRrRatio === '1:2' ? 2 : 3)).toFixed(2)}%
+                      </div>
+                      <div className="text-[10px] font-mono text-emerald-500 font-bold">
+                        +${((notionalUsd * (botBaseSlPercent * (botRrRatio === '1:1' ? 1 : botRrRatio === '1:2' ? 2 : 3))) / 100).toFixed(2)} USD
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Fitur Pilihan Auto-Close Total Profit (PnL + Fee) */}
               <div className={`p-5 rounded-3xl border transition-all ${
