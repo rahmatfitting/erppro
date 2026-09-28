@@ -80,6 +80,15 @@ async function runTick() {
         }
         console.log('🔄 Loop berlanjut, memindai target koin berikutnya...');
         console.log('====================================================\n');
+      } else if (tickResult?.status === 'WAITING_PAYOUT') {
+        const timeNow = Date.now();
+        if (timeNow - lastWaitingLog > 4000) {
+          const rateStr = ((tickResult?.fundingRate || 0) * 100).toFixed(4);
+          console.log(
+            `[${now}] 🛡️ [REVERSE ARMED: ${tickResult.symbol}] Fee Rate: ${rateStr}% | Menunggu Fee Dibayar: ${tickResult.secondsUntilPayout}s lagi | Open otomatis setelah settlement (Bebas Fee Minus!)`
+          );
+          lastWaitingLog = timeNow;
+        }
       } else if (tickResult?.status === 'WAITING_ENTRY') {
         const cand = tickResult.targetCandidate;
         const timeNow = Date.now();

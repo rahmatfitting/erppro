@@ -6,6 +6,28 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 
 ## 📅 Riwayat Perubahan & Fitur (Changelog)
 
+### [2026-09-28] - Proteksi Bebas Fee Minus pada Order Reverse Bot Funding Farming
+
+#### 1. Deskripsi & Mekanisme Kerja Open Pasca-Settlement (Reverse Mode)
+- **Latar Belakang:** Pada strategi Funding Rate Arbitrage standar, jika rate positif (+1.5%), bot membuka posisi SHORT sesaat sebelum settlement agar menerima pembayaran funding fee dari bursa. Namun jika trader memilih mode **REVERSE** (kebalikan) untuk scalping momentum atau pantulan harga, posisi yang dibuka adalah BUY (LONG). Jika posisi BUY dibuka *sebelum* settlement, bursa Binance akan memotong saldo trader sebesar 1.5% tepat di detik snapshot settlement (kena fee minus).
+- **Mekanisme Eksekusi Open Pasca-Fee:**
+  1. **Pre-Settlement Arming (`WAITING_PAYOUT`):** Pada jendela hitung mundur sebelum settlement (contoh: 30 detik sebelum payout), bot mengunci target koin (`current_symbol`, `target_funding_rate`, `target_next_funding_time`) dan memasuki status siaga `WAITING_PAYOUT`. Bot **secara ketat menahan pembukaan posisi** dan tidak mengeksekusi order lebih awal.
+  2. **Eksekusi Otomatis Tepat Pasca-Settlement:** Begitu waktu settlement fee bursa telah resmi terlewati (`now >= targetFundingTime`), bot seketika mengirimkan order MARKET BUY/SELL (Reverse) ke Binance Futures di detik +0 s/d +1.
+  3. **Hasil:** Posisi trader 100% **BEBAS DARI POTONGAN FUNDING FEE MINUS**, karena snapshot bursa telah selesai dan trader langsung menikmati gelombang pantulan harga atau scalp murni tanpa terbebani pajak funding fee.
+  4. **Kalkulasi Zero-Fee Bersih:** Pada posisi Reverse, estimasi fee diatur ke `$0.00` sehingga indikator laba `Total Profit (PnL + Fee)` murni mencerminkan realized/unrealized price PnL yang sebenarnya.
+
+#### 2. Antarmuka UI/UX & Fitur Scheduled Reverse (`/crypto/funding-farming`)
+- **1-Click Quick Order Modal (Manual Reverse):**
+  - Opsi Timing Reverse: `🛡️ Tunggu Fee Selesai (+1s) [Rekomendasi Bebas Fee Minus]` vs `⚡ Eksekusi Sekarang`.
+  - Tombol aksi cerdas: `Kunci & Buka Pasca-Fee (00:25)` dengan live countdown.
+  - Watchdog Client-Side: Saat modal dikonfirmasi, sistem menyalakan timer terjadwal dan menampilkan banner `🛡️ Order REVERSE Terjadwal: [SYMBOL] | Menunggu Fee Selesai...` yang otomatis mengirimkan order ke Binance tepat di detik +0.5s setelah payout.
+- **Kartu Status Live Bot (Active Target):**
+  - Kartu khusus `STATE 1B: Mode Reverse - Menunggu Fee Payout Selesai` dengan badge amber `Target Terkunci (Bebas Fee Minus)` dan live countdown detik-demi-detik menuju settlement.
+- **Daemon Background 24/7 (`cron_funding_bot.js`):**
+  - Logging status teratur `🛡️ [REVERSE ARMED: SYMBOL] Menunggu Fee Dibayar: Xs lagi | Open otomatis setelah settlement (Bebas Fee Minus!)`.
+
+---
+
 ### [2026-09-28] - Fitur Auto-Stop Timer Operasional (Jam) pada Bot Compound Future
 
 #### 1. Deskripsi & Mekanisme Kerja Auto-Stop Timer

@@ -84,6 +84,8 @@ export default function FundingFarmingPage() {
     notionalUsd: number;
     leverage: number;
     baseSlPercent: number;
+    nextFundingTime?: number;
+    openAfterPayout?: boolean;
   }>({
     isOpen: false,
     symbol: '',
@@ -94,11 +96,25 @@ export default function FundingFarmingPage() {
     rrRatio: '1:2',
     notionalUsd: 20,
     leverage: 10,
-    baseSlPercent: 1.5
+    baseSlPercent: 1.5,
+    nextFundingTime: 0,
+    openAfterPayout: true
   });
 
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [orderToast, setOrderToast] = useState<{ show: boolean; success: boolean; message: string } | null>(null);
+
+  // Scheduled Reverse Order waiting for fee payout
+  const [scheduledOrder, setScheduledOrder] = useState<{
+    symbol: string;
+    side: 'BUY' | 'SELL';
+    notionalUsd: number;
+    leverage: number;
+    rrRatio: '1:1' | '1:2' | '1:3';
+    baseSlPercent: number;
+    isReverse: boolean;
+    targetFundingTime: number;
+  } | null>(null);
 
   // Terminal Logs autoscroll
   const logsContainerRef = useRef<HTMLDivElement>(null);
@@ -315,28 +331,50 @@ export default function FundingFarmingPage() {
       rrRatio: rrDefault,
       notionalUsd: 20,
       leverage: 10,
-      baseSlPercent: 1.5
+      baseSlPercent: 1.5,
+      nextFundingTime: coin.nextFundingTime || 0,
+      openAfterPayout: isRev
     });
   };
 
   // Execute 1-Click Order directly to Binance Futures
   const handleExecuteOrder = async () => {
+    // Determine effective side:
+    let effectiveSide: 'BUY' | 'SELL';
+    if (quickOrderModal.baseRecommendation === 'LONG') {
+      effectiveSide = quickOrderModal.isReverse ? 'SELL' : 'BUY';
+    } else {
+      effectiveSide = quickOrderModal.isReverse ? 'BUY' : 'SELL';
+    }
+
+    // If Reverse mode and user wants to wait for settlement fee payout
+    if (
+      quickOrderModal.isReverse && 
+      quickOrderModal.openAfterPayout && 
+      quickOrderModal.nextFundingTime && 
+      quickOrderModal.nextFundingTime > Date.now()
+    ) {
+      setScheduledOrder({
+        symbol: quickOrderModal.symbol,
+        side: effectiveSide,
+        notionalUsd: quickOrderModal.notionalUsd,
+        leverage: quickOrderModal.leverage,
+        rrRatio: quickOrderModal.rrRatio,
+        baseSlPercent: quickOrderModal.baseSlPercent,
+        isReverse: true,
+        targetFundingTime: quickOrderModal.nextFundingTime
+      });
+      setQuickOrderModal(prev => ({ ...prev, isOpen: false }));
+      setOrderToast({
+        show: true,
+        success: true,
+        message: `⏳ Order REVERSE ${quickOrderModal.symbol} terkunci! Akan otomatis dieksekusi tepat saat fee selesai dibayarkan bursa agar posisi BEBAS DARI POTONGAN FEE MINUS.`
+      });
+      return;
+    }
+
     setIsSubmittingOrder(true);
     try {
-      // Determine effective side:
-      // If baseRecommendation is LONG:
-      // - Normal (isReverse=false) -> BUY (LONG)
-      // - Reverse (isReverse=true)  -> SELL (SHORT)
-      // If baseRecommendation is SHORT:
-      // - Normal (isReverse=false) -> SELL (SHORT)
-      // - Reverse (isReverse=true)  -> BUY (LONG)
-      let effectiveSide: 'BUY' | 'SELL';
-      if (quickOrderModal.baseRecommendation === 'LONG') {
-        effectiveSide = quickOrderModal.isReverse ? 'SELL' : 'BUY';
-      } else {
-        effectiveSide = quickOrderModal.isReverse ? 'BUY' : 'SELL';
-      }
-
       const res = await fetch('/api/crypto/funding-farming/order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -360,6 +398,44 @@ export default function FundingFarmingPage() {
         
         setOrderToast({ show: true, success: true, message: msg });
         setQuickOrderModal(prev => ({ ...prev, isOpen: false }));
+        fetchBotState();
+      } else {
+        setOrderToast({ show: true, success: false, message: json.error || 'Gagal mengeksekusi order' });
+      }
+    } catch (err: any) {
+      setOrderToast({ show: true, success: false, message: err.message || 'Error koneksi saat order' });
+    } finally {
+      setIsSubmittingOrder(false);
+    }
+  };
+
+  // Execute scheduled order immediately on demand
+  const handleExecuteScheduledNow = async (orderItem: any) => {
+    setScheduledOrder(null);
+    setIsSubmittingOrder(true);
+    try {
+      const res = await fetch('/api/crypto/funding-farming/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: orderItem.symbol,
+          side: orderItem.side,
+          notionalUsd: orderItem.notionalUsd,
+          leverage: orderItem.leverage,
+          rrRatio: orderItem.rrRatio,
+          baseSlPercent: orderItem.baseSlPercent,
+          isReverse: orderItem.isReverse
+        })
+      });
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        const d = json.data;
+        setOrderToast({
+          show: true,
+          success: true,
+          message: `Berhasil! Order REVERSE ${d.symbol} ${d.side === 'BUY' ? 'LONG (BUY)' : 'SHORT (SELL)'} @ $${d.fillPrice} berhasil dieksekusi langsung!`
+        });
         fetchBotState();
       } else {
         setOrderToast({ show: true, success: false, message: json.error || 'Gagal mengeksekusi order' });
@@ -465,6 +541,57 @@ export default function FundingFarmingPage() {
     }
   }, [botState?.logs, autoScrollLogs]);
 
+  // Scheduled Reverse Order Watchdog: Execute automatically when settlement timestamp passes
+  useEffect(() => {
+    if (!scheduledOrder) return;
+    const interval = setInterval(async () => {
+      const nowMs = Date.now();
+      if (nowMs >= scheduledOrder.targetFundingTime + 500) {
+        const orderToRun = { ...scheduledOrder };
+        setScheduledOrder(null);
+        try {
+          const res = await fetch('/api/crypto/funding-farming/order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              symbol: orderToRun.symbol,
+              side: orderToRun.side,
+              notionalUsd: orderToRun.notionalUsd,
+              leverage: orderToRun.leverage,
+              rrRatio: orderToRun.rrRatio,
+              baseSlPercent: orderToRun.baseSlPercent,
+              isReverse: orderToRun.isReverse
+            })
+          });
+          const json = await res.json();
+          if (json.success && json.data) {
+            const d = json.data;
+            const sideLabel = d.side === 'BUY' ? 'LONG (BUY)' : 'SHORT (SELL)';
+            setOrderToast({
+              show: true,
+              success: true,
+              message: `🎉 Settlement fee selesai! Order REVERSE ${d.symbol} ${sideLabel} @ $${d.fillPrice} berhasil dibuka tanpa potongan fee minus!`
+            });
+            fetchBotState();
+          } else {
+            setOrderToast({
+              show: true,
+              success: false,
+              message: json.error || 'Gagal mengeksekusi order reverse terjadwal'
+            });
+          }
+        } catch (err: any) {
+          setOrderToast({
+            show: true,
+            success: false,
+            message: err.message || 'Error saat eksekusi reverse terjadwal'
+          });
+        }
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [scheduledOrder]);
+
 
   // Toast Auto-dismiss
   useEffect(() => {
@@ -505,9 +632,10 @@ export default function FundingFarmingPage() {
   const accountBalance = botConfig?.account_balance;
   const realPosition = botConfig?.real_position;
   const isHolding = botConfig?.current_state === 'HOLDING_FOR_FUNDING';
+  const isWaitingPayout = botConfig?.current_state === 'WAITING_PAYOUT';
 
   // Calculate live countdown to settlement for active target
-  const activeNextFundingTime = isHolding 
+  const activeNextFundingTime = isHolding || isWaitingPayout
     ? (botConfig?.target_next_funding_time || 0)
     : (targetCandidate?.nextFundingTime || 0);
 
@@ -578,6 +706,40 @@ export default function FundingFarmingPage() {
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {/* Scheduled Reverse Order Banner */}
+      {scheduledOrder && (
+        <div className="p-4 px-6 rounded-3xl bg-amber-500/15 border-2 border-amber-500/40 shadow-xl flex flex-wrap items-center justify-between gap-4 backdrop-blur-md animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <RotateCcw className="h-5 w-5 animate-spin" />
+            </div>
+            <div>
+              <div className="text-xs font-black uppercase text-amber-400 flex items-center gap-2">
+                <span>🛡️ Order REVERSE Terjadwal: {scheduledOrder.symbol} ({scheduledOrder.side === 'BUY' ? 'LONG' : 'SHORT'})</span>
+                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-[10px] text-amber-300 font-mono font-bold">Bebas Fee Minus</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Menunggu fee settlement selesai. Order akan otomatis dikirim ke Binance dalam <strong className="text-white font-mono">{formatCountdown(scheduledOrder.targetFundingTime)}</strong> (+1s).
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleExecuteScheduledNow(scheduledOrder)}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase transition-all"
+            >
+              ⚡ Buka Sekarang Langsung
+            </button>
+            <button
+              onClick={() => setScheduledOrder(null)}
+              className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-bold text-xs uppercase transition-all"
+            >
+              Batalkan
+            </button>
+          </div>
         </div>
       )}
 
@@ -970,6 +1132,65 @@ export default function FundingFarmingPage() {
                 >
                   <Square className="h-4 w-4 fill-current" /> Tutup Sekarang
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : isWaitingPayout ? (
+        // STATE 1B: Bot has ARMED a target for REVERSE, holding open until fee payout passes!
+        <div className="bg-gradient-to-r from-amber-950/40 via-slate-900 to-indigo-950/40 p-8 rounded-[40px] border-2 border-amber-500/60 shadow-[0_0_50px_rgba(245,158,11,0.25)] relative overflow-hidden animate-pulse-subtle">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <span className="px-3.5 py-1 rounded-xl bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-amber-500/30">
+                  <ShieldCheck className="h-4 w-4" /> Mode Reverse: Menunggu Fee Payout Selesai
+                </span>
+                <span className="px-3 py-1 rounded-xl bg-amber-500/20 text-amber-300 font-mono text-xs font-black uppercase border border-amber-500/30">
+                  Target Terkunci (Bebas Fee Minus)
+                </span>
+              </div>
+
+              <div className="flex items-center gap-4 pt-1">
+                <h2 className="text-4xl md:text-5xl font-black text-white tracking-tight uppercase italic font-mono">
+                  {botConfig?.current_symbol}
+                </h2>
+                <div className="px-4 py-2 rounded-2xl font-black text-xs uppercase tracking-wider bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/30">
+                  🔄 Order: {botConfig?.current_side || ((botConfig?.target_funding_rate || 0) > 0 ? 'BUY / LONG' : 'SELL / SHORT')} (REVERSE)
+                </div>
+              </div>
+
+              <p className="text-slate-300 text-xs md:text-sm font-medium max-w-xl">
+                Target koin telah dikunci! Bot <strong>menahan pembukaan posisi</strong> sampai waktu settlement ({((botConfig?.target_funding_rate || 0) * 100).toFixed(4)}%) terlewati, lalu otomatis membuka posisi REVERSE tepat di detik +1 pasca-settlement agar posisi Anda <strong>100% BEBAS DARI POTONGAN FEE MINUS</strong>.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="bg-slate-950/80 p-5 rounded-3xl border border-white/10 flex items-center gap-6">
+                <div className="space-y-1">
+                  <div className="text-[10px] font-black text-slate-400 uppercase">Funding Rate Target</div>
+                  <div className="text-xl font-mono font-black text-amber-400">
+                    {((botConfig?.target_funding_rate || 0) * 100).toFixed(4)}%
+                  </div>
+                </div>
+                <div className="h-8 w-[1px] bg-slate-800"></div>
+                <div className="space-y-1">
+                  <div className="text-[10px] font-black text-slate-400 uppercase">Ukuran Notional</div>
+                  <div className="text-xl font-mono font-black text-white">
+                    ${botConfig?.notional_usd} <span className="text-xs text-indigo-400">({botConfig?.leverage}x)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-5 rounded-3xl border-2 bg-amber-500/20 border-amber-500 text-amber-400 flex flex-col items-center justify-center min-w-[200px] animate-pulse">
+                <div className="text-[9px] font-black uppercase text-amber-300 mb-1 flex items-center gap-1.5">
+                  <Timer className="h-3.5 w-3.5" /> Countdown Settlement Fee
+                </div>
+                <div className="text-2xl font-black font-mono tracking-wider">
+                  {formatCountdown(botConfig?.target_next_funding_time || 0)}
+                </div>
+                <div className="text-[9px] font-black uppercase tracking-tighter mt-1 text-white">
+                  ⚡ Auto-Open Posisi Pasca-Fee
+                </div>
               </div>
             </div>
           </div>
@@ -1825,6 +2046,62 @@ export default function FundingFarmingPage() {
               </p>
             </div>
 
+            {/* Reverse Timing Option: Tunggu Fee Selesai vs Langsung Buka */}
+            {quickOrderModal.isReverse && (
+              <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase text-amber-400 flex items-center gap-1.5">
+                    <ShieldCheck className="h-4 w-4" /> Waktu Open Posisi Reverse
+                  </span>
+                  <span className="text-[10px] font-mono text-amber-300 font-bold">
+                    {quickOrderModal.nextFundingTime && quickOrderModal.nextFundingTime > now 
+                      ? `Fee Settlement: ${formatCountdown(quickOrderModal.nextFundingTime)}`
+                      : 'Fee Telah Selesai'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuickOrderModal(prev => ({ ...prev, openAfterPayout: true }))}
+                    className={`py-2.5 px-3 rounded-2xl text-[11px] font-black uppercase transition-all flex flex-col items-center justify-center border ${
+                      quickOrderModal.openAfterPayout
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-black'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>🛡️ Tunggu Fee Selesai</span>
+                    <span className="text-[9px] font-bold opacity-80">(Rekomendasi Bebas Fee Minus)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setQuickOrderModal(prev => ({ ...prev, openAfterPayout: false }))}
+                    className={`py-2.5 px-3 rounded-2xl text-[11px] font-black uppercase transition-all flex flex-col items-center justify-center border ${
+                      !quickOrderModal.openAfterPayout
+                        ? 'bg-slate-800 text-white border-slate-700 font-black'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>⚡ Eksekusi Sekarang</span>
+                    <span className="text-[9px] font-bold opacity-80">(Buka Sebelum Payout)</span>
+                  </button>
+                </div>
+
+                <div className="text-[11px] text-slate-300">
+                  {quickOrderModal.openAfterPayout ? (
+                    <span className="text-emerald-300">
+                      ✅ <strong>Proteksi Aktif:</strong> Order akan otomatis dieksekusi <strong>tepat setelah fee settlement selesai</strong> (+1s) agar posisi Anda tidak terpotong fee minus oleh Binance!
+                    </span>
+                  ) : (
+                    <span className="text-rose-300">
+                      ⚠️ <strong>Peringatan:</strong> Posisi langsung dibuka saat ini. Posisi Anda akan terpotong fee minus saat settlement funding fee tiba di bursa!
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Pilihan Risk:Reward (RR 1:1, 1:2, 1:3) */}
             <div className="space-y-2">
               <div className="flex justify-between items-center">
@@ -1967,6 +2244,8 @@ export default function FundingFarmingPage() {
                 <Zap className="h-4 w-4" />
                 {isSubmittingOrder 
                   ? 'Mengeksekusi di Binance...' 
+                  : quickOrderModal.isReverse && quickOrderModal.openAfterPayout && quickOrderModal.nextFundingTime && quickOrderModal.nextFundingTime > now
+                  ? `Kunci & Open Pasca-Fee (${formatCountdown(quickOrderModal.nextFundingTime)})`
                   : `Buka Posisi ${modalCalculations.effectiveSideText} (${quickOrderModal.rrRatio})`}
               </button>
             </div>
@@ -2031,10 +2310,10 @@ export default function FundingFarmingPage() {
                     🔄 REVERSE (Kebalikan)
                   </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1.5">
+                <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
                   {botIsReverse 
-                    ? 'Jika sinyal funding koin adalah LONG, bot akan otomatis membuka SELL (SHORT) di Binance.'
-                    : 'Bot membuka posisi sesuai arah arbitrase untuk mengumpulkan fee dari trader lain.'}
+                    ? '🔄 Mode Reverse: Bot membalik arah posisi dan otomatis MENAHAN open sampai fee payout bursa selesai (+1s pasca-settlement), sehingga posisi Anda 100% BEBAS DARI POTONGAN FEE MINUS!'
+                    : '🟢 Mode Normal Arbitrase: Bot membuka posisi sebelum settlement untuk memanen funding fee dari bursa.'}
                 </p>
               </div>
 
@@ -2379,7 +2658,11 @@ export default function FundingFarmingPage() {
                     />
                     <span className="text-slate-400 text-xs font-bold">Detik</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 mt-1 block">Rekomendasi: 20-30s</span>
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    {botIsReverse 
+                      ? 'Mode Reverse: Durasi penguncian koin sebelum settlement. Bot menahan order dan otomatis open setelah fee dibayar (+1s).' 
+                      : 'Rekomendasi: 20-30s sebelum settlement snapshot.'}
+                  </span>
                 </div>
 
                 <div>

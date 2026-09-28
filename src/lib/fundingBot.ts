@@ -391,9 +391,10 @@ export async function getFundingBotState() {
     const targetFundingTime = parseInt(configRow.target_next_funding_time) || 0;
     const hasPayoutPassed = Date.now() >= targetFundingTime;
     const rate = parseFloat(configRow.target_funding_rate) || 0;
-    const estFee = (parseFloat(configRow.notional_usd) || 100) * Math.abs(rate);
+    const isReverse = Boolean(configRow.is_reverse);
+    const estFee = isReverse ? 0 : ((parseFloat(configRow.notional_usd) || 100) * Math.abs(rate));
     const unRealizedPnl = realPosition ? realPosition.unRealizedProfit : 0;
-    const liveTotalProfit = unRealizedPnl + estFee;
+    const liveTotalProfit = unRealizedPnl + (hasPayoutPassed ? estFee : 0);
     const minProfitUsd = parseFloat(configRow.min_profit_usd) || 0;
 
     config.estimated_funding_fee = estFee;
@@ -825,8 +826,12 @@ export async function tickFundingBot() {
             } catch {}
 
             if (actualFundingFee === 0 && now >= targetFundingTime) {
-              const rate = parseFloat(config.target_funding_rate) || 0;
-              actualFundingFee = notionalUsd * Math.abs(rate);
+              if (!Boolean(config.is_reverse)) {
+                const rate = parseFloat(config.target_funding_rate) || 0;
+                actualFundingFee = notionalUsd * Math.abs(rate);
+              } else {
+                actualFundingFee = 0;
+              }
             }
 
             const netPnl = tradeRealizedPnl - commission + actualFundingFee;
@@ -938,9 +943,10 @@ export async function tickFundingBot() {
         console.warn(`fetchRealPosition warning for ${symbol}:`, posErr);
       }
 
+      const isReverse = Boolean(config.is_reverse);
       const hasPayoutPassed = now >= targetFundingTime;
       const rate = parseFloat(config.target_funding_rate) || 0;
-      const expectedFundingFee = notionalUsd * Math.abs(rate);
+      const expectedFundingFee = isReverse ? 0 : notionalUsd * Math.abs(rate);
       const liveUnrealizedPnl = livePos ? livePos.unRealizedProfit : 0;
       const liveRoePercent = livePos ? livePos.roePercent : 0;
       const liveTotalProfit = liveUnrealizedPnl + (hasPayoutPassed ? expectedFundingFee : 0);
@@ -1017,7 +1023,7 @@ export async function tickFundingBot() {
 
           // If Binance hasn't posted ledger yet, calculate expected theoretical funding fee
           if (actualFundingFee === 0 && hasPayoutPassed) {
-            actualFundingFee = expectedFundingFee;
+            actualFundingFee = isReverse ? 0 : expectedFundingFee;
           }
 
           const tradeRealizedPnl = closeRes.realizedPnl;
@@ -1153,7 +1159,126 @@ export async function tickFundingBot() {
     }
 
     // ─────────────────────────────────────────────────────────────
-    // CASE B: Bot is SCANNING or WAITING for entry (< 30s countdown)
+    // CASE B: Bot is in WAITING_PAYOUT (REVERSE Mode Armed before Settlement)
+    // Bot MENAHAN open sampai fee payout bursa selesai, agar posisi tidak kena fee minus!
+    // ─────────────────────────────────────────────────────────────
+    if (config.current_state === 'WAITING_PAYOUT' && config.current_symbol && config.target_next_funding_time) {
+      const targetFundingTime = parseInt(config.target_next_funding_time) || 0;
+      const targetSymbol = config.current_symbol;
+      const targetRate = parseFloat(config.target_funding_rate) || 0;
+      const diffMs = targetFundingTime - now;
+
+      if (diffMs > 0) {
+        // Fee settlement belum lewat. Tetap menahan order agar bebas potongan fee minus!
+        const secondsUntilPayout = Math.ceil(diffMs / 1000);
+        return {
+          status: 'WAITING_PAYOUT',
+          symbol: targetSymbol,
+          fundingRate: targetRate,
+          targetFundingTime,
+          secondsUntilPayout,
+          message: `⏳ [REVERSE] Menunggu fee settlement ${targetSymbol} selesai (${secondsUntilPayout}s lagi) agar posisi bebas dari fee minus...`
+        };
+      } else if (now - targetFundingTime <= 60000) {
+        // ⚡ SETTLEMENT SELESAI! FEE SUDAH DIBAYARKAN BURSA!
+        // SAATNYA OPEN POSISI REVERSE SEKARANG (100% BEBAS DARI POTONGAN FEE MINUS!)
+        await addFundingBotLog(
+          'OPEN_TRIGGER',
+          `⚡ [MODE REVERSE] Payout fee untuk ${targetSymbol} telah selesai! Membuka posisi REVERSE sekarang (100% Bebas Fee Minus)...`,
+          'INFO'
+        );
+
+        try {
+          const rrRatio = (config.rr_ratio || 'NONE') as 'NONE' | '1:1' | '1:2' | '1:3' | 'PROFIT';
+          const baseSlPercent = parseFloat(config.base_sl_percent) || 1.5;
+
+          // Normal Arbitrage: if fundingRate > 0 -> SELL (SHORT)
+          // Reverse: if fundingRate > 0 -> BUY (LONG)
+          const standardOrderSide = targetRate > 0 ? 'SELL' : 'BUY';
+          const orderSide: 'BUY' | 'SELL' = standardOrderSide === 'SELL' ? 'BUY' : 'SELL';
+          const positionSide: 'SHORT' | 'LONG' = orderSide === 'SELL' ? 'SHORT' : 'LONG';
+
+          const openRes = await executeFundingOrderWithRR({
+            symbol: targetSymbol,
+            side: orderSide,
+            notionalUsd,
+            leverage,
+            rrRatio: (rrRatio === 'PROFIT' ? 'NONE' : rrRatio),
+            baseSlPercent,
+            isReverse: true
+          });
+
+          const nextRoundNumber = (parseInt(config.round_number) || 0) + 1;
+          const tpVal = openRes.takeProfitPrice ? parseFloat(openRes.takeProfitPrice) : null;
+          const slVal = openRes.stopLossPrice ? parseFloat(openRes.stopLossPrice) : null;
+
+          await executeQuery(`
+            UPDATE funding_bot_config
+            SET current_state = 'HOLDING_FOR_FUNDING',
+                current_symbol = ?,
+                current_side = ?,
+                target_funding_rate = ?,
+                target_next_funding_time = ?,
+                entry_price = ?,
+                tp_price = ?,
+                sl_price = ?,
+                quantity = ?,
+                binance_order_id = ?,
+                round_number = ?,
+                last_check_at = NOW()
+            WHERE id = 1
+          `, [
+            targetSymbol,
+            positionSide,
+            targetRate,
+            targetFundingTime,
+            openRes.fillPrice,
+            tpVal,
+            slVal,
+            openRes.quantity,
+            openRes.orderId,
+            nextRoundNumber
+          ]);
+
+          const rrTag = rrRatio !== 'NONE' && rrRatio !== 'PROFIT' ? ` | Target: ${rrRatio}` : '';
+          await addFundingBotLog(
+            'OPENED',
+            `🚀 Posisi Round #${nextRoundNumber} Berhasil Dibuka! [MODE REVERSE - BEBAS FEE MINUS] ${targetSymbol} ${positionSide} @ $${openRes.fillPrice} | Notional: $${notionalUsd} USD (${leverage}x)${rrTag}`,
+            'SUCCESS'
+          );
+
+          return {
+            status: 'ORDER_OPENED',
+            symbol: targetSymbol,
+            side: positionSide,
+            entryPrice: openRes.fillPrice,
+            quantity: openRes.quantity,
+            orderId: openRes.orderId
+          };
+        } catch (openErr: any) {
+          console.error("Error executing reverse open order post-payout:", openErr);
+          await addFundingBotLog(
+            'ERROR',
+            `Gagal membuka posisi Reverse ${targetSymbol}: ${openErr.message}`,
+            'ERROR'
+          );
+          return { status: 'OPEN_FAILED', error: openErr.message };
+        }
+      } else {
+        // Window expired (> 60s past settlement without execution), reset to SCANNING
+        await executeQuery(`
+          UPDATE funding_bot_config
+          SET current_state = 'SCANNING',
+              current_symbol = NULL,
+              last_check_at = NOW()
+          WHERE id = 1
+        `);
+        return { status: 'SCANNING', message: `Window reverse untuk ${targetSymbol} telah lewat. Melanjutkan scan...` };
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // CASE C: Bot is SCANNING or WAITING for entry (< 30s countdown)
     // ─────────────────────────────────────────────────────────────
     const { targetCandidate, candidates } = await fetchFundingCandidates(notionalUsd);
 
@@ -1179,101 +1304,213 @@ export async function tickFundingBot() {
       };
     }
 
-    // Trigger Entry if time until funding is less than openSecondsBefore (default < 30s)
-    // Add safety floor (e.g. must be > 3 seconds before nextFundingTime so order fills before settlement snapshot)
-    if (secondsUntilFunding <= openSecondsBefore && secondsUntilFunding >= 2) {
-      // TIME TO OPEN POSITION!
-      await addFundingBotLog(
-        'OPEN_TRIGGER',
-        `⚡ Sisa waktu funding ${targetCandidate.symbol} tersisa ${secondsUntilFunding} detik (< ${openSecondsBefore}s)! Membuka posisi ${targetCandidate.recommendation}...`,
-        'INFO'
-      );
+    const isReverse = Boolean(config.is_reverse);
 
-      try {
-        const isReverse = Boolean(config.is_reverse);
-        const rrRatio = (config.rr_ratio || 'NONE') as 'NONE' | '1:1' | '1:2' | '1:3';
-        const baseSlPercent = parseFloat(config.base_sl_percent) || 1.5;
+    // Trigger Entry or Pre-Settlement Arming
+    if (secondsUntilFunding <= openSecondsBefore && secondsUntilFunding >= 0) {
+      if (isReverse) {
+        // ─────────────────────────────────────────────────────────────
+        // MODE REVERSE: JANGAN OPEN SEBELUM SETTLEMENT!
+        // Menahan order sampai fee dibayarkan bursa agar posisi TIDAK kena fee minus!
+        // ─────────────────────────────────────────────────────────────
+        if (secondsUntilFunding > 0) {
+          await executeQuery(`
+            UPDATE funding_bot_config
+            SET current_state = 'WAITING_PAYOUT',
+                current_symbol = ?,
+                target_funding_rate = ?,
+                target_next_funding_time = ?,
+                last_check_at = NOW()
+            WHERE id = 1
+          `, [targetCandidate.symbol, targetCandidate.fundingRate, targetCandidate.nextFundingTime]);
 
-        // Normal Arbitrage: if fundingRate > 0 -> SELL (SHORT), if fundingRate < 0 -> BUY (LONG)
-        const standardOrderSide = targetCandidate.fundingRate > 0 ? 'SELL' : 'BUY';
+          await addFundingBotLog(
+            'WAITING_PAYOUT',
+            `⏳ [MODE REVERSE] Target ${targetCandidate.symbol} (${(targetCandidate.fundingRate * 100).toFixed(4)}%) terkunci! Menahan order sampai fee dibayarkan (${secondsUntilFunding}s lagi) agar posisi BEBAS DARI POTONGAN FEE MINUS.`,
+            'INFO'
+          );
 
-        let orderSide: 'BUY' | 'SELL' = standardOrderSide;
-        let positionSide: 'SHORT' | 'LONG' = targetCandidate.recommendation;
+          return {
+            status: 'WAITING_PAYOUT',
+            symbol: targetCandidate.symbol,
+            fundingRate: targetCandidate.fundingRate,
+            targetFundingTime: targetCandidate.nextFundingTime,
+            secondsUntilPayout: secondsUntilFunding,
+            openSecondsBefore
+          };
+        } else {
+          // secondsUntilFunding <= 0: Payout baru saja terjadi! Open reverse segera!
+          await addFundingBotLog(
+            'OPEN_TRIGGER',
+            `⚡ [MODE REVERSE] Payout fee untuk ${targetCandidate.symbol} telah selesai! Membuka posisi REVERSE sekarang (100% Bebas Fee Minus)...`,
+            'INFO'
+          );
 
-        if (isReverse) {
-          orderSide = standardOrderSide === 'SELL' ? 'BUY' : 'SELL';
-          positionSide = orderSide === 'SELL' ? 'SHORT' : 'LONG';
+          try {
+            const rrRatio = (config.rr_ratio || 'NONE') as 'NONE' | '1:1' | '1:2' | '1:3' | 'PROFIT';
+            const baseSlPercent = parseFloat(config.base_sl_percent) || 1.5;
+
+            const standardOrderSide = targetCandidate.fundingRate > 0 ? 'SELL' : 'BUY';
+            const orderSide: 'BUY' | 'SELL' = standardOrderSide === 'SELL' ? 'BUY' : 'SELL';
+            const positionSide: 'SHORT' | 'LONG' = orderSide === 'SELL' ? 'SHORT' : 'LONG';
+
+            const openRes = await executeFundingOrderWithRR({
+              symbol: targetCandidate.symbol,
+              side: orderSide,
+              notionalUsd,
+              leverage,
+              rrRatio: (rrRatio === 'PROFIT' ? 'NONE' : rrRatio),
+              baseSlPercent,
+              isReverse: true,
+              referencePrice: targetCandidate.markPrice
+            });
+
+            const nextRoundNumber = (parseInt(config.round_number) || 0) + 1;
+            const tpVal = openRes.takeProfitPrice ? parseFloat(openRes.takeProfitPrice) : null;
+            const slVal = openRes.stopLossPrice ? parseFloat(openRes.stopLossPrice) : null;
+
+            await executeQuery(`
+              UPDATE funding_bot_config
+              SET current_state = 'HOLDING_FOR_FUNDING',
+                  current_symbol = ?,
+                  current_side = ?,
+                  target_funding_rate = ?,
+                  target_next_funding_time = ?,
+                  entry_price = ?,
+                  tp_price = ?,
+                  sl_price = ?,
+                  quantity = ?,
+                  binance_order_id = ?,
+                  round_number = ?,
+                  last_check_at = NOW()
+              WHERE id = 1
+            `, [
+              targetCandidate.symbol,
+              positionSide,
+              targetCandidate.fundingRate,
+              targetCandidate.nextFundingTime,
+              openRes.fillPrice,
+              tpVal,
+              slVal,
+              openRes.quantity,
+              openRes.orderId,
+              nextRoundNumber
+            ]);
+
+            const rrTag = rrRatio !== 'NONE' && rrRatio !== 'PROFIT' ? ` | Target: ${rrRatio}` : '';
+            await addFundingBotLog(
+              'OPENED',
+              `🚀 Posisi Round #${nextRoundNumber} Berhasil Dibuka! [MODE REVERSE - BEBAS FEE MINUS] ${targetCandidate.symbol} ${positionSide} @ $${openRes.fillPrice} | Notional: $${notionalUsd} USD (${leverage}x)${rrTag}`,
+              'SUCCESS'
+            );
+
+            return {
+              status: 'ORDER_OPENED',
+              symbol: targetCandidate.symbol,
+              side: positionSide,
+              entryPrice: openRes.fillPrice,
+              quantity: openRes.quantity,
+              orderId: openRes.orderId
+            };
+          } catch (openError: any) {
+            console.error("Error executing funding reverse open order:", openError);
+            await addFundingBotLog(
+              'ERROR',
+              `Gagal membuka posisi Reverse ${targetCandidate.symbol}: ${openError.message}`,
+              'ERROR'
+            );
+            return { status: 'OPEN_FAILED', error: openError.message };
+          }
         }
+      } else {
+        // ─────────────────────────────────────────────────────────────
+        // MODE NORMAL ARBITRASE: BUKA POSISI SEBELUM SETTLEMENT (>= 2s)
+        // Posisi di-hold melewati waktu settlement untuk MENERIMA FEE dari bursa!
+        // ─────────────────────────────────────────────────────────────
+        if (secondsUntilFunding >= 2) {
+          await addFundingBotLog(
+            'OPEN_TRIGGER',
+            `⚡ Sisa waktu funding ${targetCandidate.symbol} tersisa ${secondsUntilFunding} detik (< ${openSecondsBefore}s)! Membuka posisi ${targetCandidate.recommendation}...`,
+            'INFO'
+          );
 
-        const openRes = await executeFundingOrderWithRR({
-          symbol: targetCandidate.symbol,
-          side: orderSide,
-          notionalUsd,
-          leverage,
-          rrRatio,
-          baseSlPercent,
-          isReverse,
-          referencePrice: targetCandidate.markPrice
-        });
+          try {
+            const rrRatio = (config.rr_ratio || 'NONE') as 'NONE' | '1:1' | '1:2' | '1:3' | 'PROFIT';
+            const baseSlPercent = parseFloat(config.base_sl_percent) || 1.5;
 
-        const nextRoundNumber = (parseInt(config.round_number) || 0) + 1;
+            const standardOrderSide = targetCandidate.fundingRate > 0 ? 'SELL' : 'BUY';
+            const orderSide: 'BUY' | 'SELL' = standardOrderSide;
+            const positionSide: 'SHORT' | 'LONG' = targetCandidate.recommendation;
 
-        const tpVal = openRes.takeProfitPrice ? parseFloat(openRes.takeProfitPrice) : null;
-        const slVal = openRes.stopLossPrice ? parseFloat(openRes.stopLossPrice) : null;
+            const openRes = await executeFundingOrderWithRR({
+              symbol: targetCandidate.symbol,
+              side: orderSide,
+              notionalUsd,
+              leverage,
+              rrRatio: (rrRatio === 'PROFIT' ? 'NONE' : rrRatio),
+              baseSlPercent,
+              isReverse: false,
+              referencePrice: targetCandidate.markPrice
+            });
 
-        await executeQuery(`
-          UPDATE funding_bot_config
-          SET current_state = 'HOLDING_FOR_FUNDING',
-              current_symbol = ?,
-              current_side = ?,
-              target_funding_rate = ?,
-              target_next_funding_time = ?,
-              entry_price = ?,
-              tp_price = ?,
-              sl_price = ?,
-              quantity = ?,
-              binance_order_id = ?,
-              round_number = ?,
-              last_check_at = NOW()
-          WHERE id = 1
-        `, [
-          targetCandidate.symbol,
-          positionSide,
-          targetCandidate.fundingRate,
-          targetCandidate.nextFundingTime,
-          openRes.fillPrice,
-          tpVal,
-          slVal,
-          openRes.quantity,
-          openRes.orderId,
-          nextRoundNumber
-        ]);
+            const nextRoundNumber = (parseInt(config.round_number) || 0) + 1;
+            const tpVal = openRes.takeProfitPrice ? parseFloat(openRes.takeProfitPrice) : null;
+            const slVal = openRes.stopLossPrice ? parseFloat(openRes.stopLossPrice) : null;
 
-        const reverseTag = isReverse ? ' [MODE REVERSE]' : '';
-        const rrTag = rrRatio !== 'NONE' ? ` | Target: ${rrRatio} (SL: ${openRes.stopLossPrice} / TP: ${openRes.takeProfitPrice})` : '';
+            await executeQuery(`
+              UPDATE funding_bot_config
+              SET current_state = 'HOLDING_FOR_FUNDING',
+                  current_symbol = ?,
+                  current_side = ?,
+                  target_funding_rate = ?,
+                  target_next_funding_time = ?,
+                  entry_price = ?,
+                  tp_price = ?,
+                  sl_price = ?,
+                  quantity = ?,
+                  binance_order_id = ?,
+                  round_number = ?,
+                  last_check_at = NOW()
+              WHERE id = 1
+            `, [
+              targetCandidate.symbol,
+              positionSide,
+              targetCandidate.fundingRate,
+              targetCandidate.nextFundingTime,
+              openRes.fillPrice,
+              tpVal,
+              slVal,
+              openRes.quantity,
+              openRes.orderId,
+              nextRoundNumber
+            ]);
 
-        await addFundingBotLog(
-          'OPENED',
-          `🚀 Posisi Round #${nextRoundNumber} Berhasil Dibuka!${reverseTag} ${targetCandidate.symbol} ${positionSide} @ $${openRes.fillPrice} | Notional: $${notionalUsd} USD (${leverage}x)${rrTag}`,
-          'SUCCESS'
-        );
+            const rrTag = rrRatio !== 'NONE' && rrRatio !== 'PROFIT' ? ` | Target: ${rrRatio} (SL: ${openRes.stopLossPrice} / TP: ${openRes.takeProfitPrice})` : '';
 
-        return {
-          status: 'ORDER_OPENED',
-          symbol: targetCandidate.symbol,
-          side: positionSide,
-          entryPrice: openRes.fillPrice,
-          quantity: openRes.quantity,
-          orderId: openRes.orderId
-        };
-      } catch (openError: any) {
-        console.error("Error executing funding open order:", openError);
-        await addFundingBotLog(
-          'ERROR',
-          `Gagal membuka posisi ${targetCandidate.symbol}: ${openError.message}`,
-          'ERROR'
-        );
-        return { status: 'OPEN_FAILED', error: openError.message };
+            await addFundingBotLog(
+              'OPENED',
+              `🚀 Posisi Round #${nextRoundNumber} Berhasil Dibuka! ${targetCandidate.symbol} ${positionSide} @ $${openRes.fillPrice} | Notional: $${notionalUsd} USD (${leverage}x)${rrTag}`,
+              'SUCCESS'
+            );
+
+            return {
+              status: 'ORDER_OPENED',
+              symbol: targetCandidate.symbol,
+              side: positionSide,
+              entryPrice: openRes.fillPrice,
+              quantity: openRes.quantity,
+              orderId: openRes.orderId
+            };
+          } catch (openError: any) {
+            console.error("Error executing funding open order:", openError);
+            await addFundingBotLog(
+              'ERROR',
+              `Gagal membuka posisi ${targetCandidate.symbol}: ${openError.message}`,
+              'ERROR'
+            );
+            return { status: 'OPEN_FAILED', error: openError.message };
+          }
+        }
       }
     } else {
       // Waiting for countdown to reach < openSecondsBefore (e.g. < 30s)
