@@ -36,6 +36,8 @@ export interface CompoundBotConfig {
   dca_trigger_price?: number | null;
   dca_executed?: boolean;
   dca_count?: number;
+  auto_stop_hours?: number | null;
+  auto_stop_at?: string | null;
 }
 
 export interface CompoundBotCycle {
@@ -96,6 +98,8 @@ export async function ensureCompoundBotTables() {
       sl_price DECIMAL(16, 8) DEFAULT NULL,
       quantity DECIMAL(16, 8) DEFAULT NULL,
       last_check_at DATETIME DEFAULT NULL,
+      auto_stop_hours DECIMAL(6, 2) DEFAULT NULL,
+      auto_stop_at DATETIME DEFAULT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY uq_symbol (symbol)
@@ -174,6 +178,14 @@ export async function ensureCompoundBotTables() {
   } catch {}
   try {
     await executeQuery(`ALTER TABLE compound_bot_cycles ADD COLUMN dca_added_notional DECIMAL(12, 4) DEFAULT 0.0000`);
+  } catch {}
+
+  // Auto-migration for Auto-Stop Timer features in compound_bot_config:
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN auto_stop_hours DECIMAL(6, 2) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN auto_stop_at DATETIME DEFAULT NULL`);
   } catch {}
 
   // Ensure default BTCUSDT coin exists if table completely empty
@@ -290,7 +302,9 @@ export async function getBotState() {
     dca_notional_usd: r.dca_notional_usd ? parseFloat(r.dca_notional_usd) : null,
     dca_trigger_price: r.dca_trigger_price ? parseFloat(r.dca_trigger_price) : null,
     dca_executed: Boolean(r.dca_executed),
-    dca_count: parseInt(r.dca_count) || 0
+    dca_count: parseInt(r.dca_count) || 0,
+    auto_stop_hours: r.auto_stop_hours ? parseFloat(r.auto_stop_hours) : null,
+    auto_stop_at: r.auto_stop_at ? (r.auto_stop_at instanceof Date ? r.auto_stop_at.toISOString() : new Date(r.auto_stop_at).toISOString()) : null
   }));
 
   // 2. Fetch all active open cycles
@@ -496,10 +510,11 @@ export async function saveCoinConfig(params: {
   leverage: number;
   compoundPercent: number;
   stopLossPercent?: number | null;
+  autoStopHours?: number | null;
 }) {
   await ensureCompoundBotTables();
 
-  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent } = params;
+  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours } = params;
   const cleanSymbol = symbol.toUpperCase().trim();
 
   // Validate
@@ -508,27 +523,32 @@ export async function saveCoinConfig(params: {
     throw new Error(validCheck.error || 'Pair tidak valid di Binance Futures.');
   }
 
+  const stopHoursVal = autoStopHours && autoStopHours > 0 ? autoStopHours : null;
+
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, auto_stop_hours)
     VALUES 
-      (?, false, ?, ?, ?, ?, ?)
+      (?, false, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       notional_usd = VALUES(notional_usd),
       current_notional = IF(is_active = true, current_notional, VALUES(notional_usd)),
       leverage = VALUES(leverage),
       compound_percent = VALUES(compound_percent),
-      stop_loss_percent = VALUES(stop_loss_percent)
+      stop_loss_percent = VALUES(stop_loss_percent),
+      auto_stop_hours = VALUES(auto_stop_hours)
   `, [
     cleanSymbol,
     notionalUsd,
     notionalUsd,
     leverage,
     compoundPercent,
-    stopLossPercent || null
+    stopLossPercent || null,
+    stopHoursVal
   ]);
 
-  await addBotLog('SYSTEM', `⚙️ Konfigurasi koin ${cleanSymbol} disimpan (Notional: $${notionalUsd}, Leverage: ${leverage}x, Target: +${compoundPercent}%).`, 'INFO');
+  const timerLogText = stopHoursVal ? `, Auto-Stop: ${stopHoursVal} Jam` : ', Mode: Nonstop';
+  await addBotLog('SYSTEM', `⚙️ Konfigurasi koin ${cleanSymbol} disimpan (Notional: $${notionalUsd}, Leverage: ${leverage}x, Target: +${compoundPercent}%${timerLogText}).`, 'INFO');
 
   return { success: true, symbol: cleanSymbol };
 }
@@ -542,10 +562,11 @@ export async function startCompoundBot(params: {
   leverage: number;
   compoundPercent: number;
   stopLossPercent?: number | null;
+  autoStopHours?: number | null;
 }) {
   await ensureCompoundBotTables();
 
-  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent } = params;
+  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours } = params;
   const cleanSymbol = symbol.toUpperCase().trim();
 
   // 1. Pair Validation
@@ -566,11 +587,27 @@ export async function startCompoundBot(params: {
 
   // 2. Check if this coin is currently running active
   const configRows: any = await executeQuery(`
-    SELECT is_active FROM compound_bot_config WHERE symbol = ?
+    SELECT is_active, auto_stop_hours FROM compound_bot_config WHERE symbol = ?
   `, [cleanSymbol]);
 
   if (configRows && configRows.length > 0 && configRows[0].is_active) {
     throw new Error(`Koin ${cleanSymbol} sedang aktif berjalan! Hentikan (STOP) terlebih dahulu sebelum memulai siklus baru.`);
+  }
+
+  // Determine effective auto-stop hours
+  let effectiveAutoStopHours = autoStopHours;
+  if (effectiveAutoStopHours === undefined && configRows && configRows.length > 0 && configRows[0].auto_stop_hours != null) {
+    effectiveAutoStopHours = parseFloat(configRows[0].auto_stop_hours);
+  }
+
+  let autoStopAtSql: string | null = null;
+  let autoStopAtDisplay = '';
+  if (effectiveAutoStopHours && effectiveAutoStopHours > 0) {
+    const stopMs = Date.now() + effectiveAutoStopHours * 3600 * 1000;
+    const stopDate = new Date(stopMs);
+    // MySQL format: YYYY-MM-DD HH:mm:ss
+    autoStopAtSql = stopDate.toISOString().slice(0, 19).replace('T', ' ');
+    autoStopAtDisplay = stopDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
   }
 
   // Bersihkan siklus lama yang menggantung (stuck OPEN) agar tidak memblokir start baru
@@ -581,7 +618,10 @@ export async function startCompoundBot(params: {
   `, [cleanSymbol]);
 
   // 3. Execute Initial BUY Order on Binance
-  await addBotLog('START', `🚀 [${cleanSymbol}] Memulai Bot Compound Future (Notional: $${notionalUsd} USD, Leverage: ${leverage}x, Target: +${compoundPercent}%)...`, 'INFO');
+  const timerLogText = effectiveAutoStopHours && effectiveAutoStopHours > 0
+    ? ` ⏱️ Auto-Stop: ${effectiveAutoStopHours} Jam (Otomatis stop & close pukul ${autoStopAtDisplay})`
+    : ` (Mode Nonstop)`;
+  await addBotLog('START', `🚀 [${cleanSymbol}] Memulai Bot Compound Future (Notional: $${notionalUsd} USD, Leverage: ${leverage}x, Target: +${compoundPercent}%)${timerLogText}...`, 'INFO');
 
   const buyResult = await executeCompoundBuyOrder({
     symbol: cleanSymbol,
@@ -615,9 +655,9 @@ export async function startCompoundBot(params: {
   // 5. Update or Insert Bot Config for this coin
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price, auto_stop_hours, auto_stop_at)
     VALUES 
-      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL)
+      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL, ?, ?)
     ON DUPLICATE KEY UPDATE
       is_active = true,
       notional_usd = VALUES(notional_usd),
@@ -636,7 +676,9 @@ export async function startCompoundBot(params: {
       dca_count = 0,
       dca_drop_percent = NULL,
       dca_notional_usd = NULL,
-      dca_trigger_price = NULL
+      dca_trigger_price = NULL,
+      auto_stop_hours = VALUES(auto_stop_hours),
+      auto_stop_at = VALUES(auto_stop_at)
   `, [
     cleanSymbol,
     notionalUsd,
@@ -647,7 +689,9 @@ export async function startCompoundBot(params: {
     entryPrice,
     targetPrice,
     slPrice,
-    executedQty
+    executedQty,
+    effectiveAutoStopHours || null,
+    autoStopAtSql
   ]);
 
   const marginEst = (notionalUsd / leverage).toFixed(2);
@@ -661,7 +705,9 @@ export async function startCompoundBot(params: {
     targetPrice,
     quantity: executedQty,
     notionalUsd,
-    buyOrderId: buyResult.orderId
+    buyOrderId: buyResult.orderId,
+    autoStopHours: effectiveAutoStopHours || null,
+    autoStopAt: autoStopAtSql
   };
 }
 
@@ -778,7 +824,8 @@ export async function stopCompoundBot(params: {
           quantity = NULL,
           dca_auto_enabled = false,
           dca_executed = false,
-          dca_trigger_price = NULL
+          dca_trigger_price = NULL,
+          auto_stop_at = NULL
       WHERE symbol = ?
     `, [sym]);
 
@@ -1118,6 +1165,34 @@ export async function tickCompoundBot() {
       const compoundPercent = parseFloat(coin.compound_percent) || 1.0;
       const stopLossPercent = coin.stop_loss_percent ? parseFloat(coin.stop_loss_percent) : null;
       const leverage = parseInt(coin.leverage) || 20;
+
+      // =========================================================================
+      // CASE AUTO-STOP: TIMER EXPIRED (E.G. 8 HOURS DURATION REACHED)
+      // =========================================================================
+      if (coin.auto_stop_at) {
+        const stopTimeMs = new Date(coin.auto_stop_at).getTime();
+        if (now >= stopTimeMs) {
+          const runHoursText = coin.auto_stop_hours ? `${coin.auto_stop_hours} jam` : 'durasi';
+          await addBotLog(
+            'STOP',
+            `⏰ [${symbol}] WAKTU OPERASIONAL HABIS! Batas waktu operasional (${runHoursText}) telah tercapai. Menghentikan bot dan menutup seluruh posisi aktif di Binance...`,
+            'WARN'
+          );
+
+          try {
+            await stopCompoundBot({ symbol, closeMarketPosition: true });
+            tickResults.push({
+              symbol,
+              status: 'AUTO_STOPPED_TIMER_EXPIRED',
+              hours: coin.auto_stop_hours
+            });
+            continue;
+          } catch (autoStopErr: any) {
+            console.error(`Gagal auto-stop timer ${symbol}:`, autoStopErr);
+            await addBotLog('ERROR', `❌ [${symbol}] Gagal mengeksekusi Auto-Stop timer: ${autoStopErr.message}`, 'ERROR');
+          }
+        }
+      }
 
       // Real Binance Position if open
       const rp = realPositionsMap[symbol];

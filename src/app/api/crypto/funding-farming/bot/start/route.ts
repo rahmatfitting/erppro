@@ -13,6 +13,9 @@ export async function POST(request: Request) {
     const rrRatio = body.rrRatio || undefined;
     const baseSlPercent = body.baseSlPercent ? parseFloat(body.baseSlPercent) : undefined;
     const isCompound = body.isCompound !== undefined ? Boolean(body.isCompound) : undefined;
+    const closeOnProfit = body.closeOnProfit !== undefined ? Boolean(body.closeOnProfit) : undefined;
+    const minProfitUsd = body.minProfitUsd !== undefined ? parseFloat(body.minProfitUsd) : undefined;
+    const maxHoldSeconds = body.maxHoldSeconds !== undefined ? parseInt(body.maxHoldSeconds) : undefined;
 
     const state = await startFundingBot({
       notionalUsd,
@@ -23,7 +26,10 @@ export async function POST(request: Request) {
       isReverse,
       rrRatio,
       baseSlPercent,
-      isCompound
+      isCompound,
+      closeOnProfit,
+      minProfitUsd,
+      maxHoldSeconds
     });
 
     return NextResponse.json({

@@ -6,6 +6,66 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 
 ## 📅 Riwayat Perubahan & Fitur (Changelog)
 
+### [2026-09-28] - Fitur Auto-Stop Timer Operasional (Jam) pada Bot Compound Future
+
+#### 1. Deskripsi & Mekanisme Kerja Auto-Stop Timer
+- **Latar Belakang:** Pada strategi Multi-Coin Compound Future (akumulasi posisi BUY/Long dengan reinvesting profit terus-menerus), trader kerap ingin membatasi durasi operasional bot (misal hanya beroperasi selama 8 jam jam kerja atau sesi tertentu).
+- **Mekanisme Auto-Stop Jam:**
+  1. **Konfigurasi Durasi Operasional:** Trader dapat menentukan berapa jam bot akan beroperasi sebelum otomatis berhenti (misal `1 Jam`, `2 Jam`, `4 Jam`, `8 Jam (Rekomendasi)`, `12 Jam`, `24 Jam`, atau input jam bebas). Pilihan `Nonstop (0)` tersedia untuk mode tanpa batas waktu.
+  2. **Penghitungan Deadline Real-Time:** Saat bot koin di-**START**, sistem menghitung waktu tenggat (`auto_stop_at = NOW() + INTERVAL X HOUR`) dan menyimpannya di database (`compound_bot_config`).
+  3. **Multi-Cycle Continuity:** Timer ini berlaku menyeluruh untuk siklus koin tersebut. Jika koin berhasil mencapai target profit (+1%) dan melakukan re-open ter-compound ke Cycle #2 atau Cycle #3 di dalam rentang waktu tersebut, timer tetap berjalan menghitung total durasi dari awal start.
+  4. **Auto-Stop & Close Posisi Terbuka:** Tepat saat batas waktu X jam tercapai (`now >= auto_stop_at`), engine bot (`tickCompoundBot`) secara otomatis:
+     - Menghentikan bot koin (`is_active = false`).
+     - Mengirimkan order MARKET CLOSE (`reduceOnly: true`) ke Binance Futures untuk menutup posisi koin yang sedang terbuka saat itu guna mengamankan saldo trader.
+     - Mencatat alasan penghentian di log konsol & database: `⏰ [SYMBOL] Waktu operasional X jam telah habis! Bot otomatis dihentikan dan posisi aktif ditutup.`.
+
+#### 2. Antarmuka UI/UX & Live Countdown (`/crypto/compound-bot`)
+- **Modal Tambah & Pengaturan Koin:**
+  - Penambahan bagian **⏱️ Durasi Operasional Bot (Auto-Stop)** dengan preset chips cepat `Nonstop`, `1 Jam`, `2 Jam`, `4 Jam`, `8 Jam ★`, `12 Jam`, `24 Jam`, serta input bebas jam kustom.
+  - Dukungan tombol **Pengaturan Koin (`Settings2`)** langsung pada kartu koin untuk mengubah parameter (notional, leverage, target %, stop loss, dan timer) tanpa harus menghapus koin.
+- **Kartu Koin Live (Active Coin Card):**
+  - **Badge Countdown Real-Time:** Menampilkan hitung mundur waktu tersisa detik-demi-detik: `⏱️ 07:45:12 (8j)` dengan ikon berputar halus.
+  - **Badge Timer Siaga:** Pada koin berstatus STOPPED, menampilkan informasi timer yang telah disetel (contoh `Timer: 8j`) yang siap aktif saat tombol START ditekan.
+- **Daemon Background 24/7 (`cron_compound_bot.js`):**
+  - Konsol background mendeteksi dan menampilkan banner notifikasi khusus `⏰ [SYMBOL] AUTO-STOP TIMER EXPIRED!` saat durasi operasional tercapai.
+
+---
+
+### [2026-09-28] - Fitur Auto-Close Total Profit (PnL + Fee) pada Bot Funding Farming
+
+#### 1. Deskripsi & Mekanisme Kerja Auto-Close Total Profit
+- **Latar Belakang:** Pada strategi Funding Rate Arbitrage (contohnya membuka posisi SHORT pada koin dengan funding rate positif tinggi sesaat sebelum jam settlement), trader menerima pembayaran funding fee dari bursa. Namun, jika harga pasar sedikit berfluktuasi melawan posisi sesaat setelah payout, menutup posisi tepat di detik ke-10 (*Fee Lock biasa*) berisiko mengunci kerugian harga yang melebihi pendapatan fee.
+- **Mekanisme Auto-Close Total Profit:**
+  1. **Pemastian Pembayaran Fee (*Settlement Verification*):** Bot memastikan waktu settlement telah lewat (`now >= targetFundingTime` atau `hasPayoutPassed: true`), sehingga hak pembayaran funding fee dari bursa telah pasti diperoleh.
+  2. **Kalkulasi Total Profit Real-Time:**
+     $$\text{Total Profit} = \text{Floating Unrealized PnL} + \text{Estimated / Received Funding Fee}$$
+  3. **Auto-Close Instan:** Begitu total profit bernilai positif atau melampaui ambang batas minimum keuntungan yang ditentukan ($\text{Total Profit} \ge \text{Target Min Profit USD}$, default $\ge \$0.00$ atau *break even* plus profit), bot seketika mengirimkan order MARKET CLOSE (`reduceOnly: true`) ke Binance untuk menutup posisi dan mengamankan keuntungan bersih.
+  4. **Proteksi Ganda (Risk Mitigation):**
+     - **Emergency Stop Loss (% ROE):** Jika pergerakan harga berlawanan arah terlalu tajam sebelum profit tercapai (contoh -1.5% ROE), bot otomatis melakukan cut-loss darurat (`EMERGENCY_SL`).
+     - **Max Hold Timeout (Detik):** Batas waktu maksimal bot menahan posisi untuk menunggu kondisi profit (default 300 detik / 5 menit). Jika batas waktu habis, posisi ditutup otomatis (`TIMEOUT_CLOSE`) guna mencegah dana tertahan berlebihan.
+
+#### 2. Konfigurasi Fleksibel & Antarmuka UI/UX (`/crypto/funding-farming`)
+- **Pilihan Exit Strategy di Modal Pengaturan:**
+  - `⚡ Total Profit (PnL + Fee)`: Mode baru khusus yang menahan posisi pasca-settlement hingga total profit tercapai.
+  - `⏳ Kunci Fee (+10s)`: Mode standar menutup posisi 10 detik pasca-settlement, namun kini dapat dipadukan dengan toggle `Auto-Close Total Profit` untuk exit lebih awal jika sudah untung.
+  - `🎯 Target RR (1:1, 1:2, 1:3)`: Mode bracket Algo TP/SL konservatif.
+- **Parameter Kustom Total Profit:**
+  - **Target Min Profit (USD):** Preset chips `$0.00 (Break Even)`, `+$0.20`, `+$0.50`, `+$1.00`, `+$2.00` atau input nominal bebas.
+  - **Emergency Stop Loss (%):** Proteksi batas kerugian maksimal.
+  - **Max Hold Timeout (Detik):** Preset chips `60s (1m)`, `120s (2m)`, `300s (5m)`, `600s (10m)`.
+- **Live Active Holding Card:**
+  - Menampilkan kalkulasi live 3 komponen: **PnL Harga**, **Est. Funding Fee**, dan **Total Net (PnL + Fee)** dengan warna dinamis (hijau profit / merah rugi).
+  - Badge indikator status real-time: `SIAP AUTO-CLOSE (Menunggu Target)` atau `⚡ KONDISI PROFIT TERCAPAI (Mengirim Order Close...)`.
+- **Riwayat Trade & Export Excel:**
+  - Kolom alasan exit lengkap dengan badge visual: `🎯 Total Profit`, `🎯 Take Profit`, `🛑 Stop Loss`, `⏱️ Timeout`, `⏳ Fee Lock`.
+  - Export laporan Excel menyertakan rincian alasan penutupan posisi.
+
+#### 3. Sinkronisasi Background Daemon (`cron_funding_bot.js`)
+- Terminal background 24/7 memantau live price, float PnL, estimasi fee, dan total `PnL + Fee` secara berkelanjutan setiap detik.
+- Log eksekusi transparan mencatat saat trigger `[TOTAL PROFIT AUTO-CLOSE (PnL + Fee)]` terpenuhi beserta ringkasan realized PnL dan pembaruan modal compound berikutnya.
+
+---
+
 ### [2026-09-27] - Bot Top Gainer Scalper (Binance Futures 20-Second Flash Scalp)
 
 #### 1. Menu Baru: Bot Top Gainer Scalper (`/crypto/top-gainer`)

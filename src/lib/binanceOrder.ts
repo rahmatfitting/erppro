@@ -1142,7 +1142,7 @@ export async function executeFundingOrderWithRR(params: {
   side: 'BUY' | 'SELL';
   notionalUsd: number;
   leverage: number;
-  rrRatio?: '1:1' | '1:2' | '1:3' | 'NONE';
+  rrRatio?: '1:1' | '1:2' | '1:3' | 'NONE' | 'PROFIT';
   baseSlPercent?: number;
   isReverse?: boolean;
   referencePrice?: number;
@@ -1263,7 +1263,7 @@ export async function executeFundingOrderWithRR(params: {
   let tpRes: any = null;
 
   // 6. If RR option is selected (1:1, 1:2, 1:3), place Stop Loss and Take Profit algo orders
-  if (rrRatio && rrRatio !== 'NONE') {
+  if (rrRatio === '1:1' || rrRatio === '1:2' || rrRatio === '1:3') {
     const closeSide = side === 'BUY' ? 'SELL' : 'BUY';
     const mult = rrRatio === '1:1' ? 1 : rrRatio === '1:2' ? 2 : 3;
     const slRatio = (baseSlPercent > 0 ? baseSlPercent : 1.5) / 100;

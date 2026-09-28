@@ -22,9 +22,16 @@ export interface FundingBotConfig {
   close_seconds_after: number;
   min_funding_rate: number;
   is_reverse: boolean;
-  rr_ratio: 'NONE' | '1:1' | '1:2' | '1:3';
+  rr_ratio: 'NONE' | '1:1' | '1:2' | '1:3' | 'PROFIT';
   base_sl_percent: number;
   is_compound?: boolean;
+  close_on_profit?: boolean;
+  min_profit_usd?: number;
+  max_hold_seconds?: number;
+  estimated_funding_fee?: number;
+  live_total_profit?: number;
+  is_in_total_profit?: boolean;
+  has_payout_passed?: boolean;
   current_symbol: string | null;
   current_side: 'SHORT' | 'LONG' | null;
   current_state: 'IDLE' | 'SCANNING' | 'WAITING_ENTRY' | 'HOLDING_FOR_FUNDING' | 'CLOSING';
@@ -123,6 +130,9 @@ export async function ensureFundingBotTables() {
       tp_price DECIMAL(18, 8) DEFAULT NULL,
       sl_price DECIMAL(18, 8) DEFAULT NULL,
       is_compound BOOLEAN DEFAULT false,
+      close_on_profit BOOLEAN DEFAULT false,
+      min_profit_usd DECIMAL(12, 4) DEFAULT 0.0000,
+      max_hold_seconds INT DEFAULT 300,
       last_check_at DATETIME DEFAULT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -182,6 +192,15 @@ export async function ensureFundingBotTables() {
   } catch {}
   try {
     await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN is_compound BOOLEAN DEFAULT false`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN close_on_profit BOOLEAN DEFAULT false`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN min_profit_usd DECIMAL(12, 4) DEFAULT 0.0000`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE funding_bot_config ADD COLUMN max_hold_seconds INT DEFAULT 300`);
   } catch {}
   try {
     await executeQuery(`ALTER TABLE funding_bot_history ADD COLUMN exit_reason VARCHAR(30) DEFAULT 'TIME_EXIT'`);
@@ -326,9 +345,12 @@ export async function getFundingBotState() {
     close_seconds_after: parseInt(configRow.close_seconds_after) || 10,
     min_funding_rate: parseFloat(configRow.min_funding_rate) || 0.0001,
     is_reverse: Boolean(configRow.is_reverse),
-    rr_ratio: (configRow.rr_ratio || 'NONE') as 'NONE' | '1:1' | '1:2' | '1:3',
+    rr_ratio: (configRow.rr_ratio || 'NONE') as 'NONE' | '1:1' | '1:2' | '1:3' | 'PROFIT',
     base_sl_percent: parseFloat(configRow.base_sl_percent) || 1.5,
     is_compound: configRow.is_compound === 1 || configRow.is_compound === true || configRow.is_compound === '1' || String(configRow.is_compound) === 'true',
+    close_on_profit: Boolean(configRow.close_on_profit) || configRow.rr_ratio === 'PROFIT',
+    min_profit_usd: parseFloat(configRow.min_profit_usd) || 0,
+    max_hold_seconds: parseInt(configRow.max_hold_seconds) || 300,
     tp_price: configRow.tp_price ? parseFloat(configRow.tp_price) : null,
     sl_price: configRow.sl_price ? parseFloat(configRow.sl_price) : null,
     current_symbol: configRow.current_symbol || null,
@@ -365,6 +387,19 @@ export async function getFundingBotState() {
     } catch (posErr) {
       console.warn("fetchRealPosition error in getFundingBotState:", posErr);
     }
+
+    const targetFundingTime = parseInt(configRow.target_next_funding_time) || 0;
+    const hasPayoutPassed = Date.now() >= targetFundingTime;
+    const rate = parseFloat(configRow.target_funding_rate) || 0;
+    const estFee = (parseFloat(configRow.notional_usd) || 100) * Math.abs(rate);
+    const unRealizedPnl = realPosition ? realPosition.unRealizedProfit : 0;
+    const liveTotalProfit = unRealizedPnl + estFee;
+    const minProfitUsd = parseFloat(configRow.min_profit_usd) || 0;
+
+    config.estimated_funding_fee = estFee;
+    config.live_total_profit = liveTotalProfit;
+    config.is_in_total_profit = liveTotalProfit >= minProfitUsd;
+    config.has_payout_passed = hasPayoutPassed;
   }
   config.real_position = realPosition;
 
@@ -452,9 +487,12 @@ export async function startFundingBot(params?: {
   closeSecondsAfter?: number;
   minFundingRate?: number;
   isReverse?: boolean;
-  rrRatio?: 'NONE' | '1:1' | '1:2' | '1:3';
+  rrRatio?: 'NONE' | '1:1' | '1:2' | '1:3' | 'PROFIT';
   baseSlPercent?: number;
   isCompound?: boolean;
+  closeOnProfit?: boolean;
+  minProfitUsd?: number;
+  maxHoldSeconds?: number;
 }) {
   await ensureFundingBotTables();
 
@@ -474,6 +512,11 @@ export async function startFundingBot(params?: {
   const isCompound = params?.isCompound !== undefined 
     ? Boolean(params.isCompound) 
     : (current[0].is_compound === 1 || current[0].is_compound === true || current[0].is_compound === '1' || String(current[0].is_compound) === 'true');
+  const closeOnProfit = params?.closeOnProfit !== undefined
+    ? Boolean(params.closeOnProfit)
+    : (Boolean(current[0].close_on_profit) || rrRatio === 'PROFIT');
+  const minProfitUsd = params?.minProfitUsd !== undefined ? parseFloat(params.minProfitUsd.toString()) : (parseFloat(current[0].min_profit_usd) || 0);
+  const maxHoldSeconds = params?.maxHoldSeconds !== undefined ? parseInt(params.maxHoldSeconds.toString()) : (parseInt(current[0].max_hold_seconds) || 300);
 
   // Determine state: if already in position, maintain HOLDING; otherwise SCANNING
   const nextState = current[0].current_state === 'HOLDING_FOR_FUNDING' ? 'HOLDING_FOR_FUNDING' : 'SCANNING';
@@ -490,18 +533,22 @@ export async function startFundingBot(params?: {
         rr_ratio = ?,
         base_sl_percent = ?,
         is_compound = ?,
+        close_on_profit = ?,
+        min_profit_usd = ?,
+        max_hold_seconds = ?,
         current_state = ?,
         last_check_at = NOW()
     WHERE id = 1
-  `, [notional, leverage, openSeconds, closeSeconds, minRate, isReverse, rrRatio, baseSlPercent, isCompound, nextState]);
+  `, [notional, leverage, openSeconds, closeSeconds, minRate, isReverse, rrRatio, baseSlPercent, isCompound, closeOnProfit, minProfitUsd, maxHoldSeconds, nextState]);
 
   const reverseText = isReverse ? ' | Mode: REVERSE' : ' | Mode: Normal';
-  const rrText = rrRatio !== 'NONE' ? ` | RR: ${rrRatio}` : '';
+  const rrText = rrRatio === 'PROFIT' ? ' | Target: Total Profit (PnL+Fee)' : (rrRatio !== 'NONE' ? ` | RR: ${rrRatio}` : '');
+  const profitText = closeOnProfit ? ` | Close Saat Profit: IYA (≥ $${minProfitUsd.toFixed(2)})` : '';
   const compoundText = isCompound ? ' | Compound: IYA' : ' | Compound: TIDAK';
 
   await addFundingBotLog(
     'START',
-    `🟢 Bot Funding Farming DIAKTIFKAN! Notional: $${notional} USD | Leverage: ${leverage}x | Auto-Open: < ${openSeconds}s | Auto-Close: +${closeSeconds}s${reverseText}${rrText}${compoundText}`,
+    `🟢 Bot Funding Farming DIAKTIFKAN! Notional: $${notional} USD | Leverage: ${leverage}x | Auto-Open: < ${openSeconds}s | Auto-Close: +${closeSeconds}s${reverseText}${rrText}${profitText}${compoundText}`,
     'SUCCESS'
   );
 
@@ -609,11 +656,20 @@ export async function saveFundingBotConfig(params: {
   closeSecondsAfter: number;
   minFundingRate: number;
   isReverse?: boolean;
-  rrRatio?: 'NONE' | '1:1' | '1:2' | '1:3';
+  rrRatio?: 'NONE' | '1:1' | '1:2' | '1:3' | 'PROFIT';
   baseSlPercent?: number;
   isCompound?: boolean;
+  closeOnProfit?: boolean;
+  minProfitUsd?: number;
+  maxHoldSeconds?: number;
 }) {
   await ensureFundingBotTables();
+
+  const closeOnProfit = params.closeOnProfit !== undefined
+    ? Boolean(params.closeOnProfit)
+    : (params.rrRatio === 'PROFIT');
+  const minProfitUsd = params.minProfitUsd !== undefined ? parseFloat(params.minProfitUsd.toString()) : 0;
+  const maxHoldSeconds = params.maxHoldSeconds !== undefined ? parseInt(params.maxHoldSeconds.toString()) : 300;
 
   await executeQuery(`
     UPDATE funding_bot_config
@@ -626,6 +682,9 @@ export async function saveFundingBotConfig(params: {
         rr_ratio = ?,
         base_sl_percent = ?,
         is_compound = ?,
+        close_on_profit = ?,
+        min_profit_usd = ?,
+        max_hold_seconds = ?,
         last_check_at = NOW()
     WHERE id = 1
   `, [
@@ -637,16 +696,20 @@ export async function saveFundingBotConfig(params: {
     Boolean(params.isReverse),
     params.rrRatio || 'NONE',
     params.baseSlPercent || 1.5,
-    Boolean(params.isCompound)
+    Boolean(params.isCompound),
+    closeOnProfit,
+    minProfitUsd,
+    maxHoldSeconds
   ]);
 
   const reverseText = params.isReverse ? ' | Mode: REVERSE' : ' | Mode: Normal';
-  const rrText = params.rrRatio && params.rrRatio !== 'NONE' ? ` | RR: ${params.rrRatio}` : '';
+  const rrText = params.rrRatio === 'PROFIT' ? ' | Target: Total Profit (PnL+Fee)' : (params.rrRatio && params.rrRatio !== 'NONE' ? ` | RR: ${params.rrRatio}` : '');
+  const profitText = closeOnProfit ? ` | Close Saat Profit: IYA (≥ $${minProfitUsd.toFixed(2)})` : '';
   const compoundText = params.isCompound ? ' | Compound: IYA' : ' | Compound: TIDAK';
 
   await addFundingBotLog(
     'CONFIG',
-    `⚙️ Pengaturan bot diperbarui: Notional $${params.notionalUsd} USD | Leverage ${params.leverage}x | Entry < ${params.openSecondsBefore}s | Exit +${params.closeSecondsAfter}s${reverseText}${rrText}${compoundText}`,
+    `⚙️ Pengaturan bot diperbarui: Notional $${params.notionalUsd} USD | Leverage ${params.leverage}x | Entry < ${params.openSecondsBefore}s | Exit +${params.closeSecondsAfter}s${reverseText}${rrText}${profitText}${compoundText}`,
     'INFO'
   );
 
@@ -866,25 +929,71 @@ export async function tickFundingBot() {
       }
 
       // ─────────────────────────────────────────────────────────────
-      // PILIHAN 2 - BRANCH B: FEE LOCK MODE (Close di +10s setelah payout)
+      // PILIHAN 2 - BRANCH B: FEE LOCK & TOTAL PROFIT (PnL + Fee) MODE
       // ─────────────────────────────────────────────────────────────
-      if (now >= closeThresholdTime) {
-        // TIME TO CLOSE POSITION!
+      let livePos: BinanceRealPosition | null = null;
+      try {
+        livePos = await fetchRealPosition(symbol);
+      } catch (posErr) {
+        console.warn(`fetchRealPosition warning for ${symbol}:`, posErr);
+      }
+
+      const hasPayoutPassed = now >= targetFundingTime;
+      const rate = parseFloat(config.target_funding_rate) || 0;
+      const expectedFundingFee = notionalUsd * Math.abs(rate);
+      const liveUnrealizedPnl = livePos ? livePos.unRealizedProfit : 0;
+      const liveRoePercent = livePos ? livePos.roePercent : 0;
+      const liveTotalProfit = liveUnrealizedPnl + (hasPayoutPassed ? expectedFundingFee : 0);
+
+      const isCloseOnProfit = Boolean(config.close_on_profit) || config.rr_ratio === 'PROFIT';
+      const minProfitUsd = parseFloat(config.min_profit_usd) || 0;
+      const maxHoldSeconds = parseInt(config.max_hold_seconds) || 300;
+      const baseSlPercent = parseFloat(config.base_sl_percent) || 1.5;
+
+      // 1. Total Profit Auto-Close: Setelah payout fee, jika PnL + Fee >= minProfitUsd
+      const isTotalProfitAchieved = isCloseOnProfit && hasPayoutPassed && (liveTotalProfit >= minProfitUsd);
+
+      // 2. Emergency Stop Loss: Jika kerugian melebihi batas baseSlPercent
+      const isEmergencySlHit = isCloseOnProfit && (liveRoePercent <= -baseSlPercent);
+
+      // 3. Max Hold Timeout: Jika waktu menahan melebihi batas maxHoldSeconds setelah payout
+      const isTimeoutHit = isCloseOnProfit && hasPayoutPassed && maxHoldSeconds > 0 && (now >= targetFundingTime + (maxHoldSeconds * 1000));
+
+      // 4. Standard Fee Lock Time Exit: Jika mode Fee Lock standard (+10s) dan bukan mode tahan profit
+      const isTimeExitHit = (config.rr_ratio !== 'PROFIT') && (now >= closeThresholdTime);
+
+      if (isTotalProfitAchieved || isEmergencySlHit || isTimeoutHit || isTimeExitHit) {
+        let exitReason: 'TOTAL_PROFIT_CLOSE' | 'SL_HIT' | 'TIMEOUT_EXIT' | 'TIME_EXIT' = 'TIME_EXIT';
+        let logCategory = 'CLOSE';
+        let logMessage = '';
+
+        if (isTotalProfitAchieved) {
+          exitReason = 'TOTAL_PROFIT_CLOSE';
+          logCategory = 'CLOSE';
+          logMessage = `🎯 Auto-Close Total Profit Terpicu! Hasil PnL ($${liveUnrealizedPnl.toFixed(4)}) + Fee (+$${expectedFundingFee.toFixed(4)}) = Total Profit +$${liveTotalProfit.toFixed(4)} USD (Target ≥ $${minProfitUsd.toFixed(2)}). Menutup posisi ${symbol}...`;
+        } else if (isEmergencySlHit) {
+          exitReason = 'SL_HIT';
+          logCategory = 'STOP';
+          logMessage = `🛑 Emergency Stop Loss terpicu! ROE (${liveRoePercent.toFixed(2)}%) menyentuh batasan -${baseSlPercent}%. Menutup posisi ${symbol} untuk proteksi modal...`;
+        } else if (isTimeoutHit) {
+          exitReason = 'TIMEOUT_EXIT';
+          logCategory = 'WARN';
+          logMessage = `⏱️ Maksimal waktu hold (${maxHoldSeconds}s) tercapai. Menutup posisi ${symbol}...`;
+        } else {
+          exitReason = 'TIME_EXIT';
+          logCategory = 'CLOSE';
+          logMessage = `⏳ Periode settlement funding telah selesai (+${closeSecondsAfter}s)! Menutup posisi ${symbol} ${side} via Market Order...`;
+        }
+
         await executeQuery(`
           UPDATE funding_bot_config
           SET current_state = 'CLOSING', last_check_at = NOW()
           WHERE id = 1
         `);
 
-        await addFundingBotLog(
-          'CLOSE',
-          `⏳ Periode settlement funding telah selesai! Menutup posisi ${symbol} ${side} via Market Order...`,
-          'INFO'
-        );
+        await addFundingBotLog(logCategory, logMessage, isTotalProfitAchieved ? 'SUCCESS' : 'INFO');
 
         try {
-          // If we opened SHORT (sold), we close with BUY.
-          // If we opened LONG (bought), we close with SELL.
           const closeSide = side === 'SHORT' ? 'BUY' : 'SELL';
 
           const closeRes = await executeFundingCloseOrder({
@@ -898,7 +1007,7 @@ export async function tickFundingBot() {
           let actualFundingFee = 0;
           try {
             await new Promise(r => setTimeout(r, 600)); // brief pause for ledger sync
-            const incomeRes = await fetchFundingIncome(symbol, targetFundingTime);
+            const incomeRes = await fetchFundingIncome(symbol, targetFundingTime - 60000);
             if (incomeRes && incomeRes.totalFundingFee !== 0) {
               actualFundingFee = incomeRes.totalFundingFee;
             }
@@ -907,9 +1016,8 @@ export async function tickFundingBot() {
           }
 
           // If Binance hasn't posted ledger yet, calculate expected theoretical funding fee
-          if (actualFundingFee === 0) {
-            const rate = parseFloat(config.target_funding_rate) || 0;
-            actualFundingFee = notionalUsd * Math.abs(rate);
+          if (actualFundingFee === 0 && hasPayoutPassed) {
+            actualFundingFee = expectedFundingFee;
           }
 
           const tradeRealizedPnl = closeRes.realizedPnl;
@@ -923,7 +1031,7 @@ export async function tickFundingBot() {
             INSERT INTO funding_bot_history 
               (round_number, symbol, side, notional_usd, leverage, funding_rate, entry_price, exit_price, quantity, funding_fee_usd, trade_pnl_usd, commission_usd, net_pnl_usd, net_pnl_percent, status, exit_reason, binance_open_order_id, binance_close_order_id, opened_at, closed_at)
             VALUES 
-              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CLOSED', 'TIME_EXIT', ?, ?, ?, NOW())
+              (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'CLOSED', ?, ?, ?, ?, NOW())
           `, [
             roundNum,
             symbol,
@@ -939,6 +1047,7 @@ export async function tickFundingBot() {
             commission,
             netPnl,
             netPnlPercent,
+            exitReason,
             config.binance_order_id || null,
             closeRes.orderId,
             config.last_check_at || new Date()
@@ -982,9 +1091,17 @@ export async function tickFundingBot() {
           `, [nextNotionalUsd, newTotalProfit, newTotalFee, newTotalTrade]);
 
           const pnlSign = netPnl >= 0 ? '+' : '';
+          const reasonLabel = exitReason === 'TOTAL_PROFIT_CLOSE'
+            ? '🎯 TOTAL PROFIT (PnL + Fee)'
+            : exitReason === 'SL_HIT'
+            ? '🛑 STOP LOSS DARURAT'
+            : exitReason === 'TIMEOUT_EXIT'
+            ? '⏱️ TIMEOUT MAKSIMAL'
+            : '⏳ WAKTU (+10s)';
+
           await addFundingBotLog(
             'CYCLE_COMPLETE',
-            `🎉 Round #${roundNum} Selesai! ${symbol} Exit @ $${closeRes.exitPrice} | Funding Fee: +$${actualFundingFee.toFixed(4)} | Price PnL: $${tradeRealizedPnl.toFixed(4)} | Net: ${pnlSign}$${netPnl.toFixed(4)} (${pnlSign}${netPnlPercent.toFixed(2)}%)`,
+            `🎉 Round #${roundNum} Selesai via [${reasonLabel}]! ${symbol} Exit @ $${closeRes.exitPrice} | Funding Fee: +$${actualFundingFee.toFixed(4)} | PnL Harga: $${tradeRealizedPnl.toFixed(4)} | Total Net: ${pnlSign}$${netPnl.toFixed(4)} (${pnlSign}${netPnlPercent.toFixed(2)}%)`,
             netPnl >= 0 ? 'SUCCESS' : 'WARN'
           );
 
@@ -996,7 +1113,7 @@ export async function tickFundingBot() {
             fundingFee: actualFundingFee,
             tradePnl: tradeRealizedPnl,
             netPnl,
-            exitReason: 'TIME_EXIT'
+            exitReason
           };
         } catch (closeError: any) {
           console.error("Error closing position during funding settlement:", closeError);
@@ -1008,12 +1125,11 @@ export async function tickFundingBot() {
           return { status: 'CLOSE_FAILED', error: closeError.message };
         }
       } else {
-        // Still holding position until settlement passes
+        // Still holding position until condition or settlement passes
         const secondsLeftToClose = Math.max(0, Math.floor((closeThresholdTime - now) / 1000));
-        let livePos: BinanceRealPosition | null = null;
-        try {
-          livePos = await fetchRealPosition(symbol);
-        } catch {}
+        const secondsLeftToTimeout = maxHoldSeconds > 0 
+          ? Math.max(0, Math.floor((targetFundingTime + (maxHoldSeconds * 1000) - now) / 1000)) 
+          : 0;
 
         return {
           status: 'HOLDING',
@@ -1021,9 +1137,17 @@ export async function tickFundingBot() {
           side,
           entryPrice,
           markPrice: livePos ? livePos.markPrice : entryPrice,
-          unrealizedPnl: livePos ? livePos.unRealizedProfit : 0,
-          roePercent: livePos ? livePos.roePercent : 0,
-          secondsLeftToClose
+          unrealizedPnl: liveUnrealizedPnl,
+          roePercent: liveRoePercent,
+          fundingFee: expectedFundingFee,
+          totalProfit: liveTotalProfit,
+          hasPayoutPassed,
+          isTotalProfitMode: isCloseOnProfit,
+          minProfitUsd,
+          secondsLeftToClose,
+          secondsLeftToTimeout,
+          isRrMode: false,
+          rrRatio: config.rr_ratio
         };
       }
     }

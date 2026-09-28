@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent } = body;
+    const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours } = body;
 
     if (!symbol) {
       return NextResponse.json({ success: false, error: 'Pair simbol wajib diisi' }, { status: 400 });
@@ -28,18 +28,23 @@ export async function POST(req: NextRequest) {
     }
 
     const slPct = stopLossPercent && parseFloat(stopLossPercent) > 0 ? parseFloat(stopLossPercent) : null;
+    const stopHours = autoStopHours !== undefined && autoStopHours !== null && autoStopHours !== ''
+      ? parseFloat(autoStopHours)
+      : null;
 
     const result = await saveCoinConfig({
       symbol: symbol.toUpperCase().trim(),
       notionalUsd: notional,
       leverage: lev,
       compoundPercent: compPct,
-      stopLossPercent: slPct
+      stopLossPercent: slPct,
+      autoStopHours: stopHours && stopHours > 0 ? stopHours : null
     });
 
+    const timerMsg = stopHours && stopHours > 0 ? ` (Auto-Stop: ${stopHours} Jam)` : '';
     return NextResponse.json({
       success: true,
-      message: `Konfigurasi koin ${symbol} berhasil disimpan ke daftar.`,
+      message: `Konfigurasi koin ${symbol} berhasil disimpan ke daftar${timerMsg}.`,
       data: result
     });
   } catch (error: any) {

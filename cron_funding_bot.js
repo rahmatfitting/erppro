@@ -41,11 +41,16 @@ async function runTick() {
 
       if (tickResult?.status === 'HOLDING') {
         const pnlSign = (tickResult.unrealizedPnl || 0) >= 0 ? '+' : '';
-        const exitNote = tickResult.isRrMode 
+        const totalProfitSign = (tickResult.totalProfit || 0) >= 0 ? '+' : '';
+        const feeText = `Fee: +$${(tickResult.fundingFee || 0).toFixed(4)}`;
+        const totalText = `Total (PnL+Fee): ${totalProfitSign}$${(tickResult.totalProfit || 0).toFixed(4)}`;
+        const exitNote = tickResult.isTotalProfitMode 
+          ? `Target: Total Profit ≥ $${(tickResult.minProfitUsd || 0).toFixed(2)}${tickResult.secondsLeftToTimeout > 0 ? ` (Timeout: ${tickResult.secondsLeftToTimeout}s)` : ''}`
+          : tickResult.isRrMode 
           ? `Target: RR ${tickResult.rrRatio} (SL: $${tickResult.slPrice} / TP: $${tickResult.tpPrice})`
           : `Auto-Close in: ${tickResult.secondsLeftToClose}s`;
         console.log(
-          `[${now}] 🟢 [HOLDING ${tickResult.symbol} ${tickResult.side}] Live: $${tickResult.markPrice?.toLocaleString()} | Entry: $${tickResult.entryPrice} | Float PnL: ${pnlSign}$${(tickResult.unrealizedPnl || 0).toFixed(4)} | ${exitNote}`
+          `[${now}] 🟢 [HOLDING ${tickResult.symbol} ${tickResult.side}] Live: $${tickResult.markPrice?.toLocaleString()} | Float PnL: ${pnlSign}$${(tickResult.unrealizedPnl || 0).toFixed(4)} | ${feeText} | ${totalText} | ${exitNote}`
         );
       } else if (tickResult?.status === 'ORDER_OPENED') {
         console.log('\n====================================================');
@@ -55,7 +60,15 @@ async function runTick() {
         console.log(`🆔 Binance Order ID: ${tickResult.orderId}`);
         console.log('====================================================\n');
       } else if (tickResult?.status === 'ROUND_COMPLETED') {
-        const reasonTag = tickResult.exitReason ? `[${tickResult.exitReason}]` : '';
+        const reasonTag = tickResult.exitReason === 'TOTAL_PROFIT_CLOSE'
+          ? '🎯 [TOTAL PROFIT AUTO-CLOSE (PnL + Fee)]'
+          : tickResult.exitReason === 'SL_HIT'
+          ? '🛑 [STOP LOSS DARURAT]'
+          : tickResult.exitReason === 'TIMEOUT_EXIT'
+          ? '⏱️ [TIMEOUT MAKSIMAL]'
+          : tickResult.exitReason
+          ? `[${tickResult.exitReason}]`
+          : '';
         console.log('\n====================================================');
         console.log(`[${now}] 🎉 ROUND #${tickResult.roundNumber} COMPLETED! ${reasonTag}`);
         console.log(`🪙 Koin: ${tickResult.symbol} | Exit: $${tickResult.exitPrice}`);

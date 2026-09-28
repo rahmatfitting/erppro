@@ -49,6 +49,12 @@ async function runTick() {
             console.log('====================================================\n');
           } else if (coin.status === 'STOP_LOSS_HIT') {
             console.log(`\n[${now}] ⚠️ [${coin.symbol}] STOP LOSS HIT! Posisi ditutup @ $${coin.exitPrice}.\n`);
+          } else if (coin.status === 'AUTO_STOPPED_TIMER_EXPIRED') {
+            console.log('\n====================================================');
+            console.log(`[${now}] ⏰ [${coin.symbol}] AUTO-STOP TIMER EXPIRED!`);
+            console.log(`🛑 Durasi operasional ${coin.hours ? coin.hours + ' jam' : ''} telah tercapai.`);
+            console.log(`✅ Bot dihentikan dan posisi aktif telah ditutup otomatis di Binance.`);
+            console.log('====================================================\n');
           }
         }
       } else if (d.status === 'IDLE' || d.activeCount === 0) {

@@ -68,6 +68,8 @@ interface CompoundConfig {
   dca_trigger_price?: number | null;
   dca_executed?: boolean;
   dca_count?: number;
+  auto_stop_hours?: number | null;
+  auto_stop_at?: string | null;
 }
 
 interface CompoundCycle {
@@ -122,6 +124,7 @@ const POPULAR_PAIRS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "DOGEUSDT", "
 const NOTIONAL_PRESETS = [20, 50, 100, 250, 500];
 const LEVERAGE_PRESETS = [3, 5, 10, 20, 50];
 const COMPOUND_PRESETS = [0.5, 1.0, 1.5, 2.0, 3.0];
+const STOP_HOURS_PRESETS = [0, 1, 2, 4, 8, 12, 24];
 
 export default function CompoundBotPage() {
   // Global Data from Server
@@ -143,13 +146,34 @@ export default function CompoundBotPage() {
 
   // Modal: Add / Edit Coin
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isEditingExisting, setIsEditingExisting] = useState(false);
   const [formSymbol, setFormSymbol] = useState("ETHUSDT");
   const [formNotional, setFormNotional] = useState<number>(100);
   const [formLeverage, setFormLeverage] = useState<number>(20);
   const [formCompoundPct, setFormCompoundPct] = useState<number>(1.0);
   const [formEnableSL, setFormEnableSL] = useState<boolean>(false);
   const [formSLPct, setFormSLPct] = useState<number>(2.0);
+  const [formAutoStopHours, setFormAutoStopHours] = useState<number>(8); // default 8 jam, 0 = Nonstop
   const [formStartImmediately, setFormStartImmediately] = useState<boolean>(true);
+
+  // 1-Second Tick for smooth live countdown display
+  const [, setTimerTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setTimerTick((prev) => (prev + 1) % 10000), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Helper to format remaining time until auto-stop
+  const formatCountdown = (autoStopAt: string | null | undefined) => {
+    if (!autoStopAt) return null;
+    const diff = new Date(autoStopAt).getTime() - Date.now();
+    if (diff <= 0) return "WAKTU HABIS (AUTO-CLOSING)";
+    const totalSeconds = Math.floor(diff / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+  };
 
   // Validation State
   const [validating, setValidating] = useState(false);
@@ -284,6 +308,7 @@ export default function CompoundBotPage() {
     leverage: number;
     compoundPercent: number;
     stopLossPercent?: number | null;
+    autoStopHours?: number | null;
   }) => {
     const sym = coinConfig.symbol.toUpperCase().trim();
     setActionLoading((prev) => ({ ...prev, [sym]: true }));
@@ -297,7 +322,8 @@ export default function CompoundBotPage() {
           notionalUsd: coinConfig.notionalUsd,
           leverage: coinConfig.leverage,
           compoundPercent: coinConfig.compoundPercent,
-          stopLossPercent: coinConfig.stopLossPercent
+          stopLossPercent: coinConfig.stopLossPercent,
+          autoStopHours: coinConfig.autoStopHours
         })
       });
 
@@ -331,7 +357,8 @@ export default function CompoundBotPage() {
           notionalUsd: formNotional,
           leverage: formLeverage,
           compoundPercent: formCompoundPct,
-          stopLossPercent: formEnableSL ? formSLPct : null
+          stopLossPercent: formEnableSL ? formSLPct : null,
+          autoStopHours: formAutoStopHours > 0 ? formAutoStopHours : null
         })
       });
 
@@ -347,6 +374,20 @@ export default function CompoundBotPage() {
     } finally {
       setActionLoading((prev) => ({ ...prev, [sym]: false }));
     }
+  };
+
+  // Open modal to configure / edit an existing coin
+  const handleOpenEditModal = (coin: CompoundConfig) => {
+    setIsEditingExisting(true);
+    setFormSymbol(coin.symbol);
+    setFormNotional(coin.notional_usd);
+    setFormLeverage(coin.leverage);
+    setFormCompoundPct(coin.compound_percent);
+    setFormEnableSL(Boolean(coin.stop_loss_percent));
+    setFormSLPct(coin.stop_loss_percent || 2.0);
+    setFormAutoStopHours(coin.auto_stop_hours || 0);
+    handleValidatePair(coin.symbol);
+    setShowAddModal(true);
   };
 
   // 6. Stop Handler (Single or ALL)
@@ -569,8 +610,16 @@ export default function CompoundBotPage() {
           <button
             type="button"
             onClick={() => {
+              setIsEditingExisting(false);
+              setFormSymbol("ETHUSDT");
+              setFormNotional(100);
+              setFormLeverage(20);
+              setFormCompoundPct(1.0);
+              setFormEnableSL(false);
+              setFormSLPct(2.0);
+              setFormAutoStopHours(8); // Default 8 jam
               setShowAddModal(true);
-              handleValidatePair(formSymbol);
+              handleValidatePair("ETHUSDT");
             }}
             className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs md:text-sm flex items-center gap-2 shadow-lg shadow-emerald-950/40 transition-all cursor-pointer"
           >
@@ -711,8 +760,16 @@ export default function CompoundBotPage() {
             <button
               type="button"
               onClick={() => {
+                setIsEditingExisting(false);
+                setFormSymbol("ETHUSDT");
+                setFormNotional(100);
+                setFormLeverage(20);
+                setFormCompoundPct(1.0);
+                setFormEnableSL(false);
+                setFormSLPct(2.0);
+                setFormAutoStopHours(8);
                 setShowAddModal(true);
-                handleValidatePair(formSymbol);
+                handleValidatePair("ETHUSDT");
               }}
               className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-2 shadow-lg shadow-emerald-950"
             >
@@ -800,8 +857,30 @@ export default function CompoundBotPage() {
                           </div>
                         </div>
 
-                        {/* Status Badge & DCA Indicators */}
+                        {/* Status Badge, Auto-Stop Countdown & DCA Indicators */}
                         <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          {/* Live Auto-Stop Countdown Badge */}
+                          {coin.is_active && coin.auto_stop_at && (
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 border border-amber-500/60 text-amber-300 flex items-center gap-1 shadow-sm"
+                              title={`Auto-Stop: Posisi akan otomatis ditutup setelah durasi ${coin.auto_stop_hours} jam habis`}
+                            >
+                              <Clock className="w-3 h-3 text-amber-400 animate-spin-slow" />
+                              <span className="font-mono">{formatCountdown(coin.auto_stop_at)}</span>
+                              <span className="text-[9px] text-amber-400 font-normal">({coin.auto_stop_hours}j)</span>
+                            </span>
+                          )}
+
+                          {!coin.is_active && coin.auto_stop_hours && coin.auto_stop_hours > 0 ? (
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700 flex items-center gap-1"
+                              title={`Timer Auto-Stop ${coin.auto_stop_hours} jam telah dikonfigurasi dan akan aktif saat bot di-START`}
+                            >
+                              <Clock className="w-2.5 h-2.5 text-amber-400" />
+                              Timer: {coin.auto_stop_hours}j
+                            </span>
+                          ) : null}
+
                           {coin.dca_auto_enabled && coin.dca_drop_percent && (
                             <span
                               className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 border border-amber-500/60 text-amber-300 flex items-center gap-1"
@@ -832,15 +911,26 @@ export default function CompoundBotPage() {
                           </span>
 
                           {!coin.is_active && (
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteCoin(coin.symbol)}
-                              disabled={isLoading}
-                              className="p-1 rounded text-slate-500 hover:text-rose-400 transition-colors"
-                              title="Hapus Koin"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(coin)}
+                                disabled={isLoading}
+                                className="p-1 rounded text-slate-400 hover:text-emerald-400 transition-colors"
+                                title="Pengaturan & Durasi Auto-Stop Koin"
+                              >
+                                <Settings2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCoin(coin.symbol)}
+                                disabled={isLoading}
+                                className="p-1 rounded text-slate-500 hover:text-rose-400 transition-colors"
+                                title="Hapus Koin"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -968,7 +1058,8 @@ export default function CompoundBotPage() {
                               notionalUsd: coin.notional_usd,
                               leverage: coin.leverage,
                               compoundPercent: coin.compound_percent,
-                              stopLossPercent: coin.stop_loss_percent
+                              stopLossPercent: coin.stop_loss_percent,
+                              autoStopHours: coin.auto_stop_hours
                             })
                           }
                           disabled={isLoading}
@@ -1180,19 +1271,28 @@ export default function CompoundBotPage() {
         </div>
       </div>
 
-      {/* Modal: Tambah Koin Baru */}
+      {/* Modal: Tambah / Edit Koin */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                <Plus className="w-5 h-5 text-emerald-400" />
-                Tambah Koin Bot Compound Baru
+                {isEditingExisting ? (
+                  <>
+                    <Settings2 className="w-5 h-5 text-emerald-400" />
+                    Pengaturan Koin • {formSymbol}
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-5 h-5 text-emerald-400" />
+                    Tambah Koin Bot Compound Baru
+                  </>
+                )}
               </h3>
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-100"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1381,6 +1481,69 @@ export default function CompoundBotPage() {
                   </div>
                 )}
               </div>
+
+              {/* Durasi Operasional Bot (Pilihan Auto-Stop) */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                    Durasi Operasional Bot (Auto-Stop)
+                  </label>
+                  <span className="text-[10px] text-amber-400 font-semibold">
+                    {formAutoStopHours > 0 ? `Otomatis STOP Setelah ${formAutoStopHours} Jam` : "Nonstop (Manual Stop)"}
+                  </span>
+                </div>
+
+                {/* Preset Chips */}
+                <div className="grid grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setFormAutoStopHours(0)}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                      formAutoStopHours === 0
+                        ? "bg-slate-800 text-slate-100 border-slate-600 shadow-sm"
+                        : "bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    Nonstop
+                  </button>
+                  {[1, 2, 4, 8, 12, 24].map((hours) => (
+                    <button
+                      key={hours}
+                      type="button"
+                      onClick={() => setFormAutoStopHours(hours)}
+                      className={`py-1.5 px-2 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                        formAutoStopHours === hours
+                          ? "bg-amber-600/90 text-white border-amber-400 shadow-md shadow-amber-950/40"
+                          : "bg-slate-950 text-slate-300 border-slate-800 hover:border-amber-600/40"
+                      }`}
+                    >
+                      {hours === 8 ? "8 Jam ★" : `${hours} Jam`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Input */}
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={formAutoStopHours === 0 ? "" : formAutoStopHours}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setFormAutoStopHours(isNaN(val) ? 0 : val);
+                    }}
+                    placeholder="Input jam kustom (misal: 8)"
+                    className="w-full pl-3 pr-12 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500"
+                  />
+                  <span className="absolute right-3.5 top-2 text-xs text-amber-400 font-bold">Jam</span>
+                </div>
+
+                <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                  *Setelah bot di-START, bot akan beroperasi sampai <strong>{formAutoStopHours > 0 ? `${formAutoStopHours} jam` : 'X jam'}</strong> kemudian otomatis <strong>STOP</strong> dan <strong>menutup posisi pasar koin tersebut</strong> yang masih open di Binance.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-800">
@@ -1388,7 +1551,7 @@ export default function CompoundBotPage() {
                 type="button"
                 onClick={handleSaveCoinOnly}
                 disabled={!pairInfo?.isValid}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer"
               >
                 Simpan Saja (Idle)
               </button>
@@ -1400,14 +1563,15 @@ export default function CompoundBotPage() {
                     notionalUsd: formNotional,
                     leverage: formLeverage,
                     compoundPercent: formCompoundPct,
-                    stopLossPercent: formEnableSL ? formSLPct : null
+                    stopLossPercent: formEnableSL ? formSLPct : null,
+                    autoStopHours: formAutoStopHours > 0 ? formAutoStopHours : null
                   })
                 }
                 disabled={!pairInfo?.isValid}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950"
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950 cursor-pointer"
               >
                 <Play className="w-3.5 h-3.5 fill-white" />
-                Simpan & Langsung START
+                {isEditingExisting ? "Simpan & START" : "Simpan & Langsung START"}
               </button>
             </div>
           </div>

@@ -65,9 +65,12 @@ export default function FundingFarmingPage() {
   const [closeSecondsAfter, setCloseSecondsAfter] = useState<number>(10);
   const [minFundingRatePercent, setMinFundingRatePercent] = useState<number>(0.01);
   const [botIsReverse, setBotIsReverse] = useState<boolean>(false);
-  const [botRrRatio, setBotRrRatio] = useState<'NONE' | '1:1' | '1:2' | '1:3'>('NONE');
+  const [botRrRatio, setBotRrRatio] = useState<'NONE' | 'PROFIT' | '1:1' | '1:2' | '1:3'>('NONE');
   const [botBaseSlPercent, setBotBaseSlPercent] = useState<number>(1.5);
   const [botIsCompound, setBotIsCompound] = useState<boolean>(false);
+  const [botCloseOnProfit, setBotCloseOnProfit] = useState<boolean>(false);
+  const [botMinProfitUsd, setBotMinProfitUsd] = useState<number>(0);
+  const [botMaxHoldSeconds, setBotMaxHoldSeconds] = useState<number>(300);
 
   // 1-Click Quick Order Modal State
   const [quickOrderModal, setQuickOrderModal] = useState<{
@@ -118,6 +121,9 @@ export default function FundingFarmingPage() {
           setBotRrRatio(json.data.config.rr_ratio || 'NONE');
           setBotBaseSlPercent(json.data.config.base_sl_percent || 1.5);
           setBotIsCompound(Boolean(json.data.config.is_compound));
+          setBotCloseOnProfit(Boolean(json.data.config.close_on_profit) || json.data.config.rr_ratio === 'PROFIT');
+          setBotMinProfitUsd(parseFloat(json.data.config.min_profit_usd) || 0);
+          setBotMaxHoldSeconds(parseInt(json.data.config.max_hold_seconds) || 300);
         }
       }
     } catch (err) {
@@ -172,6 +178,9 @@ export default function FundingFarmingPage() {
       setBotRrRatio(botState.config.rr_ratio || 'NONE');
       setBotBaseSlPercent(botState.config.base_sl_percent || 1.5);
       setBotIsCompound(Boolean(botState.config.is_compound));
+      setBotCloseOnProfit(Boolean(botState.config.close_on_profit) || botState.config.rr_ratio === 'PROFIT');
+      setBotMinProfitUsd(parseFloat(botState.config.min_profit_usd) || 0);
+      setBotMaxHoldSeconds(parseInt(botState.config.max_hold_seconds) || 300);
     }
     setShowConfigModal(true);
   };
@@ -192,7 +201,10 @@ export default function FundingFarmingPage() {
           isReverse: botIsReverse,
           rrRatio: botRrRatio,
           baseSlPercent: botBaseSlPercent,
-          isCompound: botIsCompound
+          isCompound: botIsCompound,
+          closeOnProfit: botCloseOnProfit || botRrRatio === 'PROFIT',
+          minProfitUsd: botMinProfitUsd,
+          maxHoldSeconds: botMaxHoldSeconds
         })
       });
       const json = await res.json();
@@ -200,6 +212,7 @@ export default function FundingFarmingPage() {
         setBotState(json.data);
         if (json.data.config) {
           setBotIsCompound(Boolean(json.data.config.is_compound));
+          setBotCloseOnProfit(Boolean(json.data.config.close_on_profit) || json.data.config.rr_ratio === 'PROFIT');
         }
         setShowConfigModal(false);
       } else {
@@ -251,7 +264,10 @@ export default function FundingFarmingPage() {
           isReverse: botIsReverse,
           rrRatio: botRrRatio,
           baseSlPercent: botBaseSlPercent,
-          isCompound: botIsCompound
+          isCompound: botIsCompound,
+          closeOnProfit: botCloseOnProfit || botRrRatio === 'PROFIT',
+          minProfitUsd: botMinProfitUsd,
+          maxHoldSeconds: botMaxHoldSeconds
         })
       });
       const json = await res.json();
@@ -259,6 +275,7 @@ export default function FundingFarmingPage() {
         setBotState(json.data);
         if (json.data.config) {
           setBotIsCompound(Boolean(json.data.config.is_compound));
+          setBotCloseOnProfit(Boolean(json.data.config.close_on_profit) || json.data.config.rr_ratio === 'PROFIT');
         }
         setShowConfigModal(false);
       } else {
@@ -404,6 +421,11 @@ export default function FundingFarmingPage() {
         { header: "Net Realized PnL ($)", key: "net_pnl_usd", format: (v) => `$${parseFloat(v).toFixed(4)}` },
         { header: "Net ROE %", key: "net_pnl_percent", format: (v) => `${parseFloat(v).toFixed(2)}%` },
         { header: "Status", key: "status" },
+        { 
+          header: "Alasan Exit", 
+          key: "exit_reason", 
+          format: (v) => v === 'TOTAL_PROFIT_CLOSE' ? 'Total Profit (PnL+Fee)' : v === 'TP_HIT' ? 'Take Profit' : v === 'SL_HIT' ? 'Stop Loss' : v === 'TIMEOUT_EXIT' ? 'Timeout' : v === 'TIME_EXIT' ? 'Fee Lock (+10s)' : (v || '-') 
+        },
         { header: "Waktu Open", key: "opened_at", format: (v) => new Date(v).toLocaleString('id-ID') },
         { header: "Waktu Selesai", key: "closed_at", format: (v) => v ? new Date(v).toLocaleString('id-ID') : '-' },
       ],
@@ -590,6 +612,11 @@ export default function FundingFarmingPage() {
                   <TrendingUp className="h-3 w-3" /> Compound: IYA (+Profit)
                 </span>
               )}
+              {(botConfig?.close_on_profit || botConfig?.rr_ratio === 'PROFIT') && (
+                <span className="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center gap-1.5 shadow-sm">
+                  <Target className="h-3 w-3" /> Auto-Close: Total Profit (≥ ${(botConfig?.min_profit_usd || 0).toFixed(2)})
+                </span>
+              )}
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tighter uppercase italic drop-shadow-sm">
@@ -668,7 +695,11 @@ export default function FundingFarmingPage() {
           <div className="flex items-center gap-2 bg-slate-900/60 px-4 py-2 rounded-2xl border border-slate-800">
             <span className="text-[10px] uppercase text-slate-500 font-black">Target Exit:</span>
             <span className="text-indigo-400 font-mono font-bold">
-              {botConfig?.rr_ratio && botConfig.rr_ratio !== 'NONE' ? `RR ${botConfig.rr_ratio}` : `Fee Lock (+${botConfig?.close_seconds_after || 10}s)`}
+              {botConfig?.rr_ratio === 'PROFIT'
+                ? `⚡ Total Profit (≥ $${(botConfig?.min_profit_usd || 0).toFixed(2)})`
+                : botConfig?.rr_ratio && botConfig.rr_ratio !== 'NONE'
+                ? `RR ${botConfig.rr_ratio}`
+                : `Fee Lock (+${botConfig?.close_seconds_after || 10}s)${botConfig?.close_on_profit ? ' + Profit Exit' : ''}`}
             </span>
           </div>
           <div className="flex items-center gap-2 bg-slate-900/60 px-4 py-2 rounded-2xl border border-slate-800">
@@ -857,17 +888,70 @@ export default function FundingFarmingPage() {
                 )}
                 <div className="h-8 w-[1px] bg-slate-800"></div>
                 <div className="space-y-1">
-                  <div className="text-[10px] font-black text-slate-400 uppercase">Unrealized PnL</div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase">PnL Harga</div>
                   <div className={`text-lg font-mono font-black ${
                     (realPosition?.unRealizedProfit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
                   }`}>
                     {(realPosition?.unRealizedProfit || 0) >= 0 ? '+' : ''}${(realPosition?.unRealizedProfit || 0).toFixed(4)}
                   </div>
                 </div>
+                <div className="h-8 w-[1px] bg-slate-800"></div>
+                <div className="space-y-1">
+                  <div className="text-[10px] font-black text-slate-400 uppercase">Funding Fee</div>
+                  <div className="text-lg font-mono font-black text-emerald-400">
+                    +${(botConfig?.estimated_funding_fee || ((botConfig?.notional_usd || 100) * Math.abs(botConfig?.target_funding_rate || 0))).toFixed(4)}
+                  </div>
+                </div>
+                <div className="h-8 w-[1px] bg-slate-800"></div>
+                {(() => {
+                  const estFee = botConfig?.estimated_funding_fee || ((botConfig?.notional_usd || 100) * Math.abs(botConfig?.target_funding_rate || 0));
+                  const pricePnl = realPosition ? realPosition.unRealizedProfit : 0;
+                  const totalNet = pricePnl + estFee;
+                  const isProfit = totalNet >= (botConfig?.min_profit_usd || 0);
+                  return (
+                    <div className={`space-y-1 px-3.5 py-1.5 rounded-2xl border transition-all ${
+                      isProfit 
+                        ? 'bg-emerald-500/15 border-emerald-500/40 ring-1 ring-emerald-500/30' 
+                        : 'bg-rose-500/10 border-rose-500/30'
+                    }`}>
+                      <div className="text-[10px] font-black uppercase flex items-center justify-between gap-2">
+                        <span className={isProfit ? 'text-emerald-300' : 'text-rose-300'}>Total (PnL+Fee)</span>
+                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${
+                          isProfit ? 'bg-emerald-500 text-slate-950 font-black animate-pulse' : 'bg-rose-500/30 text-rose-300'
+                        }`}>
+                          {isProfit ? 'PROFIT' : 'MINUS'}
+                        </span>
+                      </div>
+                      <div className={`text-lg font-mono font-black ${isProfit ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {totalNet >= 0 ? '+' : ''}${totalNet.toFixed(4)}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="flex items-center gap-3">
-                {botConfig?.rr_ratio && botConfig.rr_ratio !== 'NONE' ? (
+                {botConfig?.rr_ratio === 'PROFIT' || botConfig?.close_on_profit ? (
+                  (() => {
+                    const estFee = botConfig?.estimated_funding_fee || ((botConfig?.notional_usd || 100) * Math.abs(botConfig?.target_funding_rate || 0));
+                    const pricePnl = realPosition ? realPosition.unRealizedProfit : 0;
+                    const totalNet = pricePnl + estFee;
+                    const minProf = botConfig?.min_profit_usd || 0;
+                    const isProfit = totalNet >= minProf;
+                    return (
+                      <div className={`px-5 py-3 rounded-2xl border font-black text-xs uppercase flex items-center gap-2 transition-all ${
+                        isProfit 
+                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 shadow-lg shadow-emerald-500/20 animate-pulse' 
+                          : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'
+                      }`}>
+                        <Target className="h-4 w-4 text-emerald-400 animate-pulse" />
+                        {isProfit 
+                          ? `🎯 SIAP AUTO-CLOSE (Total Net +$${totalNet.toFixed(4)} ≥ $${minProf.toFixed(2)})`
+                          : `🎯 Target: Total Profit ≥ $${minProf.toFixed(2)} USD`}
+                      </div>
+                    );
+                  })()
+                ) : botConfig?.rr_ratio && botConfig.rr_ratio !== 'NONE' ? (
                   <div className="px-5 py-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 font-black text-xs uppercase flex items-center gap-2">
                     <Target className="h-4 w-4 text-emerald-400 animate-pulse" />
                     Target: RR {botConfig.rr_ratio} (Hold to TP/SL)
@@ -1338,13 +1422,38 @@ export default function FundingFarmingPage() {
                           </div>
                         </td>
                         <td className="py-4 px-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
-                            h.status === 'CLOSED'
-                              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                              : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                          }`}>
-                            {h.status}
-                          </span>
+                          <div className="flex flex-col gap-1 items-start">
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${
+                              h.status === 'CLOSED'
+                                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                                : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                            }`}>
+                              {h.status}
+                            </span>
+                            {h.exit_reason && (
+                              <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase border whitespace-nowrap ${
+                                h.exit_reason === 'TOTAL_PROFIT_CLOSE'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                                  : h.exit_reason === 'TP_HIT'
+                                  ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                                  : h.exit_reason === 'SL_HIT'
+                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                  : h.exit_reason === 'TIMEOUT_EXIT'
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700'
+                              }`}>
+                                {h.exit_reason === 'TOTAL_PROFIT_CLOSE'
+                                  ? '🎯 Total Profit'
+                                  : h.exit_reason === 'TP_HIT'
+                                  ? '🎯 Take Profit'
+                                  : h.exit_reason === 'SL_HIT'
+                                  ? '🛑 Stop Loss'
+                                  : h.exit_reason === 'TIMEOUT_EXIT'
+                                  ? '⏱️ Timeout'
+                                  : '⏳ Fee Lock (+10s)'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-4 px-4 text-right font-mono text-[10px] text-slate-500">
                           {h.closed_at ? new Date(h.closed_at).toLocaleTimeString('id-ID') : '-'}
@@ -1929,32 +2038,227 @@ export default function FundingFarmingPage() {
                 </p>
               </div>
 
-              {/* Bot Exit Strategy: Fee Lock or Target RR */}
+              {/* Bot Exit Strategy: Fee Lock, Total Profit, or Target RR */}
               <div>
                 <label className="text-xs font-black uppercase text-slate-400 block mb-2">
-                  Target Exit &amp; Risk:Reward (RR)
+                  Target Exit &amp; Strategi Close
                 </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {(['NONE', '1:1', '1:2', '1:3'] as const).map(rr => (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {(['NONE', 'PROFIT', '1:1', '1:2', '1:3'] as const).map(rr => (
                     <button
                       key={rr}
                       type="button"
-                      onClick={() => setBotRrRatio(rr)}
+                      onClick={() => {
+                        setBotRrRatio(rr);
+                        if (rr === 'PROFIT') {
+                          setBotCloseOnProfit(true);
+                        }
+                      }}
                       className={`py-2.5 rounded-2xl font-mono text-xs font-black uppercase border transition-all ${
                         botRrRatio === rr
-                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/30'
+                          ? rr === 'PROFIT'
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/30'
+                            : 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/30'
                           : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
                       }`}
                     >
-                      {rr === 'NONE' ? 'Fee Lock' : `RR ${rr}`}
+                      {rr === 'NONE' ? '⏳ Fee Lock' : rr === 'PROFIT' ? '⚡ Total Profit' : `RR ${rr}`}
                     </button>
                   ))}
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1.5">
-                  {botRrRatio === 'NONE' 
-                    ? 'Mode Fee Lock: Posisi ditutup otomatis via Market Order setelah settlement fee selesai (+10s).'
-                    : `Mode Target ${botRrRatio}: Bot TIDAK menutup di 10 detik. Posisi di-HOLD di Binance sampai Take Profit atau Stop Loss tersentuh.`}
+                  {botRrRatio === 'PROFIT'
+                    ? '⚡ Mode Total Profit: Bot menahan posisi sampai hasil dari akumulasi PnL Posisi + Funding Fee menghasilkan Total Profit (Net > $0.00 / Target). Posisi tidak dipaksa tutup di 10 detik.'
+                    : botRrRatio === 'NONE' 
+                    ? '⏳ Mode Fee Lock: Posisi ditutup otomatis via Market Order setelah settlement fee selesai (+10s).'
+                    : `🎯 Mode Target ${botRrRatio}: Bot TIDAK menutup di 10 detik. Posisi di-HOLD di Binance sampai Take Profit atau Stop Loss tersentuh.`}
                 </p>
+              </div>
+
+              {/* Fitur Pilihan Auto-Close Total Profit (PnL + Fee) */}
+              <div className={`p-5 rounded-3xl border transition-all ${
+                botCloseOnProfit || botRrRatio === 'PROFIT'
+                  ? 'bg-emerald-950/20 border-emerald-500/40 ring-1 ring-emerald-500/20'
+                  : 'bg-slate-950/60 border-slate-800'
+              }`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-8 w-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                      <Target className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-black uppercase text-white block">
+                        Close Jika Total Profit (PnL + Fee &gt; 0)
+                      </label>
+                      <span className="text-[10px] text-slate-400 block">
+                        Tutup otomatis begitu akumulasi floating PnL dan perolehan Fee menghasilkan profit bersih
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border ${
+                    botCloseOnProfit || botRrRatio === 'PROFIT'
+                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 animate-pulse'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}>
+                    {botCloseOnProfit || botRrRatio === 'PROFIT' ? '🟢 AKTIF' : '⚪ NON-AKTIF'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBotCloseOnProfit(true);
+                      if (botRrRatio === 'NONE') {
+                        setBotRrRatio('PROFIT');
+                      }
+                    }}
+                    className={`py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider border transition-all ${
+                      botCloseOnProfit || botRrRatio === 'PROFIT'
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/30'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    🟢 IYA (Close Saat Profit)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBotCloseOnProfit(false);
+                      if (botRrRatio === 'PROFIT') {
+                        setBotRrRatio('NONE');
+                      }
+                    }}
+                    className={`py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider border transition-all ${
+                      !botCloseOnProfit && botRrRatio !== 'PROFIT'
+                        ? 'bg-slate-800 text-white border-slate-700 shadow-lg'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    ⚪ TIDAK (Waktu Standard)
+                  </button>
+                </div>
+
+                {(botCloseOnProfit || botRrRatio === 'PROFIT') && (
+                  <div className="space-y-4 pt-3 border-t border-slate-800/80 animate-in fade-in duration-200">
+                    {/* Minimal Net Profit USD */}
+                    <div>
+                      <label className="text-[11px] font-black uppercase text-slate-300 block mb-1.5 flex items-center justify-between">
+                        <span>Minimal Target Net Profit (USD)</span>
+                        <span className="text-[10px] text-emerald-400 font-mono font-bold">
+                          ≥ ${botMinProfitUsd.toFixed(2)} USD
+                        </span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="0.05"
+                          value={botMinProfitUsd}
+                          onChange={e => setBotMinProfitUsd(Math.max(0, parseFloat(e.target.value) || 0))}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-mono font-bold text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                          placeholder="0.00"
+                        />
+                        <span className="text-slate-400 text-xs font-bold font-mono">USD</span>
+                      </div>
+                      {/* Preset Chips */}
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {[
+                          { label: '$0.00 (Break Even / Untung)', val: 0 },
+                          { label: '+$0.20', val: 0.2 },
+                          { label: '+$0.50', val: 0.5 },
+                          { label: '+$1.00', val: 1.0 },
+                          { label: '+$2.00', val: 2.0 },
+                        ].map(chip => (
+                          <button
+                            key={chip.label}
+                            type="button"
+                            onClick={() => setBotMinProfitUsd(chip.val)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                              botMinProfitUsd === chip.val
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                            }`}
+                          >
+                            {chip.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        $0.00 artinya posisi langsung ditutup begitu hasil akumulasi (PnL Posisi + Funding Fee) bernilai profit (&gt; $0.00).
+                      </p>
+                    </div>
+
+                    {/* Emergency Stop Loss */}
+                    <div>
+                      <label className="text-[11px] font-black uppercase text-slate-300 block mb-1.5 flex items-center justify-between">
+                        <span>Proteksi Stop Loss Darurat (-%)</span>
+                        <span className="text-[10px] text-rose-400 font-mono font-bold">
+                          -{botBaseSlPercent}% ROE
+                        </span>
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={botBaseSlPercent}
+                          onChange={e => setBotBaseSlPercent(Math.max(0.5, parseFloat(e.target.value) || 1.5))}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white font-mono font-bold text-sm focus:ring-2 focus:ring-rose-500 outline-none"
+                        />
+                        <span className="text-slate-400 text-xs font-bold">%</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {[1.0, 1.5, 2.0, 3.0, 5.0].map(sl => (
+                          <button
+                            key={sl}
+                            type="button"
+                            onClick={() => setBotBaseSlPercent(sl)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                              botBaseSlPercent === sl
+                                ? 'bg-rose-600 text-white'
+                                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                            }`}
+                          >
+                            -{sl}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Max Hold Timeout */}
+                    <div>
+                      <label className="text-[11px] font-black uppercase text-slate-300 block mb-1.5 flex items-center justify-between">
+                        <span>Maksimal Waktu Tahan (Timeout Setelah Payout)</span>
+                        <span className="text-[10px] text-amber-400 font-mono font-bold">
+                          {botMaxHoldSeconds === 0 ? 'Tanpa Batas' : `${botMaxHoldSeconds} Detik (${Math.floor(botMaxHoldSeconds / 60)} Menit)`}
+                        </span>
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: 'Tanpa Batas (Tahan sampai Profit)', val: 0 },
+                          { label: '2 Menit (120s)', val: 120 },
+                          { label: '5 Menit (300s)', val: 300 },
+                          { label: '10 Menit (600s)', val: 600 }
+                        ].map(to => (
+                          <button
+                            key={to.label}
+                            type="button"
+                            onClick={() => setBotMaxHoldSeconds(to.val)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
+                              botMaxHoldSeconds === to.val
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                            }`}
+                          >
+                            {to.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Jika koin belum kunjung menyentuh target profit setelah payout dalam durasi ini, bot menutup posisi untuk keamanan.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Notional USD */}
