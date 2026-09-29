@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal } = body;
+    const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled } = body;
 
     if (!symbol) {
       return NextResponse.json({ success: false, error: 'Pair simbol wajib diisi' }, { status: 400 });
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     const tPriceGoal = targetPriceGoal !== undefined && targetPriceGoal !== null && targetPriceGoal !== ''
       ? parseFloat(targetPriceGoal)
       : null;
+    const slReopen = slReopenEnabled !== undefined && slReopenEnabled !== null ? Boolean(slReopenEnabled) : false;
 
     const result = await saveCoinConfig({
       symbol: symbol.toUpperCase().trim(),
@@ -46,15 +47,17 @@ export async function POST(req: NextRequest) {
       stopLossPercent: slPct,
       autoStopHours: stopHours && stopHours > 0 ? stopHours : null,
       targetCycles: tCycles && tCycles > 0 ? tCycles : null,
-      targetPriceGoal: tPriceGoal && tPriceGoal > 0 ? tPriceGoal : null
+      targetPriceGoal: tPriceGoal && tPriceGoal > 0 ? tPriceGoal : null,
+      slReopenEnabled: slReopen
     });
 
     const timerMsg = stopHours && stopHours > 0 ? ` (Auto-Stop: ${stopHours} Jam)` : '';
     const cycleMsg = tCycles && tCycles > 0 ? ` (Target: ${tCycles} Cycle)` : '';
     const priceMsg = tPriceGoal && tPriceGoal > 0 ? ` (Target Price: $${tPriceGoal})` : '';
+    const reopenMsg = slReopen ? ' (Re-Open H4: Aktif)' : '';
     return NextResponse.json({
       success: true,
-      message: `Konfigurasi koin ${symbol} berhasil disimpan ke daftar${timerMsg}${cycleMsg}${priceMsg}.`,
+      message: `Konfigurasi koin ${symbol} berhasil disimpan ke daftar${timerMsg}${cycleMsg}${priceMsg}${reopenMsg}.`,
       data: result
     });
   } catch (error: any) {

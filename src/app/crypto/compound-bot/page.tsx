@@ -75,6 +75,10 @@ interface CompoundConfig {
   dca_count?: number;
   auto_stop_hours?: number | null;
   auto_stop_at?: string | null;
+  sl_reopen_enabled?: boolean;
+  sl_waiting_reopen?: boolean;
+  sl_hit_time?: string | null;
+  sl_last_checked_kline_time?: number | null;
 }
 
 interface CompoundCycle {
@@ -158,6 +162,7 @@ export default function CompoundBotPage() {
   const [formCompoundPct, setFormCompoundPct] = useState<number>(1.0);
   const [formEnableSL, setFormEnableSL] = useState<boolean>(false);
   const [formSLPct, setFormSLPct] = useState<number>(2.0);
+  const [formSLReopenEnabled, setFormSLReopenEnabled] = useState<boolean>(true); // default true when SL is enabled
   const [formAutoStopHours, setFormAutoStopHours] = useState<number>(8); // default 8 jam, 0 = Nonstop
   const [formTargetCycles, setFormTargetCycles] = useState<number>(0); // 0 = Bebas / tanpa batas cycle, > 0 = target max cycle
   const [formTargetPriceGoal, setFormTargetPriceGoal] = useState<number>(0); // 0 = Bebas / tanpa target harga, > 0 = target price (auto-stop & close)
@@ -321,6 +326,7 @@ export default function CompoundBotPage() {
     autoStopHours?: number | null;
     targetCycles?: number | null;
     targetPriceGoal?: number | null;
+    slReopenEnabled?: boolean | null;
   }) => {
     const sym = coinConfig.symbol.toUpperCase().trim();
     setActionLoading((prev) => ({ ...prev, [sym]: true }));
@@ -337,7 +343,8 @@ export default function CompoundBotPage() {
           stopLossPercent: coinConfig.stopLossPercent,
           autoStopHours: coinConfig.autoStopHours,
           targetCycles: coinConfig.targetCycles,
-          targetPriceGoal: coinConfig.targetPriceGoal
+          targetPriceGoal: coinConfig.targetPriceGoal,
+          slReopenEnabled: coinConfig.slReopenEnabled !== undefined ? coinConfig.slReopenEnabled : formSLReopenEnabled
         })
       });
 
@@ -374,7 +381,8 @@ export default function CompoundBotPage() {
           stopLossPercent: formEnableSL ? formSLPct : null,
           autoStopHours: formAutoStopHours > 0 ? formAutoStopHours : null,
           targetCycles: formTargetCycles > 0 ? formTargetCycles : null,
-          targetPriceGoal: formTargetPriceGoal > 0 ? formTargetPriceGoal : null
+          targetPriceGoal: formTargetPriceGoal > 0 ? formTargetPriceGoal : null,
+          slReopenEnabled: formEnableSL ? formSLReopenEnabled : false
         })
       });
 
@@ -401,11 +409,39 @@ export default function CompoundBotPage() {
     setFormCompoundPct(coin.compound_percent);
     setFormEnableSL(Boolean(coin.stop_loss_percent));
     setFormSLPct(coin.stop_loss_percent || 2.0);
+    setFormSLReopenEnabled(coin.sl_reopen_enabled !== undefined ? Boolean(coin.sl_reopen_enabled) : true);
     setFormAutoStopHours(coin.auto_stop_hours || 0);
     setFormTargetCycles(coin.target_cycles || 0);
     setFormTargetPriceGoal(coin.target_price_goal || 0);
     handleValidatePair(coin.symbol);
     setShowAddModal(true);
+  };
+
+  // Cancel pending H4 re-open after Stop Loss
+  const handleCancelSlReopen = async (symbol: string) => {
+    if (!confirm(`Batalkan status siaga re-open candle H4 untuk ${symbol}?\n\nBot akan tetap berstatus STOPPED dan tidak akan membuka posisi baru secara otomatis.`)) {
+      return;
+    }
+    const sym = symbol.toUpperCase().trim();
+    setActionLoading((prev) => ({ ...prev, [sym]: true }));
+    try {
+      const res = await fetch("/api/crypto/compound-bot/cancel-sl-reopen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: sym })
+      });
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message || `Status siaga re-open H4 untuk ${sym} berhasil dibatalkan.`);
+        await fetchState();
+      } else {
+        alert(`Gagal membatalkan: ${json.error}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [sym]: false }));
+    }
   };
 
   // Clear / remove Target Price Goal for a coin
@@ -697,6 +733,7 @@ export default function CompoundBotPage() {
               setFormAutoStopHours(8); // Default 8 jam
               setFormTargetCycles(0); // Default nonstop cycle
               setFormTargetPriceGoal(0); // Default tanpa target harga
+              setFormSLReopenEnabled(true);
               setShowAddModal(true);
               handleValidatePair("ETHUSDT");
             }}
@@ -849,6 +886,7 @@ export default function CompoundBotPage() {
                 setFormAutoStopHours(8);
                 setFormTargetCycles(0);
                 setFormTargetPriceGoal(0);
+                setFormSLReopenEnabled(true);
                 setShowAddModal(true);
                 handleValidatePair("ETHUSDT");
               }}
@@ -1045,6 +1083,28 @@ export default function CompoundBotPage() {
                             </span>
                           ) : null}
 
+                          {/* SIAGA RE-OPEN CANDLE H4 BADGE */}
+                          {coin.sl_waiting_reopen && !coin.is_active ? (
+                            <span
+                              className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-950/90 border border-amber-500/70 text-amber-300 flex items-center gap-1 shadow-md shadow-amber-950/40 animate-pulse"
+                              title="Bot sedang siaga menunggu penutupan candle H4 (Close > Open Prev) untuk open kembali otomatis pasca Stop Loss"
+                            >
+                              <Sparkles className="w-3 h-3 text-amber-400" />
+                              SIAGA RE-OPEN (H4)
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCancelSlReopen(coin.symbol);
+                                }}
+                                className="ml-1 p-0.5 rounded hover:bg-amber-900/60 hover:text-white transition-colors cursor-pointer"
+                                title="Batalkan Siaga Re-Open"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          ) : null}
+
                           <span
                             className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
                               coin.is_active
@@ -1150,32 +1210,70 @@ export default function CompoundBotPage() {
                           </>
                         ) : (
                           /* Stopped / Ready Setup */
-                          <div className="space-y-2 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
-                            <div className="flex items-center justify-between text-slate-400">
-                              <span>Ukuran Posisi:</span>
-                              <span className="font-mono font-bold text-slate-100">${coin.notional_usd.toFixed(2)} USD</span>
-                            </div>
-                            <div className="flex items-center justify-between text-slate-400">
-                              <span>Target Compound:</span>
-                              <span className="font-mono font-bold text-emerald-400">+{coin.compound_percent}%</span>
-                            </div>
-                            <div className="flex items-center justify-between text-slate-400">
-                              <span>Target Siklus:</span>
-                              <span className="font-mono font-bold text-cyan-400">
-                                {coin.target_cycles && coin.target_cycles > 0 ? `${coin.target_cycles} Cycle (Auto-Stop saat TP)` : "Bebas / Tanpa Batas"}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-slate-400">
-                              <span>Target Price:</span>
-                              <span className="font-mono font-bold text-indigo-400">
-                                {coin.target_price_goal && coin.target_price_goal > 0
-                                  ? `$${coin.target_price_goal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} (Auto-Stop)`
-                                  : "Bebas / Tanpa Batas"}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between text-slate-400">
-                              <span>Estimasi Margin:</span>
-                              <span className="font-mono font-bold text-slate-200">${effectiveMargin.toFixed(2)} USDT</span>
+                          <div className="space-y-2.5">
+                            {/* Status Siaga Re-Open H4 Banner */}
+                            {coin.sl_waiting_reopen && !coin.is_active && (
+                              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/50 space-y-2">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="font-bold text-amber-300 flex items-center gap-1.5">
+                                    <Sparkles className="w-4 h-4 text-amber-400" />
+                                    Siaga Re-Open Pasca Stop Loss
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCancelSlReopen(coin.symbol)}
+                                    disabled={actionLoading[coin.symbol] || isLoading}
+                                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-900 hover:bg-rose-950 border border-slate-700 hover:border-rose-500 text-slate-300 hover:text-rose-200 transition-all cursor-pointer"
+                                  >
+                                    Batalkan Siaga
+                                  </button>
+                                </div>
+                                <p className="text-[11px] text-slate-300 leading-relaxed">
+                                  Bot memantau konfirmasi candle <strong>4 Jam (H4)</strong>. Begitu candle H4 saat ini resmi tutup dengan <strong>Close &gt; Open candle sebelumnya</strong>, bot akan otomatis membuka kembali Cycle #1 sesuai notional (${coin.notional_usd.toFixed(2)}) &amp; settingan.
+                                </p>
+                                <div className="text-[10px] text-amber-300/90 font-mono bg-amber-950/70 px-2.5 py-1.5 rounded-lg border border-amber-800/60 flex items-center justify-between">
+                                  <span className="flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                                    Memantau Candle H4
+                                  </span>
+                                  <span className="text-emerald-400 font-bold">Auto-Open: Siap</span>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="space-y-2 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                              <div className="flex items-center justify-between text-slate-400">
+                                <span>Ukuran Posisi:</span>
+                                <span className="font-mono font-bold text-slate-100">${coin.notional_usd.toFixed(2)} USD</span>
+                              </div>
+                              <div className="flex items-center justify-between text-slate-400">
+                                <span>Target Compound:</span>
+                                <span className="font-mono font-bold text-emerald-400">+{coin.compound_percent}%</span>
+                              </div>
+                              <div className="flex items-center justify-between text-slate-400">
+                                <span>Target Siklus:</span>
+                                <span className="font-mono font-bold text-cyan-400">
+                                  {coin.target_cycles && coin.target_cycles > 0 ? `${coin.target_cycles} Cycle (Auto-Stop saat TP)` : "Bebas / Tanpa Batas"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-slate-400">
+                                <span>Target Price:</span>
+                                <span className="font-mono font-bold text-indigo-400">
+                                  {coin.target_price_goal && coin.target_price_goal > 0
+                                    ? `$${coin.target_price_goal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} (Auto-Stop)`
+                                    : "Bebas / Tanpa Batas"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-slate-400">
+                                <span>Re-Open Pasca SL:</span>
+                                <span className={`font-mono font-bold ${coin.sl_reopen_enabled ? "text-emerald-400" : "text-slate-400"}`}>
+                                  {coin.sl_reopen_enabled ? "Aktif (Candle H4)" : "Nonaktif"}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-slate-400">
+                                <span>Estimasi Margin:</span>
+                                <span className="font-mono font-bold text-slate-200">${effectiveMargin.toFixed(2)} USDT</span>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -1225,6 +1323,20 @@ export default function CompoundBotPage() {
                         </button>
                       )}
 
+                      {/* Tombol Batalkan Siaga Re-Open jika bot STOPPED tapi sedang siaga H4 */}
+                      {!coin.is_active && coin.sl_waiting_reopen && (
+                        <button
+                          type="button"
+                          onClick={() => handleCancelSlReopen(coin.symbol)}
+                          disabled={actionLoading[coin.symbol] || isLoading}
+                          className="px-3 py-2.5 rounded-xl bg-amber-950/70 hover:bg-rose-950 text-amber-300 hover:text-rose-200 border border-amber-600/50 hover:border-rose-500 font-bold text-xs flex items-center justify-center gap-1 transition-all shadow-md cursor-pointer"
+                          title={`Batalkan status siaga re-open H4 untuk ${coin.symbol}`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Batal Siaga</span>
+                        </button>
+                      )}
+
                       {/* Start / Stop Button */}
                       {coin.is_active ? (
                         <button
@@ -1251,7 +1363,8 @@ export default function CompoundBotPage() {
                               stopLossPercent: coin.stop_loss_percent,
                               autoStopHours: coin.auto_stop_hours,
                               targetCycles: coin.target_cycles,
-                              targetPriceGoal: coin.target_price_goal
+                              targetPriceGoal: coin.target_price_goal,
+                              slReopenEnabled: coin.sl_reopen_enabled
                             })
                           }
                           disabled={isLoading}
@@ -1672,6 +1785,35 @@ export default function CompoundBotPage() {
                     <span className="absolute right-3.5 top-2 text-xs text-rose-400 font-bold">-%</span>
                   </div>
                 )}
+                {formEnableSL && (
+                  <p className="text-[11px] text-rose-400/90 leading-relaxed italic">
+                    *Jika harga turun menyentuh level Stop Loss (<strong>-{formSLPct}%</strong>), bot <strong>otomatis STOP</strong> dan <strong>menutup posisi aktif di Binance</strong> untuk mencegah kerugian lebih besar.
+                  </p>
+                )}
+                {formEnableSL && (
+                  <div className="mt-2 p-2.5 rounded-xl bg-slate-950/80 border border-emerald-500/30 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5 cursor-pointer">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                        Auto Re-Open Pasca SL (Candle H4)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setFormSLReopenEnabled(!formSLReopenEnabled)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                          formSLReopenEnabled
+                            ? "bg-emerald-600 text-white border-emerald-400 shadow-sm shadow-emerald-950"
+                            : "bg-slate-900 text-slate-400 border-slate-700"
+                        }`}
+                      >
+                        {formSLReopenEnabled ? "AKTIF" : "NONAKTIF"}
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      Jika menyentuh SL, bot akan <strong>otomatis open kembali</strong> sesuai settingan begitu candle <strong>H4 resmi ditutup</strong> dengan harga penutupan (Close) <strong>lebih tinggi dari harga Open candle sebelumnya</strong> (Reversal Bullish).
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Durasi Operasional Bot (Pilihan Auto-Stop) */}
@@ -1915,7 +2057,8 @@ export default function CompoundBotPage() {
                         stopLossPercent: formEnableSL ? formSLPct : null,
                         autoStopHours: formAutoStopHours > 0 ? formAutoStopHours : null,
                         targetCycles: formTargetCycles > 0 ? formTargetCycles : null,
-                        targetPriceGoal: formTargetPriceGoal > 0 ? formTargetPriceGoal : null
+                        targetPriceGoal: formTargetPriceGoal > 0 ? formTargetPriceGoal : null,
+                        slReopenEnabled: formEnableSL ? formSLReopenEnabled : false
                       })
                     }
                     disabled={!pairInfo?.isValid || Boolean(formTargetPriceGoal > 0 && pairInfo?.lastPrice && formTargetPriceGoal <= pairInfo.lastPrice)}

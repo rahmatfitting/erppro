@@ -1,5 +1,5 @@
 import { executeQuery } from './db';
-import { fetchFapiWithFallback } from './futures';
+import { fetchFapiWithFallback, fetchFuturesKlines } from './futures';
 import {
   executeCompoundBuyOrder,
   executeCompoundCloseOrder,
@@ -40,6 +40,10 @@ export interface CompoundBotConfig {
   auto_stop_at?: string | null;
   target_cycles?: number | null;
   target_price_goal?: number | null;
+  sl_reopen_enabled?: boolean;
+  sl_waiting_reopen?: boolean;
+  sl_hit_time?: string | null;
+  sl_last_checked_kline_time?: number | null;
 }
 
 export interface CompoundBotCycle {
@@ -104,6 +108,10 @@ export async function ensureCompoundBotTables() {
       auto_stop_hours DECIMAL(6, 2) DEFAULT NULL,
       auto_stop_at DATETIME DEFAULT NULL,
       target_price_goal DECIMAL(16, 8) DEFAULT NULL,
+      sl_reopen_enabled BOOLEAN DEFAULT false,
+      sl_waiting_reopen BOOLEAN DEFAULT false,
+      sl_hit_time DATETIME DEFAULT NULL,
+      sl_last_checked_kline_time BIGINT DEFAULT NULL,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY uq_symbol (symbol)
@@ -196,6 +204,18 @@ export async function ensureCompoundBotTables() {
   } catch {}
   try {
     await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN target_price_goal DECIMAL(16, 8) DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN sl_reopen_enabled BOOLEAN DEFAULT false`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN sl_waiting_reopen BOOLEAN DEFAULT false`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN sl_hit_time DATETIME DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN sl_last_checked_kline_time BIGINT DEFAULT NULL`);
   } catch {}
 
   // Ensure default BTCUSDT coin exists if table completely empty
@@ -316,7 +336,11 @@ export async function getBotState() {
     auto_stop_hours: r.auto_stop_hours ? parseFloat(r.auto_stop_hours) : null,
     auto_stop_at: r.auto_stop_at ? (r.auto_stop_at instanceof Date ? r.auto_stop_at.toISOString() : new Date(r.auto_stop_at).toISOString()) : null,
     target_cycles: r.target_cycles ? parseInt(r.target_cycles) : null,
-    target_price_goal: r.target_price_goal ? parseFloat(r.target_price_goal) : null
+    target_price_goal: r.target_price_goal ? parseFloat(r.target_price_goal) : null,
+    sl_reopen_enabled: Boolean(r.sl_reopen_enabled),
+    sl_waiting_reopen: Boolean(r.sl_waiting_reopen),
+    sl_hit_time: r.sl_hit_time ? (r.sl_hit_time instanceof Date ? r.sl_hit_time.toISOString() : new Date(r.sl_hit_time).toISOString()) : null,
+    sl_last_checked_kline_time: r.sl_last_checked_kline_time ? Number(r.sl_last_checked_kline_time) : null
   }));
 
   // 2. Fetch all active open cycles
@@ -525,10 +549,11 @@ export async function saveCoinConfig(params: {
   autoStopHours?: number | null;
   targetCycles?: number | null;
   targetPriceGoal?: number | null;
+  slReopenEnabled?: boolean | null;
 }) {
   await ensureCompoundBotTables();
 
-  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal } = params;
+  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled } = params;
   const cleanSymbol = symbol.toUpperCase().trim();
 
   // Validate
@@ -540,12 +565,13 @@ export async function saveCoinConfig(params: {
   const stopHoursVal = autoStopHours && autoStopHours > 0 ? autoStopHours : null;
   const targetCyclesVal = targetCycles && targetCycles > 0 ? Math.floor(targetCycles) : null;
   const targetPriceGoalVal = targetPriceGoal && targetPriceGoal > 0 ? targetPriceGoal : null;
+  const slReopenVal = slReopenEnabled !== undefined && slReopenEnabled !== null ? Boolean(slReopenEnabled) : false;
 
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, auto_stop_hours, target_cycles, target_price_goal)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, auto_stop_hours, target_cycles, target_price_goal, sl_reopen_enabled)
     VALUES 
-      (?, false, ?, ?, ?, ?, ?, ?, ?, ?)
+      (?, false, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       notional_usd = VALUES(notional_usd),
       current_notional = IF(is_active = true, current_notional, VALUES(notional_usd)),
@@ -554,7 +580,8 @@ export async function saveCoinConfig(params: {
       stop_loss_percent = VALUES(stop_loss_percent),
       auto_stop_hours = VALUES(auto_stop_hours),
       target_cycles = VALUES(target_cycles),
-      target_price_goal = VALUES(target_price_goal)
+      target_price_goal = VALUES(target_price_goal),
+      sl_reopen_enabled = VALUES(sl_reopen_enabled)
   `, [
     cleanSymbol,
     notionalUsd,
@@ -564,13 +591,15 @@ export async function saveCoinConfig(params: {
     stopLossPercent || null,
     stopHoursVal,
     targetCyclesVal,
-    targetPriceGoalVal
+    targetPriceGoalVal,
+    slReopenVal
   ]);
 
   const timerLogText = stopHoursVal ? `, Auto-Stop: ${stopHoursVal} Jam` : ', Mode: Nonstop Jam';
   const cycleLogText = targetCyclesVal ? `, Target: ${targetCyclesVal} Cycle (Auto-Stop saat TP)` : '';
   const priceGoalLogText = targetPriceGoalVal ? `, Target Price: $${targetPriceGoalVal} (Auto-Stop saat sampai)` : '';
-  await addBotLog('SYSTEM', `⚙️ Konfigurasi koin ${cleanSymbol} disimpan (Notional: $${notionalUsd}, Leverage: ${leverage}x, Target: +${compoundPercent}%${timerLogText}${cycleLogText}${priceGoalLogText}).`, 'INFO');
+  const reopenLogText = slReopenVal ? ', Auto Re-Open H4: AKTIF' : '';
+  await addBotLog('SYSTEM', `⚙️ Konfigurasi koin ${cleanSymbol} disimpan (Notional: $${notionalUsd}, Leverage: ${leverage}x, Target: +${compoundPercent}%${timerLogText}${cycleLogText}${priceGoalLogText}${reopenLogText}).`, 'INFO');
 
   return { success: true, symbol: cleanSymbol };
 }
@@ -587,10 +616,11 @@ export async function startCompoundBot(params: {
   autoStopHours?: number | null;
   targetCycles?: number | null;
   targetPriceGoal?: number | null;
+  slReopenEnabled?: boolean | null;
 }) {
   await ensureCompoundBotTables();
 
-  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal } = params;
+  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled } = params;
   const cleanSymbol = symbol.toUpperCase().trim();
 
   // 1. Pair Validation
@@ -611,7 +641,7 @@ export async function startCompoundBot(params: {
 
   // 2. Check if this coin is currently running active
   const configRows: any = await executeQuery(`
-    SELECT is_active, auto_stop_hours, target_cycles, target_price_goal FROM compound_bot_config WHERE symbol = ?
+    SELECT is_active, auto_stop_hours, target_cycles, target_price_goal, sl_reopen_enabled FROM compound_bot_config WHERE symbol = ?
   `, [cleanSymbol]);
 
   if (configRows && configRows.length > 0 && configRows[0].is_active) {
@@ -634,6 +664,12 @@ export async function startCompoundBot(params: {
   let effectiveTargetPriceGoal = targetPriceGoal;
   if (effectiveTargetPriceGoal === undefined && configRows && configRows.length > 0 && configRows[0].target_price_goal != null) {
     effectiveTargetPriceGoal = parseFloat(configRows[0].target_price_goal);
+  }
+
+  // Determine effective slReopenEnabled
+  let effectiveSlReopen = slReopenEnabled;
+  if (effectiveSlReopen === undefined && configRows && configRows.length > 0 && configRows[0].sl_reopen_enabled != null) {
+    effectiveSlReopen = Boolean(configRows[0].sl_reopen_enabled);
   }
 
   if (effectiveTargetPriceGoal && effectiveTargetPriceGoal > 0 && validCheck.lastPrice && effectiveTargetPriceGoal <= validCheck.lastPrice) {
@@ -667,7 +703,8 @@ export async function startCompoundBot(params: {
   const priceGoalLogText = effectiveTargetPriceGoal && effectiveTargetPriceGoal > 0
     ? ` 🎯 Target Price: $${effectiveTargetPriceGoal} (Auto-Stop saat sampai)`
     : '';
-  await addBotLog('START', `🚀 [${cleanSymbol}] Memulai Bot Compound Future (Notional: $${notionalUsd} USD, Leverage: ${leverage}x, Target: +${compoundPercent}%)${timerLogText}${cycleLogText}${priceGoalLogText}...`, 'INFO');
+  const reopenLogText = effectiveSlReopen ? ` ⏳ Re-Open H4: AKTIF` : '';
+  await addBotLog('START', `🚀 [${cleanSymbol}] Memulai Bot Compound Future (Notional: $${notionalUsd} USD, Leverage: ${leverage}x, Target: +${compoundPercent}%)${timerLogText}${cycleLogText}${priceGoalLogText}${reopenLogText}...`, 'INFO');
 
   const buyResult = await executeCompoundBuyOrder({
     symbol: cleanSymbol,
@@ -701,9 +738,9 @@ export async function startCompoundBot(params: {
   // 5. Update or Insert Bot Config for this coin
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price, auto_stop_hours, auto_stop_at, target_cycles, target_price_goal)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price, auto_stop_hours, auto_stop_at, target_cycles, target_price_goal, sl_reopen_enabled, sl_waiting_reopen, sl_hit_time, sl_last_checked_kline_time)
     VALUES 
-      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL, ?, ?, ?, ?)
+      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL, ?, ?, ?, ?, ?, false, NULL, NULL)
     ON DUPLICATE KEY UPDATE
       is_active = true,
       notional_usd = VALUES(notional_usd),
@@ -726,7 +763,11 @@ export async function startCompoundBot(params: {
       auto_stop_hours = VALUES(auto_stop_hours),
       auto_stop_at = VALUES(auto_stop_at),
       target_cycles = VALUES(target_cycles),
-      target_price_goal = VALUES(target_price_goal)
+      target_price_goal = VALUES(target_price_goal),
+      sl_reopen_enabled = VALUES(sl_reopen_enabled),
+      sl_waiting_reopen = false,
+      sl_hit_time = NULL,
+      sl_last_checked_kline_time = NULL
   `, [
     cleanSymbol,
     notionalUsd,
@@ -741,7 +782,8 @@ export async function startCompoundBot(params: {
     effectiveAutoStopHours || null,
     autoStopAtSql,
     effectiveTargetCycles && effectiveTargetCycles > 0 ? Math.floor(effectiveTargetCycles) : null,
-    effectiveTargetPriceGoal && effectiveTargetPriceGoal > 0 ? effectiveTargetPriceGoal : null
+    effectiveTargetPriceGoal && effectiveTargetPriceGoal > 0 ? effectiveTargetPriceGoal : null,
+    effectiveSlReopen ? true : false
   ]);
 
   const marginEst = (notionalUsd / leverage).toFixed(2);
@@ -759,7 +801,8 @@ export async function startCompoundBot(params: {
     autoStopHours: effectiveAutoStopHours || null,
     autoStopAt: autoStopAtSql,
     targetCycles: effectiveTargetCycles || null,
-    targetPriceGoal: effectiveTargetPriceGoal || null
+    targetPriceGoal: effectiveTargetPriceGoal || null,
+    slReopenEnabled: effectiveSlReopen ? true : false
   };
 }
 
@@ -877,7 +920,10 @@ export async function stopCompoundBot(params: {
           dca_auto_enabled = false,
           dca_executed = false,
           dca_trigger_price = NULL,
-          auto_stop_at = NULL
+          auto_stop_at = NULL,
+          sl_waiting_reopen = false,
+          sl_hit_time = NULL,
+          sl_last_checked_kline_time = NULL
       WHERE symbol = ?
     `, [sym]);
 
@@ -932,6 +978,31 @@ export async function stopCoinTimer(symbol: string) {
     previousHours: prevHours,
     message: `Fitur jam untuk ${cleanSymbol} berhasil dihentikan. ${statusMsg}`
   };
+}
+
+/**
+ * Cancel Pending H4 Re-Open after Stop Loss
+ */
+export async function cancelCoinSlReopen(symbol: string) {
+  await ensureCompoundBotTables();
+  const cleanSymbol = symbol.toUpperCase().trim();
+
+  await executeQuery(
+    `UPDATE compound_bot_config 
+     SET sl_waiting_reopen = false, 
+         sl_hit_time = NULL, 
+         sl_last_checked_kline_time = NULL 
+     WHERE symbol = ?`,
+    [cleanSymbol]
+  );
+
+  await addBotLog(
+    'SYSTEM',
+    `⏹️ [${cleanSymbol}] Menunggu konfirmasi candle H4 re-open dibatalkan oleh pengguna. Bot tetap STOPPED.`,
+    'INFO'
+  );
+
+  return { success: true, symbol: cleanSymbol };
 }
 
 /**
@@ -1261,11 +1332,14 @@ export async function tickCompoundBot() {
   try {
     await ensureCompoundBotTables();
 
-    // 1. Get all active coins
-    const activeCoins: any = await executeQuery(`SELECT * FROM compound_bot_config WHERE is_active = true`);
+    // 1. Get all active coins or coins waiting for H4 candle confirmation
+    const allCoins: any = await executeQuery(`SELECT * FROM compound_bot_config WHERE is_active = true OR sl_waiting_reopen = true`);
 
-    if (!activeCoins || activeCoins.length === 0) {
-      return { status: 'IDLE', activeCount: 0, message: 'Tidak ada bot koin yang aktif (STOPPED).' };
+    const activeCoins = (allCoins || []).filter((c: any) => Boolean(c.is_active));
+    const waitingCoins = (allCoins || []).filter((c: any) => !c.is_active && Boolean(c.sl_waiting_reopen));
+
+    if (activeCoins.length === 0 && waitingCoins.length === 0) {
+      return { status: 'IDLE', activeCount: 0, waitingCount: 0, message: 'Tidak ada bot koin yang aktif (STOPPED).' };
     }
 
     // 2. Fetch live prices and real Binance positions for all active symbols
@@ -1273,28 +1347,30 @@ export async function tickCompoundBot() {
     const tickerMap: Record<string, number> = {};
     const realPositionsMap = await fetchAllRealPositions();
 
-    if (activeSymbols.length <= 5) {
-      // Lightweight direct ticker per active symbol
-      await Promise.all(activeSymbols.map(async (sym: string) => {
+    if (activeSymbols.length > 0) {
+      if (activeSymbols.length <= 5) {
+        // Lightweight direct ticker per active symbol
+        await Promise.all(activeSymbols.map(async (sym: string) => {
+          try {
+            const tData = await fetchFapiWithFallback(`/fapi/v1/ticker/price?symbol=${sym}`);
+            if (tData && tData.price) {
+              tickerMap[sym] = parseFloat(tData.price);
+            }
+          } catch {}
+        }));
+      } else {
         try {
-          const tData = await fetchFapiWithFallback(`/fapi/v1/ticker/price?symbol=${sym}`);
-          if (tData && tData.price) {
-            tickerMap[sym] = parseFloat(tData.price);
-          }
-        } catch {}
-      }));
-    } else {
-      try {
-        const tickerData = await fetchFapiWithFallback('/fapi/v1/ticker/price');
-        if (Array.isArray(tickerData)) {
-          for (const t of tickerData) {
-            if (activeSymbols.includes(t.symbol)) {
-              tickerMap[t.symbol] = parseFloat(t.price);
+          const tickerData = await fetchFapiWithFallback('/fapi/v1/ticker/price');
+          if (Array.isArray(tickerData)) {
+            for (const t of tickerData) {
+              if (activeSymbols.includes(t.symbol)) {
+                tickerMap[t.symbol] = parseFloat(t.price);
+              }
             }
           }
+        } catch (err) {
+          console.error("Bulk ticker error:", err);
         }
-      } catch (err) {
-        console.error("Bulk ticker error:", err);
       }
     }
 
@@ -1485,7 +1561,10 @@ export async function tickCompoundBot() {
                 dca_drop_percent = NULL,
                 dca_notional_usd = NULL,
                 dca_trigger_price = NULL,
-                auto_stop_at = NULL
+                auto_stop_at = NULL,
+                sl_waiting_reopen = false,
+                sl_hit_time = NULL,
+                sl_last_checked_kline_time = NULL
             WHERE symbol = ?
           `, [realizedPnl, symbol]);
 
@@ -1573,7 +1652,10 @@ export async function tickCompoundBot() {
                   dca_drop_percent = NULL,
                   dca_notional_usd = NULL,
                   dca_trigger_price = NULL,
-                  auto_stop_at = NULL
+                  auto_stop_at = NULL,
+                  sl_waiting_reopen = false,
+                  sl_hit_time = NULL,
+                  sl_last_checked_kline_time = NULL
               WHERE symbol = ?
             `, [realizedPnl, symbol]);
 
@@ -1646,7 +1728,10 @@ export async function tickCompoundBot() {
                 dca_count = 0,
                 dca_drop_percent = NULL,
                 dca_notional_usd = NULL,
-                dca_trigger_price = NULL
+                dca_trigger_price = NULL,
+                sl_waiting_reopen = false,
+                sl_hit_time = NULL,
+                sl_last_checked_kline_time = NULL
             WHERE symbol = ?
           `, [
             nextCycleNum,
@@ -1716,16 +1801,36 @@ export async function tickCompoundBot() {
               activeCycle.id
             ]);
 
+            const slReopen = Boolean(coin.sl_reopen_enabled);
+
             await executeQuery(`
               UPDATE compound_bot_config 
               SET is_active = false,
-                  total_profit = total_profit + ? 
+                  entry_price = NULL,
+                  target_price = NULL,
+                  sl_price = NULL,
+                  quantity = NULL,
+                  total_profit = total_profit + ?,
+                  dca_auto_enabled = false,
+                  dca_executed = false,
+                  dca_count = 0,
+                  dca_drop_percent = NULL,
+                  dca_notional_usd = NULL,
+                  dca_trigger_price = NULL,
+                  auto_stop_at = NULL,
+                  sl_waiting_reopen = ?,
+                  sl_hit_time = IF(? = true, NOW(), NULL),
+                  sl_last_checked_kline_time = NULL
               WHERE symbol = ?
-            `, [realizedPnl, symbol]);
+            `, [realizedPnl, slReopen, slReopen, symbol]);
 
-            await addBotLog('STOP', `🛑 [${symbol}] Posisi ditutup karena Stop Loss @ $${exitPrice.toFixed(4)} (PnL: $${realizedPnl.toFixed(2)} USDT / ${realizedPnlPct.toFixed(2)}%). Bot koin ini dihentikan.`, 'WARN');
+            if (slReopen) {
+              await addBotLog('WARN', `🛑 [${symbol}] Posisi ditutup karena Stop Loss @ $${exitPrice.toFixed(4)} (PnL: $${realizedPnl.toFixed(2)} USDT / ${realizedPnlPct.toFixed(2)}%). ⏳ Auto Re-Open H4 AKTIF: Bot masuk status SIAGA menunggu penutupan candle H4 (Close > Open Prev) untuk open kembali.`, 'WARN');
+            } else {
+              await addBotLog('STOP', `🛑 [${symbol}] Posisi ditutup karena Stop Loss @ $${exitPrice.toFixed(4)} (PnL: $${realizedPnl.toFixed(2)} USDT / ${realizedPnlPct.toFixed(2)}%). Bot koin ini dihentikan.`, 'WARN');
+            }
 
-            tickResults.push({ symbol, status: 'STOP_LOSS_HIT', exitPrice, realizedPnl });
+            tickResults.push({ symbol, status: 'STOP_LOSS_HIT', exitPrice, realizedPnl, waitingH4Reopen: slReopen });
             continue;
           } catch (slErr: any) {
             console.error(`Gagal Stop Loss untuk ${symbol}:`, slErr);
@@ -1747,9 +1852,101 @@ export async function tickCompoundBot() {
       });
     }
 
+    // 4. Evaluate coins waiting for H4 Candle Reversal Confirmation (sl_waiting_reopen = true)
+    for (const waitingCoin of waitingCoins) {
+      const symbol = waitingCoin.symbol;
+      try {
+        const klines = await fetchFuturesKlines(symbol, '4h', 5);
+        if (klines && klines.length >= 3) {
+          // klines[klines.length - 1] is current forming candle
+          // klines[klines.length - 2] is the most recently closed candle
+          // klines[klines.length - 3] is the candle before the closed candle
+          const closedCandle = klines[klines.length - 2];
+          const prevCandle = klines[klines.length - 3];
+          const slHitTimeMs = waitingCoin.sl_hit_time ? new Date(waitingCoin.sl_hit_time).getTime() : 0;
+          const closedCandleCloseTime = closedCandle.time + (4 * 3600 * 1000);
+          const lastCheckedKlineTime = waitingCoin.sl_last_checked_kline_time ? Number(waitingCoin.sl_last_checked_kline_time) : 0;
+
+          // Check if candle closed AFTER the SL hit time and has not been evaluated yet
+          // closedCandleCloseTime must be strictly after slHitTimeMs to avoid re-evaluating pre-SL candles
+          const isNewCandleAfterSL = slHitTimeMs > 0 && closedCandleCloseTime > slHitTimeMs;
+          if (closedCandle.time !== lastCheckedKlineTime && isNewCandleAfterSL) {
+            await executeQuery(
+              `UPDATE compound_bot_config SET sl_last_checked_kline_time = ? WHERE symbol = ?`,
+              [closedCandle.time, symbol]
+            );
+
+            // Condition: Candle H4 penutupan harga lebih tinggi dari harga open candle sebelumnya
+            const isReversalBullish = closedCandle.close > prevCandle.open;
+            const closedTimeStr = new Date(closedCandle.time + 4 * 3600 * 1000).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+
+            if (isReversalBullish) {
+              await addBotLog(
+                'START',
+                `🟢 [${symbol}] KONFIRMASI CANDLE H4 TERPENUHI! Candle H4 (${closedTimeStr}) Close ($${closedCandle.close.toFixed(4)}) > Open Prev ($${prevCandle.open.toFixed(4)}). Auto Re-Open posisi baru sesuai settingan...`,
+                'SUCCESS'
+              );
+
+              try {
+                const startRes = await startCompoundBot({
+                  symbol,
+                  notionalUsd: parseFloat(waitingCoin.notional_usd),
+                  leverage: parseInt(waitingCoin.leverage),
+                  compoundPercent: parseFloat(waitingCoin.compound_percent),
+                  stopLossPercent: waitingCoin.stop_loss_percent ? parseFloat(waitingCoin.stop_loss_percent) : null,
+                  autoStopHours: waitingCoin.auto_stop_hours ? parseFloat(waitingCoin.auto_stop_hours) : null,
+                  targetCycles: waitingCoin.target_cycles ? parseInt(waitingCoin.target_cycles) : null,
+                  targetPriceGoal: waitingCoin.target_price_goal ? parseFloat(waitingCoin.target_price_goal) : null,
+                  slReopenEnabled: true
+                });
+
+                tickResults.push({
+                  symbol,
+                  status: 'SL_REOPEN_EXECUTED',
+                  closedCandleClose: closedCandle.close,
+                  prevCandleOpen: prevCandle.open,
+                  newCycle: startRes.cycleNumber
+                });
+                continue;
+              } catch (reopenErr: any) {
+                console.error(`Gagal Auto Re-Open bot untuk ${symbol}:`, reopenErr);
+                await addBotLog('ERROR', `❌ [${symbol}] Gagal mengeksekusi Auto Re-Open: ${reopenErr.message}. Bot tetap siaga.`, 'ERROR');
+              }
+            } else {
+              await addBotLog(
+                'INFO',
+                `⏳ [${symbol}] Evaluasi Candle H4 (${closedTimeStr}): Close ($${closedCandle.close.toFixed(4)}) <= Open Prev ($${prevCandle.open.toFixed(4)}). Belum valid bullish, tetap siaga menunggu candle H4 berikutnya.`,
+                'INFO'
+              );
+              tickResults.push({
+                symbol,
+                status: 'WAITING_H4_REOPEN',
+                closedCandleClose: closedCandle.close,
+                prevCandleOpen: prevCandle.open,
+                message: 'Belum memenuhi Close H4 > Open Prev'
+              });
+            }
+          } else {
+            const currentCandle = klines[klines.length - 1];
+            const remainingMs = Math.max(0, (currentCandle.time + 4 * 3600 * 1000) - Date.now());
+            const remainingMin = Math.ceil(remainingMs / 60000);
+            tickResults.push({
+              symbol,
+              status: 'WAITING_H4_REOPEN',
+              currentCandleCloseInMinutes: remainingMin,
+              targetPrevOpen: closedCandle.open
+            });
+          }
+        }
+      } catch (waitErr: any) {
+        console.error(`Error checking H4 klines for ${symbol}:`, waitErr);
+      }
+    }
+
     return {
       status: 'MONITORING',
       activeCount: activeCoins.length,
+      waitingCount: waitingCoins.length,
       coins: tickResults,
       timestamp: new Date().toISOString()
     };
