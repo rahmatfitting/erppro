@@ -6,6 +6,37 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 
 ## 📅 Riwayat Perubahan & Fitur (Changelog)
 
+### [2026-09-29] - Fitur Target Price (Auto-Stop & Close Posisi saat Mencapai Target Harga) per Koin pada Bot Compound Future
+
+#### 1. Deskripsi & Mekanisme Kerja Target Price yang Dituju
+- **Latar Belakang:** Pada strategi Multi-Coin Compound Future, bot secara default terus meng-compound posisi di setiap kenaikan harga +1%. Trader memerlukan opsi untuk menentukan harga target absolut (Target Price yang Dituju, misal BTC $95,000 atau ETH $2,800), di mana begitu harga pasar menyentuh atau melampaui harga target tersebut, bot langsung otomatis berhenti (STOP) dan menutup seluruh posisi aktif di Binance via Market Sell (`reduceOnly: true`).
+- **Mekanisme Eksekusi:**
+  1. **Konfigurasi Target Price:** Trader dapat mengatur target price per koin (`target_price_goal`), dengan input harga manual USD atau opsi preset cepat (+2%, +5%, +10%, +15%, +25% dari harga pasar live).
+  2. **Validasi Keamanan:** Target price yang disetel divalidasi agar harus berada di atas harga pasar live untuk mencegah eksekusi instan yang tidak disengaja.
+  3. **Pemantauan Real-Time:** Engine bot (`tickCompoundBot`) memantau harga real-time/mark price Binance (`currentPrice`).
+  4. **Auto-Stop & Close Posisi Pasang:** Saat `currentPrice >= target_price_goal`:
+     - Posisi aktif di bursa Binance seketika ditutup dengan Market Sell (`reduceOnly: true`).
+     - Siklus aktif ditandai `status: 'TARGET_HIT'` dan keuntungan realized profit dikunci.
+     - Bot koin dihentikan (`is_active = false`), data posisi aktif dikosongkan (`entry_price`, `target_price`, `quantity` = NULL), dan akumulasi `total_profit` diperbarui.
+     - Bot tidak membuka siklus compound berikutnya.
+     - Dicatat log keberhasilan: `🏆 [SYMBOL] TARGET PRICE SUKSES TERCAPAI! Posisi Cycle #X ditutup @ $Y. Realized Profit: +$Z USDT. Bot koin otomatis STOP.`
+     - Menghasilkan status tick `TARGET_PRICE_REACHED`.
+
+#### 2. Antarmuka UI/UX (`/crypto/compound-bot`)
+- **Modal Tambah & Pengaturan Koin (`showAddModal`):**
+  - Bagian baru **🎯 Target Price yang Dituju (Auto-Stop & Close Posisi)** lengkap dengan preset chips (+2%, +5%, +10%, +15%, +25%), input custom price USD, live preview jarak % terhadap harga live, dan tombol hapus/reset target.
+  - Dapat disetel saat menambah koin baru, memulai koin, maupun diedit langsung pada koin yang sedang RUNNING melalui tombol `Settings2`.
+- **Kartu Koin Live (Active & Stopped):**
+  - **Badge Target Price:** Menampilkan badge `TP: $X` di bagian header kartu dengan tombol hapus cepat `X` untuk mereset koin ke mode Bebas tanpa target harga.
+  - **Active Holding Indicator:** Menampilkan baris `Target Price: $X` lengkap dengan jarak persentase live yang tersisa (misal: `+2.45% lagi` atau `Tercapai!`).
+  - **Setup Info Card (Idle):** Menampilkan baris `Target Price: $X (Auto-Stop)` atau `Bebas / Tanpa Batas`.
+- **Endpoint API & Background Daemon:**
+  - Endpoint baru: `POST /api/crypto/compound-bot/clear-target-price` untuk menghapus target price secara instan.
+  - Pembaruan endpoint `POST /api/crypto/compound-bot/save` dan `POST /api/crypto/compound-bot/start` untuk mendukung penyimpanan dan validasi `targetPriceGoal`.
+  - Background daemon runner (`cron_compound_bot.js`): Ditambahkan penanganan banner konsol khusus saat `TARGET_PRICE_REACHED`.
+
+---
+
 ### [2026-09-29] - Fitur Target Cycle (Auto-Stop saat Take Profit) per Koin pada Bot Compound Future
 
 #### 1. Deskripsi & Mekanisme Kerja Target Cycle

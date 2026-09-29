@@ -62,6 +62,13 @@ async function runTick() {
             console.log(`💰 Realized Profit: +$${coin.realizedPnl?.toFixed(2)} USDT`);
             console.log(`🛑 Bot otomatis dihentikan (STOPPED) dan seluruh profit telah diamankan.`);
             console.log('====================================================\n');
+          } else if (coin.status === 'TARGET_PRICE_REACHED') {
+            console.log('\n====================================================');
+            console.log(`[${now}] 🎯 [${coin.symbol}] TARGET PRICE TERCAPAI!`);
+            console.log(`🎯 Harga ($${coin.currentPrice}) telah mencapai Target Price yang Dituju: $${coin.targetPriceGoal}!`);
+            console.log(`💰 Realized Profit: +$${coin.realizedPnl?.toFixed(2)} USDT (${coin.realizedPnlPct?.toFixed(2)}%)`);
+            console.log(`🛑 Bot otomatis dihentikan (STOPPED) dan posisi koin telah ditutup.`);
+            console.log('====================================================\n');
           }
         }
       } else if (d.status === 'IDLE' || d.activeCount === 0) {

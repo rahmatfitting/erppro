@@ -29,7 +29,8 @@ import {
   Settings2,
   StopCircle,
   AlarmClockOff,
-  Target
+  Target,
+  Crosshair
 } from "lucide-react";
 
 interface RealPosition {
@@ -57,6 +58,7 @@ interface CompoundConfig {
   compound_percent: number;
   stop_loss_percent: number | null;
   target_cycles?: number | null;
+  target_price_goal?: number | null;
   current_cycle: number;
   total_profit: number;
   entry_price: number | null;
@@ -158,6 +160,7 @@ export default function CompoundBotPage() {
   const [formSLPct, setFormSLPct] = useState<number>(2.0);
   const [formAutoStopHours, setFormAutoStopHours] = useState<number>(8); // default 8 jam, 0 = Nonstop
   const [formTargetCycles, setFormTargetCycles] = useState<number>(0); // 0 = Bebas / tanpa batas cycle, > 0 = target max cycle
+  const [formTargetPriceGoal, setFormTargetPriceGoal] = useState<number>(0); // 0 = Bebas / tanpa target harga, > 0 = target price (auto-stop & close)
   const [formStartImmediately, setFormStartImmediately] = useState<boolean>(true);
 
   // 1-Second Tick for smooth live countdown display
@@ -289,7 +292,10 @@ export default function CompoundBotPage() {
               (c: any) =>
                 c.status === "COMPOUND_EXECUTED" ||
                 c.status === "STOP_LOSS_HIT" ||
-                c.status === "DCA_TRIGGERED"
+                c.status === "DCA_TRIGGERED" ||
+                c.status === "TARGET_PRICE_REACHED" ||
+                c.status === "TARGET_CYCLE_REACHED" ||
+                c.status === "AUTO_STOPPED_TIMER_EXPIRED"
             );
             if (hasTrigger) {
               fetchState();
@@ -314,6 +320,7 @@ export default function CompoundBotPage() {
     stopLossPercent?: number | null;
     autoStopHours?: number | null;
     targetCycles?: number | null;
+    targetPriceGoal?: number | null;
   }) => {
     const sym = coinConfig.symbol.toUpperCase().trim();
     setActionLoading((prev) => ({ ...prev, [sym]: true }));
@@ -329,7 +336,8 @@ export default function CompoundBotPage() {
           compoundPercent: coinConfig.compoundPercent,
           stopLossPercent: coinConfig.stopLossPercent,
           autoStopHours: coinConfig.autoStopHours,
-          targetCycles: coinConfig.targetCycles
+          targetCycles: coinConfig.targetCycles,
+          targetPriceGoal: coinConfig.targetPriceGoal
         })
       });
 
@@ -365,7 +373,8 @@ export default function CompoundBotPage() {
           compoundPercent: formCompoundPct,
           stopLossPercent: formEnableSL ? formSLPct : null,
           autoStopHours: formAutoStopHours > 0 ? formAutoStopHours : null,
-          targetCycles: formTargetCycles > 0 ? formTargetCycles : null
+          targetCycles: formTargetCycles > 0 ? formTargetCycles : null,
+          targetPriceGoal: formTargetPriceGoal > 0 ? formTargetPriceGoal : null
         })
       });
 
@@ -394,8 +403,36 @@ export default function CompoundBotPage() {
     setFormSLPct(coin.stop_loss_percent || 2.0);
     setFormAutoStopHours(coin.auto_stop_hours || 0);
     setFormTargetCycles(coin.target_cycles || 0);
+    setFormTargetPriceGoal(coin.target_price_goal || 0);
     handleValidatePair(coin.symbol);
     setShowAddModal(true);
+  };
+
+  // Clear / remove Target Price Goal for a coin
+  const handleClearTargetPrice = async (symbol: string) => {
+    if (!confirm(`Hapus pengaturan target price untuk ${symbol}? Bot akan tetap beroperasi dalam mode bebas tanpa batas harga target.`)) {
+      return;
+    }
+    const sym = symbol.toUpperCase().trim();
+    setActionLoading((prev) => ({ ...prev, [sym]: true }));
+    try {
+      const res = await fetch("/api/crypto/compound-bot/clear-target-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: sym })
+      });
+      const json = await res.json();
+      if (json.success) {
+        alert(json.message || `Target price ${sym} berhasil dihapus.`);
+        await fetchState();
+      } else {
+        alert(`Gagal menghapus target price: ${json.error}`);
+      }
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [sym]: false }));
+    }
   };
 
   // 6. Stop Handler (Single or ALL)
@@ -659,6 +696,7 @@ export default function CompoundBotPage() {
               setFormSLPct(2.0);
               setFormAutoStopHours(8); // Default 8 jam
               setFormTargetCycles(0); // Default nonstop cycle
+              setFormTargetPriceGoal(0); // Default tanpa target harga
               setShowAddModal(true);
               handleValidatePair("ETHUSDT");
             }}
@@ -809,6 +847,8 @@ export default function CompoundBotPage() {
                 setFormEnableSL(false);
                 setFormSLPct(2.0);
                 setFormAutoStopHours(8);
+                setFormTargetCycles(0);
+                setFormTargetPriceGoal(0);
                 setShowAddModal(true);
                 handleValidatePair("ETHUSDT");
               }}
@@ -979,6 +1019,32 @@ export default function CompoundBotPage() {
                             </span>
                           ) : null}
 
+                          {/* Target Price Goal Badge */}
+                          {coin.target_price_goal && coin.target_price_goal > 0 ? (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 shadow-sm ${
+                                coin.is_active
+                                  ? "bg-indigo-950/80 border-indigo-500/60 text-indigo-300"
+                                  : "bg-slate-800 border-slate-700 text-slate-300"
+                              }`}
+                              title={`Target Price: Bot otomatis STOP & close posisi saat harga menyentuh $${coin.target_price_goal.toLocaleString()}`}
+                            >
+                              <Crosshair className="w-2.5 h-2.5 text-indigo-400" />
+                              TP: ${coin.target_price_goal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleClearTargetPrice(coin.symbol);
+                                }}
+                                className="ml-0.5 p-0.5 rounded hover:bg-indigo-800/60 hover:text-rose-300 transition-colors cursor-pointer"
+                                title="Hapus Target Price"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          ) : null}
+
                           <span
                             className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
                               coin.is_active
@@ -1064,6 +1130,23 @@ export default function CompoundBotPage() {
                                 </span>
                               </div>
                             </div>
+
+                            {/* Target Price Goal Active Row */}
+                            {coin.target_price_goal && coin.target_price_goal > 0 && (
+                              <div className="flex items-center justify-between text-[11px] px-3 py-1.5 rounded-xl bg-indigo-950/40 border border-indigo-900/50 text-indigo-200 font-mono">
+                                <span className="flex items-center gap-1.5 text-indigo-400 font-sans font-semibold">
+                                  <Crosshair className="w-3.5 h-3.5" /> Target Price:
+                                </span>
+                                <span className="font-bold text-slate-100">
+                                  ${coin.target_price_goal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
+                                  {livePrice > 0 ? (
+                                    <span className={`text-[10px] ml-1.5 font-normal ${livePrice >= coin.target_price_goal ? "text-emerald-400 font-bold" : "text-indigo-300/80"}`}>
+                                      ({livePrice >= coin.target_price_goal ? "Tercapai!" : `${(((coin.target_price_goal - livePrice) / livePrice) * 100).toFixed(2)}% lagi`})
+                                    </span>
+                                  ) : null}
+                                </span>
+                              </div>
+                            )}
                           </>
                         ) : (
                           /* Stopped / Ready Setup */
@@ -1080,6 +1163,14 @@ export default function CompoundBotPage() {
                               <span>Target Siklus:</span>
                               <span className="font-mono font-bold text-cyan-400">
                                 {coin.target_cycles && coin.target_cycles > 0 ? `${coin.target_cycles} Cycle (Auto-Stop saat TP)` : "Bebas / Tanpa Batas"}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-400">
+                              <span>Target Price:</span>
+                              <span className="font-mono font-bold text-indigo-400">
+                                {coin.target_price_goal && coin.target_price_goal > 0
+                                  ? `$${coin.target_price_goal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} (Auto-Stop)`
+                                  : "Bebas / Tanpa Batas"}
                               </span>
                             </div>
                             <div className="flex items-center justify-between text-slate-400">
@@ -1159,7 +1250,8 @@ export default function CompoundBotPage() {
                               compoundPercent: coin.compound_percent,
                               stopLossPercent: coin.stop_loss_percent,
                               autoStopHours: coin.auto_stop_hours,
-                              targetCycles: coin.target_cycles
+                              targetCycles: coin.target_cycles,
+                              targetPriceGoal: coin.target_price_goal
                             })
                           }
                           disabled={isLoading}
@@ -1707,6 +1799,88 @@ export default function CompoundBotPage() {
                   *Jika disetel <strong>{formTargetCycles > 0 ? `${formTargetCycles} cycle` : 'misal 5 cycle'}</strong>, saat Cycle #{formTargetCycles > 0 ? formTargetCycles : '5'} Take Profit (TP), bot <strong>otomatis STOP</strong>, mengunci profit, dan tidak membuka cycle berikutnya.
                 </p>
               </div>
+
+              {/* Target Price yang Dituju (Auto-Stop saat Sampai Target Harga) */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                    <Crosshair className="w-3.5 h-3.5 text-indigo-400" />
+                    Target Price yang Dituju (Auto-Stop & Close Posisi)
+                  </label>
+                  <span className="text-[10px] text-indigo-400 font-semibold">
+                    {formTargetPriceGoal > 0 ? `Stop di $${formTargetPriceGoal.toLocaleString()}` : "Bebas / Tanpa Batas Harga"}
+                  </span>
+                </div>
+
+                {/* Preset Chips based on live pair price */}
+                {pairInfo?.lastPrice && pairInfo.lastPrice > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[2, 5, 10, 15, 25].map((pct) => {
+                        const calculatedPrice = parseFloat((pairInfo.lastPrice! * (1 + pct / 100)).toFixed(4));
+                        const isSelected = Math.abs(formTargetPriceGoal - calculatedPrice) < 0.0001;
+                        return (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => setFormTargetPriceGoal(calculatedPrice)}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-all cursor-pointer ${
+                              isSelected
+                                ? "bg-indigo-600/90 text-white border-indigo-400 shadow-md shadow-indigo-950/40"
+                                : "bg-slate-950 text-slate-300 border-slate-800 hover:border-indigo-600/40"
+                            }`}
+                          >
+                            +{pct}% (${calculatedPrice.toLocaleString()})
+                          </button>
+                        );
+                      })}
+                      {formTargetPriceGoal > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setFormTargetPriceGoal(0)}
+                          className="px-2 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 cursor-pointer"
+                        >
+                          Bebas (Hapus Target)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom Target Price Input */}
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={formTargetPriceGoal === 0 ? "" : formTargetPriceGoal}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value);
+                      setFormTargetPriceGoal(isNaN(val) ? 0 : val);
+                    }}
+                    placeholder="Input harga target (misal: 95000 atau 2.850)"
+                    className="w-full pl-3 pr-16 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                  <span className="absolute right-3.5 top-2 text-xs text-indigo-400 font-bold">USD</span>
+                </div>
+
+                {formTargetPriceGoal > 0 && pairInfo?.lastPrice && (
+                  <div className="text-[11px] text-indigo-300 bg-indigo-950/40 border border-indigo-900/60 p-2 rounded-lg flex items-center justify-between">
+                    <span>Jarak dari harga pasar saat ini:</span>
+                    <span className="font-mono font-bold">
+                      {formTargetPriceGoal > pairInfo.lastPrice ? "+" : ""}
+                      {(((formTargetPriceGoal - pairInfo.lastPrice) / pairInfo.lastPrice) * 100).toFixed(2)}%
+                      {formTargetPriceGoal <= pairInfo.lastPrice && (
+                        <span className="text-rose-400 ml-1.5 font-sans">(⚠️ Harus di atas harga saat ini ${pairInfo.lastPrice.toLocaleString()})</span>
+                      )}
+                    </span>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-slate-400 leading-relaxed italic">
+                  *Jika harga koin menyentuh atau melampaui <strong>{formTargetPriceGoal > 0 ? `$${formTargetPriceGoal.toLocaleString()}` : 'target price yang ditentukan'}</strong>, bot otomatis <strong>STOP</strong> dan <strong>menutup seluruh posisi pasar aktif di Binance</strong> untuk mengamankan profit.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-800">
@@ -1740,10 +1914,11 @@ export default function CompoundBotPage() {
                         compoundPercent: formCompoundPct,
                         stopLossPercent: formEnableSL ? formSLPct : null,
                         autoStopHours: formAutoStopHours > 0 ? formAutoStopHours : null,
-                        targetCycles: formTargetCycles > 0 ? formTargetCycles : null
+                        targetCycles: formTargetCycles > 0 ? formTargetCycles : null,
+                        targetPriceGoal: formTargetPriceGoal > 0 ? formTargetPriceGoal : null
                       })
                     }
-                    disabled={!pairInfo?.isValid}
+                    disabled={!pairInfo?.isValid || Boolean(formTargetPriceGoal > 0 && pairInfo?.lastPrice && formTargetPriceGoal <= pairInfo.lastPrice)}
                     className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950 cursor-pointer"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
