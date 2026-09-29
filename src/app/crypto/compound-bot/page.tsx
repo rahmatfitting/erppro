@@ -76,6 +76,7 @@ interface CompoundConfig {
   auto_stop_hours?: number | null;
   auto_stop_at?: string | null;
   sl_reopen_enabled?: boolean;
+  sl_reopen_mode?: 'h4_reversal' | 'fvg_30m' | 'both';
   sl_waiting_reopen?: boolean;
   sl_hit_time?: string | null;
   sl_last_checked_kline_time?: number | null;
@@ -163,6 +164,7 @@ export default function CompoundBotPage() {
   const [formEnableSL, setFormEnableSL] = useState<boolean>(false);
   const [formSLPct, setFormSLPct] = useState<number>(2.0);
   const [formSLReopenEnabled, setFormSLReopenEnabled] = useState<boolean>(true); // default true when SL is enabled
+  const [formSLReopenMode, setFormSLReopenMode] = useState<'h4_reversal' | 'fvg_30m' | 'both'>('h4_reversal');
   const [formAutoStopHours, setFormAutoStopHours] = useState<number>(8); // default 8 jam, 0 = Nonstop
   const [formTargetCycles, setFormTargetCycles] = useState<number>(0); // 0 = Bebas / tanpa batas cycle, > 0 = target max cycle
   const [formTargetPriceGoal, setFormTargetPriceGoal] = useState<number>(0); // 0 = Bebas / tanpa target harga, > 0 = target price (auto-stop & close)
@@ -327,6 +329,7 @@ export default function CompoundBotPage() {
     targetCycles?: number | null;
     targetPriceGoal?: number | null;
     slReopenEnabled?: boolean | null;
+    slReopenMode?: 'h4_reversal' | 'fvg_30m' | 'both' | null;
   }) => {
     const sym = coinConfig.symbol.toUpperCase().trim();
     setActionLoading((prev) => ({ ...prev, [sym]: true }));
@@ -344,7 +347,8 @@ export default function CompoundBotPage() {
           autoStopHours: coinConfig.autoStopHours,
           targetCycles: coinConfig.targetCycles,
           targetPriceGoal: coinConfig.targetPriceGoal,
-          slReopenEnabled: coinConfig.slReopenEnabled !== undefined ? coinConfig.slReopenEnabled : formSLReopenEnabled
+          slReopenEnabled: coinConfig.slReopenEnabled !== undefined ? coinConfig.slReopenEnabled : formSLReopenEnabled,
+          slReopenMode: coinConfig.slReopenMode !== undefined ? coinConfig.slReopenMode : formSLReopenMode
         })
       });
 
@@ -382,7 +386,8 @@ export default function CompoundBotPage() {
           autoStopHours: formAutoStopHours > 0 ? formAutoStopHours : null,
           targetCycles: formTargetCycles > 0 ? formTargetCycles : null,
           targetPriceGoal: formTargetPriceGoal > 0 ? formTargetPriceGoal : null,
-          slReopenEnabled: formEnableSL ? formSLReopenEnabled : false
+          slReopenEnabled: formEnableSL ? formSLReopenEnabled : false,
+          slReopenMode: formSLReopenMode
         })
       });
 
@@ -410,6 +415,7 @@ export default function CompoundBotPage() {
     setFormEnableSL(Boolean(coin.stop_loss_percent));
     setFormSLPct(coin.stop_loss_percent || 2.0);
     setFormSLReopenEnabled(coin.sl_reopen_enabled !== undefined ? Boolean(coin.sl_reopen_enabled) : true);
+    setFormSLReopenMode((coin.sl_reopen_mode as any) || 'h4_reversal');
     setFormAutoStopHours(coin.auto_stop_hours || 0);
     setFormTargetCycles(coin.target_cycles || 0);
     setFormTargetPriceGoal(coin.target_price_goal || 0);
@@ -1083,14 +1089,18 @@ export default function CompoundBotPage() {
                             </span>
                           ) : null}
 
-                          {/* SIAGA RE-OPEN CANDLE H4 BADGE */}
+                          {/* SIAGA RE-OPEN BADGE */}
                           {coin.sl_waiting_reopen && !coin.is_active ? (
                             <span
                               className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-950/90 border border-amber-500/70 text-amber-300 flex items-center gap-1 shadow-md shadow-amber-950/40 animate-pulse"
-                              title="Bot sedang siaga menunggu penutupan candle H4 (Close > Open Prev) untuk open kembali otomatis pasca Stop Loss"
+                              title={`Bot siaga menunggu sinyal ${coin.sl_reopen_mode === 'fvg_30m' ? 'FVG Bullish 30m' : coin.sl_reopen_mode === 'both' ? 'H4 reversal atau FVG 30m' : 'penutupan candle H4 (Close > Open Prev)'} untuk open kembali otomatis`}
                             >
                               <Sparkles className="w-3 h-3 text-amber-400" />
-                              SIAGA RE-OPEN (H4)
+                              {coin.sl_reopen_mode === 'fvg_30m'
+                                ? 'SIAGA (FVG 30m)'
+                                : coin.sl_reopen_mode === 'both'
+                                ? 'SIAGA (H4+FVG)'
+                                : 'SIAGA RE-OPEN (H4)'}
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -1267,7 +1277,13 @@ export default function CompoundBotPage() {
                               <div className="flex items-center justify-between text-slate-400">
                                 <span>Re-Open Pasca SL:</span>
                                 <span className={`font-mono font-bold ${coin.sl_reopen_enabled ? "text-emerald-400" : "text-slate-400"}`}>
-                                  {coin.sl_reopen_enabled ? "Aktif (Candle H4)" : "Nonaktif"}
+                                  {coin.sl_reopen_enabled
+                                    ? coin.sl_reopen_mode === 'fvg_30m'
+                                      ? "Aktif (FVG 30m)"
+                                      : coin.sl_reopen_mode === 'both'
+                                      ? "Aktif (H4 + FVG 30m)"
+                                      : "Aktif (Candle H4)"
+                                    : "Nonaktif"}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between text-slate-400">
@@ -1791,11 +1807,12 @@ export default function CompoundBotPage() {
                   </p>
                 )}
                 {formEnableSL && (
-                  <div className="mt-2 p-2.5 rounded-xl bg-slate-950/80 border border-emerald-500/30 space-y-1.5">
+                  <div className="mt-2 p-3 rounded-xl bg-slate-950/80 border border-emerald-500/30 space-y-3">
+                    {/* Toggle Aktif/Nonaktif */}
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-emerald-300 flex items-center gap-1.5 cursor-pointer">
                         <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                        Auto Re-Open Pasca SL (Candle H4)
+                        Auto Re-Open Pasca SL
                       </label>
                       <button
                         type="button"
@@ -1809,9 +1826,45 @@ export default function CompoundBotPage() {
                         {formSLReopenEnabled ? "AKTIF" : "NONAKTIF"}
                       </button>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
-                      Jika menyentuh SL, bot akan <strong>otomatis open kembali</strong> sesuai settingan begitu candle <strong>H4 resmi ditutup</strong> dengan harga penutupan (Close) <strong>lebih tinggi dari harga Open candle sebelumnya</strong> (Reversal Bullish).
-                    </p>
+
+                    {/* Mode selector — visible when enabled */}
+                    {formSLReopenEnabled && (
+                      <div className="space-y-2">
+                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Kondisi Sinyal Re-Open:</p>
+                        <div className="grid grid-cols-3 gap-1.5">
+                          {([
+                            { key: 'h4_reversal', label: '📈 Candle H4', desc: 'Close H4 > Open Prev' },
+                            { key: 'fvg_30m',    label: '🕯️ FVG 30m',   desc: 'FVG Bullish baru 30m' },
+                            { key: 'both',       label: '⚡ Keduanya',    desc: 'Salah satu terpenuhi' },
+                          ] as const).map(opt => (
+                            <button
+                              key={opt.key}
+                              type="button"
+                              onClick={() => setFormSLReopenMode(opt.key)}
+                              className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg border text-center transition-all cursor-pointer ${
+                                formSLReopenMode === opt.key
+                                  ? 'bg-emerald-600/20 border-emerald-400 text-emerald-300'
+                                  : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500'
+                              }`}
+                            >
+                              <span className="text-[11px] font-bold leading-tight">{opt.label}</span>
+                              <span className="text-[9px] opacity-75 leading-tight">{opt.desc}</span>
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-relaxed">
+                          {formSLReopenMode === 'h4_reversal' && (
+                            <>Bot open kembali saat candle <strong>H4 resmi ditutup</strong> dengan <strong>Close &gt; Open candle sebelumnya</strong> (Reversal Bullish).</>
+                          )}
+                          {formSLReopenMode === 'fvg_30m' && (
+                            <>Bot open kembali saat terdeteksi <strong>FVG (Fair Value Gap) Bullish baru</strong> di timeframe <strong>30 menit</strong> yang terbentuk setelah SL terkena.</>           
+                          )}
+                          {formSLReopenMode === 'both' && (
+                            <>Bot open kembali saat <strong>salah satu kondisi</strong> terpenuhi: Candle H4 reversal <strong>ATAU</strong> FVG Bullish 30m — mana yang lebih cepat terdeteksi.</>
+                          )}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2058,7 +2111,8 @@ export default function CompoundBotPage() {
                         autoStopHours: formAutoStopHours > 0 ? formAutoStopHours : null,
                         targetCycles: formTargetCycles > 0 ? formTargetCycles : null,
                         targetPriceGoal: formTargetPriceGoal > 0 ? formTargetPriceGoal : null,
-                        slReopenEnabled: formEnableSL ? formSLReopenEnabled : false
+                        slReopenEnabled: formEnableSL ? formSLReopenEnabled : false,
+                        slReopenMode: formSLReopenMode
                       })
                     }
                     disabled={!pairInfo?.isValid || Boolean(formTargetPriceGoal > 0 && pairInfo?.lastPrice && formTargetPriceGoal <= pairInfo.lastPrice)}

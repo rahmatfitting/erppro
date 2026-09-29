@@ -41,6 +41,7 @@ export interface CompoundBotConfig {
   target_cycles?: number | null;
   target_price_goal?: number | null;
   sl_reopen_enabled?: boolean;
+  sl_reopen_mode?: 'h4_reversal' | 'fvg_30m' | 'both';
   sl_waiting_reopen?: boolean;
   sl_hit_time?: string | null;
   sl_last_checked_kline_time?: number | null;
@@ -109,6 +110,7 @@ export async function ensureCompoundBotTables() {
       auto_stop_at DATETIME DEFAULT NULL,
       target_price_goal DECIMAL(16, 8) DEFAULT NULL,
       sl_reopen_enabled BOOLEAN DEFAULT false,
+      sl_reopen_mode VARCHAR(20) DEFAULT 'h4_reversal',
       sl_waiting_reopen BOOLEAN DEFAULT false,
       sl_hit_time DATETIME DEFAULT NULL,
       sl_last_checked_kline_time BIGINT DEFAULT NULL,
@@ -216,6 +218,9 @@ export async function ensureCompoundBotTables() {
   } catch {}
   try {
     await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN sl_last_checked_kline_time BIGINT DEFAULT NULL`);
+  } catch {}
+  try {
+    await executeQuery(`ALTER TABLE compound_bot_config ADD COLUMN sl_reopen_mode VARCHAR(20) DEFAULT 'h4_reversal'`);
   } catch {}
 
   // Ensure default BTCUSDT coin exists if table completely empty
@@ -338,6 +343,7 @@ export async function getBotState() {
     target_cycles: r.target_cycles ? parseInt(r.target_cycles) : null,
     target_price_goal: r.target_price_goal ? parseFloat(r.target_price_goal) : null,
     sl_reopen_enabled: Boolean(r.sl_reopen_enabled),
+    sl_reopen_mode: (r.sl_reopen_mode || 'h4_reversal') as 'h4_reversal' | 'fvg_30m' | 'both',
     sl_waiting_reopen: Boolean(r.sl_waiting_reopen),
     sl_hit_time: r.sl_hit_time ? (r.sl_hit_time instanceof Date ? r.sl_hit_time.toISOString() : new Date(r.sl_hit_time).toISOString()) : null,
     sl_last_checked_kline_time: r.sl_last_checked_kline_time ? Number(r.sl_last_checked_kline_time) : null
@@ -566,12 +572,13 @@ export async function saveCoinConfig(params: {
   const targetCyclesVal = targetCycles && targetCycles > 0 ? Math.floor(targetCycles) : null;
   const targetPriceGoalVal = targetPriceGoal && targetPriceGoal > 0 ? targetPriceGoal : null;
   const slReopenVal = slReopenEnabled !== undefined && slReopenEnabled !== null ? Boolean(slReopenEnabled) : false;
+  const slReopenModeVal = slReopenMode && ['h4_reversal', 'fvg_30m', 'both'].includes(slReopenMode) ? slReopenMode : 'h4_reversal';
 
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, auto_stop_hours, target_cycles, target_price_goal, sl_reopen_enabled)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, auto_stop_hours, target_cycles, target_price_goal, sl_reopen_enabled, sl_reopen_mode)
     VALUES 
-      (?, false, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (?, false, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       notional_usd = VALUES(notional_usd),
       current_notional = IF(is_active = true, current_notional, VALUES(notional_usd)),
@@ -581,7 +588,8 @@ export async function saveCoinConfig(params: {
       auto_stop_hours = VALUES(auto_stop_hours),
       target_cycles = VALUES(target_cycles),
       target_price_goal = VALUES(target_price_goal),
-      sl_reopen_enabled = VALUES(sl_reopen_enabled)
+      sl_reopen_enabled = VALUES(sl_reopen_enabled),
+      sl_reopen_mode = VALUES(sl_reopen_mode)
   `, [
     cleanSymbol,
     notionalUsd,
@@ -592,13 +600,15 @@ export async function saveCoinConfig(params: {
     stopHoursVal,
     targetCyclesVal,
     targetPriceGoalVal,
-    slReopenVal
+    slReopenVal,
+    slReopenModeVal
   ]);
 
   const timerLogText = stopHoursVal ? `, Auto-Stop: ${stopHoursVal} Jam` : ', Mode: Nonstop Jam';
   const cycleLogText = targetCyclesVal ? `, Target: ${targetCyclesVal} Cycle (Auto-Stop saat TP)` : '';
   const priceGoalLogText = targetPriceGoalVal ? `, Target Price: $${targetPriceGoalVal} (Auto-Stop saat sampai)` : '';
-  const reopenLogText = slReopenVal ? ', Auto Re-Open H4: AKTIF' : '';
+  const reopenModeLabel = slReopenModeVal === 'fvg_30m' ? 'FVG Bullish 30m' : slReopenModeVal === 'both' ? 'H4 + FVG 30m' : 'Candle H4';
+  const reopenLogText = slReopenVal ? `, Auto Re-Open [${reopenModeLabel}]: AKTIF` : '';
   await addBotLog('SYSTEM', `⚙️ Konfigurasi koin ${cleanSymbol} disimpan (Notional: $${notionalUsd}, Leverage: ${leverage}x, Target: +${compoundPercent}%${timerLogText}${cycleLogText}${priceGoalLogText}${reopenLogText}).`, 'INFO');
 
   return { success: true, symbol: cleanSymbol };
@@ -617,10 +627,11 @@ export async function startCompoundBot(params: {
   targetCycles?: number | null;
   targetPriceGoal?: number | null;
   slReopenEnabled?: boolean | null;
+  slReopenMode?: 'h4_reversal' | 'fvg_30m' | 'both' | null;
 }) {
   await ensureCompoundBotTables();
 
-  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled } = params;
+  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled, slReopenMode } = params;
   const cleanSymbol = symbol.toUpperCase().trim();
 
   // 1. Pair Validation
@@ -641,7 +652,7 @@ export async function startCompoundBot(params: {
 
   // 2. Check if this coin is currently running active
   const configRows: any = await executeQuery(`
-    SELECT is_active, auto_stop_hours, target_cycles, target_price_goal, sl_reopen_enabled FROM compound_bot_config WHERE symbol = ?
+    SELECT is_active, auto_stop_hours, target_cycles, target_price_goal, sl_reopen_enabled, sl_reopen_mode FROM compound_bot_config WHERE symbol = ?
   `, [cleanSymbol]);
 
   if (configRows && configRows.length > 0 && configRows[0].is_active) {
@@ -670,6 +681,14 @@ export async function startCompoundBot(params: {
   let effectiveSlReopen = slReopenEnabled;
   if (effectiveSlReopen === undefined && configRows && configRows.length > 0 && configRows[0].sl_reopen_enabled != null) {
     effectiveSlReopen = Boolean(configRows[0].sl_reopen_enabled);
+  }
+
+  // Determine effective slReopenMode
+  let effectiveSlReopenMode: 'h4_reversal' | 'fvg_30m' | 'both' = 'h4_reversal';
+  if (slReopenMode && ['h4_reversal', 'fvg_30m', 'both'].includes(slReopenMode)) {
+    effectiveSlReopenMode = slReopenMode as 'h4_reversal' | 'fvg_30m' | 'both';
+  } else if (configRows && configRows.length > 0 && configRows[0].sl_reopen_mode) {
+    effectiveSlReopenMode = configRows[0].sl_reopen_mode as 'h4_reversal' | 'fvg_30m' | 'both';
   }
 
   if (effectiveTargetPriceGoal && effectiveTargetPriceGoal > 0 && validCheck.lastPrice && effectiveTargetPriceGoal <= validCheck.lastPrice) {
@@ -703,7 +722,8 @@ export async function startCompoundBot(params: {
   const priceGoalLogText = effectiveTargetPriceGoal && effectiveTargetPriceGoal > 0
     ? ` 🎯 Target Price: $${effectiveTargetPriceGoal} (Auto-Stop saat sampai)`
     : '';
-  const reopenLogText = effectiveSlReopen ? ` ⏳ Re-Open H4: AKTIF` : '';
+  const reopenModeDisplayLabel = effectiveSlReopenMode === 'fvg_30m' ? 'FVG Bullish 30m' : effectiveSlReopenMode === 'both' ? 'H4 + FVG 30m' : 'Candle H4';
+  const reopenLogText = effectiveSlReopen ? ` ⏳ Re-Open [${reopenModeDisplayLabel}]: AKTIF` : '';
   await addBotLog('START', `🚀 [${cleanSymbol}] Memulai Bot Compound Future (Notional: $${notionalUsd} USD, Leverage: ${leverage}x, Target: +${compoundPercent}%)${timerLogText}${cycleLogText}${priceGoalLogText}${reopenLogText}...`, 'INFO');
 
   const buyResult = await executeCompoundBuyOrder({
@@ -738,9 +758,9 @@ export async function startCompoundBot(params: {
   // 5. Update or Insert Bot Config for this coin
   await executeQuery(`
     INSERT INTO compound_bot_config 
-      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price, auto_stop_hours, auto_stop_at, target_cycles, target_price_goal, sl_reopen_enabled, sl_waiting_reopen, sl_hit_time, sl_last_checked_kline_time)
+      (symbol, is_active, notional_usd, current_notional, leverage, compound_percent, stop_loss_percent, current_cycle, entry_price, target_price, sl_price, quantity, last_check_at, dca_auto_enabled, dca_executed, dca_count, dca_drop_percent, dca_notional_usd, dca_trigger_price, auto_stop_hours, auto_stop_at, target_cycles, target_price_goal, sl_reopen_enabled, sl_reopen_mode, sl_waiting_reopen, sl_hit_time, sl_last_checked_kline_time)
     VALUES 
-      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL, ?, ?, ?, ?, ?, false, NULL, NULL)
+      (?, true, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NOW(), false, false, 0, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, false, NULL, NULL)
     ON DUPLICATE KEY UPDATE
       is_active = true,
       notional_usd = VALUES(notional_usd),
@@ -765,6 +785,7 @@ export async function startCompoundBot(params: {
       target_cycles = VALUES(target_cycles),
       target_price_goal = VALUES(target_price_goal),
       sl_reopen_enabled = VALUES(sl_reopen_enabled),
+      sl_reopen_mode = VALUES(sl_reopen_mode),
       sl_waiting_reopen = false,
       sl_hit_time = NULL,
       sl_last_checked_kline_time = NULL
@@ -783,7 +804,8 @@ export async function startCompoundBot(params: {
     autoStopAtSql,
     effectiveTargetCycles && effectiveTargetCycles > 0 ? Math.floor(effectiveTargetCycles) : null,
     effectiveTargetPriceGoal && effectiveTargetPriceGoal > 0 ? effectiveTargetPriceGoal : null,
-    effectiveSlReopen ? true : false
+    effectiveSlReopen ? true : false,
+    effectiveSlReopenMode
   ]);
 
   const marginEst = (notionalUsd / leverage).toFixed(2);
@@ -1316,6 +1338,48 @@ export async function cancelAutoDca(symbol: string) {
   await addBotLog('DCA', `⏹️ [${cleanSymbol}] Auto DCA penurunan dibatalkan oleh pengguna.`, 'INFO');
 
   return { success: true, symbol: cleanSymbol };
+}
+
+/**
+ * Detect Bullish FVG (Fair Value Gap) Pattern in Klines
+ * A bullish FVG exists when: candleA.high < candleC.low  (gap zone)
+ * AND candleB (middle candle) is bullish/green (close > open)
+ * We scan the most recent closed candles (excluding current forming candle).
+ */
+function detectBullishFVG(klines: any[]): {
+  found: boolean;
+  fvgLow: number;
+  fvgHigh: number;
+  candleTime: number;
+  middleClose: number;
+} {
+  if (!klines || klines.length < 4) return { found: false, fvgLow: 0, fvgHigh: 0, candleTime: 0, middleClose: 0 };
+
+  // Exclude last (currently forming) candle, scan closed ones newest→oldest
+  const closed = klines.slice(0, klines.length - 1);
+
+  for (let i = closed.length - 1; i >= 2; i--) {
+    const candleA = closed[i - 2]; // left candle
+    const candleB = closed[i - 1]; // middle (FVG) candle — must be bullish
+    const candleC = closed[i];     // right candle
+
+    const fvgLow = parseFloat(candleA.high);   // bottom of FVG zone
+    const fvgHigh = parseFloat(candleC.low);   // top of FVG zone
+    const isGapExists = fvgHigh > fvgLow;
+    const isBullishMiddle = parseFloat(candleB.close) > parseFloat(candleB.open);
+
+    if (isGapExists && isBullishMiddle) {
+      return {
+        found: true,
+        fvgLow,
+        fvgHigh,
+        candleTime: candleC.time, // use right candle open time as FVG timestamp
+        middleClose: parseFloat(candleB.close)
+      };
+    }
+  }
+
+  return { found: false, fvgLow: 0, fvgHigh: 0, candleTime: 0, middleClose: 0 };
 }
 
 /**
@@ -1852,94 +1916,138 @@ export async function tickCompoundBot() {
       });
     }
 
-    // 4. Evaluate coins waiting for H4 Candle Reversal Confirmation (sl_waiting_reopen = true)
+    // 4. Evaluate coins waiting for SL Reversal Confirmation (sl_waiting_reopen = true)
     for (const waitingCoin of waitingCoins) {
       const symbol = waitingCoin.symbol;
+      const reopenMode: 'h4_reversal' | 'fvg_30m' | 'both' = (waitingCoin.sl_reopen_mode as any) || 'h4_reversal';
+      const slHitTimeMs = waitingCoin.sl_hit_time ? new Date(waitingCoin.sl_hit_time).getTime() : 0;
+      const lastCheckedKlineTime = waitingCoin.sl_last_checked_kline_time ? Number(waitingCoin.sl_last_checked_kline_time) : 0;
+
       try {
-        const klines = await fetchFuturesKlines(symbol, '4h', 5);
-        if (klines && klines.length >= 3) {
-          // klines[klines.length - 1] is current forming candle
-          // klines[klines.length - 2] is the most recently closed candle
-          // klines[klines.length - 3] is the candle before the closed candle
-          const closedCandle = klines[klines.length - 2];
-          const prevCandle = klines[klines.length - 3];
-          const slHitTimeMs = waitingCoin.sl_hit_time ? new Date(waitingCoin.sl_hit_time).getTime() : 0;
-          const closedCandleCloseTime = closedCandle.time + (4 * 3600 * 1000);
-          const lastCheckedKlineTime = waitingCoin.sl_last_checked_kline_time ? Number(waitingCoin.sl_last_checked_kline_time) : 0;
+        let triggered = false;
+        let triggerLog = '';
+        let triggerResult: Record<string, any> = {};
 
-          // Check if candle closed AFTER the SL hit time and has not been evaluated yet
-          // closedCandleCloseTime must be strictly after slHitTimeMs to avoid re-evaluating pre-SL candles
-          const isNewCandleAfterSL = slHitTimeMs > 0 && closedCandleCloseTime > slHitTimeMs;
-          if (closedCandle.time !== lastCheckedKlineTime && isNewCandleAfterSL) {
-            await executeQuery(
-              `UPDATE compound_bot_config SET sl_last_checked_kline_time = ? WHERE symbol = ?`,
-              [closedCandle.time, symbol]
-            );
+        // ── MODE: H4 Candle Reversal ────────────────────────────────────────────
+        const checkH4 = reopenMode === 'h4_reversal' || reopenMode === 'both';
+        // ── MODE: FVG Bullish 30m ────────────────────────────────────────────────
+        const checkFVG = reopenMode === 'fvg_30m' || reopenMode === 'both';
 
-            // Condition: Candle H4 penutupan harga lebih tinggi dari harga open candle sebelumnya
-            const isReversalBullish = closedCandle.close > prevCandle.open;
-            const closedTimeStr = new Date(closedCandle.time + 4 * 3600 * 1000).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+        // -- H4 CHECK --
+        if (checkH4 && !triggered) {
+          const klines4h = await fetchFuturesKlines(symbol, '4h', 5);
+          if (klines4h && klines4h.length >= 3) {
+            const closedCandle = klines4h[klines4h.length - 2];
+            const prevCandle   = klines4h[klines4h.length - 3];
+            const closedCandleCloseTime = closedCandle.time + (4 * 3600 * 1000);
 
-            if (isReversalBullish) {
-              await addBotLog(
-                'START',
-                `🟢 [${symbol}] KONFIRMASI CANDLE H4 TERPENUHI! Candle H4 (${closedTimeStr}) Close ($${closedCandle.close.toFixed(4)}) > Open Prev ($${prevCandle.open.toFixed(4)}). Auto Re-Open posisi baru sesuai settingan...`,
-                'SUCCESS'
+            const isNewCandleAfterSL = slHitTimeMs > 0 && closedCandleCloseTime > slHitTimeMs;
+
+            if (closedCandle.time !== lastCheckedKlineTime && isNewCandleAfterSL) {
+              // Mark this candle as checked (shared tracker, updated per evaluation)
+              await executeQuery(
+                `UPDATE compound_bot_config SET sl_last_checked_kline_time = ? WHERE symbol = ?`,
+                [closedCandle.time, symbol]
               );
 
-              try {
-                const startRes = await startCompoundBot({
-                  symbol,
-                  notionalUsd: parseFloat(waitingCoin.notional_usd),
-                  leverage: parseInt(waitingCoin.leverage),
-                  compoundPercent: parseFloat(waitingCoin.compound_percent),
-                  stopLossPercent: waitingCoin.stop_loss_percent ? parseFloat(waitingCoin.stop_loss_percent) : null,
-                  autoStopHours: waitingCoin.auto_stop_hours ? parseFloat(waitingCoin.auto_stop_hours) : null,
-                  targetCycles: waitingCoin.target_cycles ? parseInt(waitingCoin.target_cycles) : null,
-                  targetPriceGoal: waitingCoin.target_price_goal ? parseFloat(waitingCoin.target_price_goal) : null,
-                  slReopenEnabled: true
-                });
+              const isReversalBullish = closedCandle.close > prevCandle.open;
+              const closedTimeStr = new Date(closedCandleCloseTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
 
-                tickResults.push({
-                  symbol,
-                  status: 'SL_REOPEN_EXECUTED',
-                  closedCandleClose: closedCandle.close,
-                  prevCandleOpen: prevCandle.open,
-                  newCycle: startRes.cycleNumber
-                });
+              if (isReversalBullish) {
+                triggered = true;
+                triggerLog = `🟢 [${symbol}] ✅ KONFIRMASI CANDLE H4 (${closedTimeStr}): Close ($${Number(closedCandle.close).toFixed(4)}) > Open Prev ($${Number(prevCandle.open).toFixed(4)}). Auto Re-Open...`;
+                triggerResult = { mode: 'h4_reversal', closedCandleClose: closedCandle.close, prevCandleOpen: prevCandle.open };
+              } else {
+                await addBotLog('INFO',
+                  `⏳ [${symbol}] [H4] Evaluasi (${closedTimeStr}): Close ($${Number(closedCandle.close).toFixed(4)}) ≤ Open Prev ($${Number(prevCandle.open).toFixed(4)}). Belum bullish, tetap siaga...`,
+                  'INFO'
+                );
+              }
+            }
+          }
+        }
+
+        // -- FVG 30m CHECK --
+        if (checkFVG && !triggered) {
+          // Fetch enough 30m candles to scan for recent FVG (20 candles ≈ 10 hours of 30m data)
+          const klines30m = await fetchFuturesKlines(symbol, '30m', 20);
+          if (klines30m && klines30m.length >= 4) {
+            const fvg = detectBullishFVG(klines30m);
+            if (fvg.found) {
+              // Only trigger if this FVG formed AFTER SL was hit
+              // fvg.candleTime is the open time of the right (3rd) candle in the FVG pattern
+              const fvgCloseTime = fvg.candleTime + (30 * 60 * 1000); // right candle close time
+              const isNewFvgAfterSL = slHitTimeMs > 0 && fvgCloseTime > slHitTimeMs;
+              // Deduplicate: use fvg.candleTime as key (different from H4 lastChecked)
+              const fvgAlreadyChecked = lastCheckedKlineTime === fvg.candleTime;
+
+              if (isNewFvgAfterSL && !fvgAlreadyChecked) {
+                await executeQuery(
+                  `UPDATE compound_bot_config SET sl_last_checked_kline_time = ? WHERE symbol = ?`,
+                  [fvg.candleTime, symbol]
+                );
+                const fvgTimeStr = new Date(fvgCloseTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+                triggered = true;
+                triggerLog = `🟢 [${symbol}] ✅ FVG BULLISH 30m TERDETEKSI (${fvgTimeStr})! Gap Zone: $${fvg.fvgLow.toFixed(4)} – $${fvg.fvgHigh.toFixed(4)} (Candle tengah tutup @ $${fvg.middleClose.toFixed(4)}). Auto Re-Open...`;
+                triggerResult = { mode: 'fvg_30m', fvgLow: fvg.fvgLow, fvgHigh: fvg.fvgHigh, middleClose: fvg.middleClose };
+              } else if (!isNewFvgAfterSL) {
+                // FVG exists but formed before SL, log only once (don't spam)
+              } else {
+                // Already evaluated this FVG — waiting for a new one
+                const currentCandle30m = klines30m[klines30m.length - 1];
+                const remainingMs = Math.max(0, (currentCandle30m.time + 30 * 60 * 1000) - Date.now());
+                const remainingMin = Math.ceil(remainingMs / 60000);
+                tickResults.push({ symbol, status: 'WAITING_SL_REOPEN', mode: 'fvg_30m', nextCandleInMinutes: remainingMin, fvgLow: fvg.fvgLow, fvgHigh: fvg.fvgHigh });
                 continue;
-              } catch (reopenErr: any) {
-                console.error(`Gagal Auto Re-Open bot untuk ${symbol}:`, reopenErr);
-                await addBotLog('ERROR', `❌ [${symbol}] Gagal mengeksekusi Auto Re-Open: ${reopenErr.message}. Bot tetap siaga.`, 'ERROR');
               }
             } else {
-              await addBotLog(
-                'INFO',
-                `⏳ [${symbol}] Evaluasi Candle H4 (${closedTimeStr}): Close ($${closedCandle.close.toFixed(4)}) <= Open Prev ($${prevCandle.open.toFixed(4)}). Belum valid bullish, tetap siaga menunggu candle H4 berikutnya.`,
-                'INFO'
-              );
-              tickResults.push({
-                symbol,
-                status: 'WAITING_H4_REOPEN',
-                closedCandleClose: closedCandle.close,
-                prevCandleOpen: prevCandle.open,
-                message: 'Belum memenuhi Close H4 > Open Prev'
-              });
+              // No bullish FVG detected yet on 30m
+              tickResults.push({ symbol, status: 'WAITING_SL_REOPEN', mode: 'fvg_30m', message: 'Belum ada FVG Bullish baru di 30m' });
+              if (reopenMode === 'fvg_30m') continue;
             }
-          } else {
-            const currentCandle = klines[klines.length - 1];
-            const remainingMs = Math.max(0, (currentCandle.time + 4 * 3600 * 1000) - Date.now());
-            const remainingMin = Math.ceil(remainingMs / 60000);
+          }
+        }
+
+        // -- EXECUTE RE-OPEN if any condition triggered --
+        if (triggered) {
+          await addBotLog('START', triggerLog, 'SUCCESS');
+          try {
+            const startRes = await startCompoundBot({
+              symbol,
+              notionalUsd: parseFloat(waitingCoin.notional_usd),
+              leverage: parseInt(waitingCoin.leverage),
+              compoundPercent: parseFloat(waitingCoin.compound_percent),
+              stopLossPercent: waitingCoin.stop_loss_percent ? parseFloat(waitingCoin.stop_loss_percent) : null,
+              autoStopHours: waitingCoin.auto_stop_hours ? parseFloat(waitingCoin.auto_stop_hours) : null,
+              targetCycles: waitingCoin.target_cycles ? parseInt(waitingCoin.target_cycles) : null,
+              targetPriceGoal: waitingCoin.target_price_goal ? parseFloat(waitingCoin.target_price_goal) : null,
+              slReopenEnabled: true,
+              slReopenMode: reopenMode
+            });
+
             tickResults.push({
               symbol,
-              status: 'WAITING_H4_REOPEN',
-              currentCandleCloseInMinutes: remainingMin,
-              targetPrevOpen: closedCandle.open
+              status: 'SL_REOPEN_EXECUTED',
+              ...triggerResult,
+              newCycle: startRes.cycleNumber
             });
+            continue;
+          } catch (reopenErr: any) {
+            console.error(`Gagal Auto Re-Open bot untuk ${symbol}:`, reopenErr);
+            await addBotLog('ERROR', `❌ [${symbol}] Gagal mengeksekusi Auto Re-Open: ${reopenErr.message}. Bot tetap siaga.`, 'ERROR');
+          }
+        } else if (reopenMode === 'h4_reversal' || reopenMode === 'both') {
+          // Still waiting for next H4 candle close
+          const klines4hFallback = await fetchFuturesKlines(symbol, '4h', 2);
+          if (klines4hFallback && klines4hFallback.length >= 1) {
+            const currentCandle = klines4hFallback[klines4hFallback.length - 1];
+            const remainingMs = Math.max(0, (currentCandle.time + 4 * 3600 * 1000) - Date.now());
+            const remainingMin = Math.ceil(remainingMs / 60000);
+            tickResults.push({ symbol, status: 'WAITING_SL_REOPEN', mode: reopenMode, nextH4CandleInMinutes: remainingMin });
           }
         }
       } catch (waitErr: any) {
-        console.error(`Error checking H4 klines for ${symbol}:`, waitErr);
+        console.error(`Error checking klines for ${symbol} (mode: ${reopenMode}):`, waitErr);
       }
     }
 

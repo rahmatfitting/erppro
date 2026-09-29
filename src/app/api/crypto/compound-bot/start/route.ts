@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled } = body;
+    const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled, slReopenMode } = body;
 
     if (!symbol) {
       return NextResponse.json({ success: false, error: 'Pair simbol wajib diisi' }, { status: 400 });
@@ -38,6 +38,8 @@ export async function POST(req: NextRequest) {
       ? parseFloat(targetPriceGoal)
       : null;
     const slReopen = slReopenEnabled !== undefined && slReopenEnabled !== null ? Boolean(slReopenEnabled) : undefined;
+    const slMode: 'h4_reversal' | 'fvg_30m' | 'both' =
+      ['h4_reversal', 'fvg_30m', 'both'].includes(slReopenMode) ? slReopenMode : 'h4_reversal';
 
     const result = await startCompoundBot({
       symbol: symbol.toUpperCase().trim(),
@@ -48,13 +50,15 @@ export async function POST(req: NextRequest) {
       autoStopHours: stopHours && stopHours > 0 ? stopHours : null,
       targetCycles: tCycles && tCycles > 0 ? tCycles : null,
       targetPriceGoal: tPriceGoal && tPriceGoal > 0 ? tPriceGoal : null,
-      slReopenEnabled: slReopen
+      slReopenEnabled: slReopen,
+      slReopenMode: slMode
     });
 
     const timerMsg = stopHours && stopHours > 0 ? ` (Timer: ${stopHours} Jam)` : '';
     const cycleMsg = tCycles && tCycles > 0 ? ` (Target: Max ${tCycles} Cycle)` : '';
     const priceMsg = tPriceGoal && tPriceGoal > 0 ? ` (Target Price: $${tPriceGoal})` : '';
-    const reopenMsg = slReopen ? ' (Re-Open H4: Aktif)' : '';
+    const reopenModeLabel = slMode === 'fvg_30m' ? 'FVG Bullish 30m' : slMode === 'both' ? 'H4 + FVG 30m' : 'Candle H4';
+    const reopenMsg = slReopen ? ` (Re-Open [${reopenModeLabel}]: Aktif)` : '';
     return NextResponse.json({
       success: true,
       message: `Bot Compound Future berhasil dimulai untuk ${symbol}! Cycle #1 aktif${timerMsg}${cycleMsg}${priceMsg}${reopenMsg}.`,
