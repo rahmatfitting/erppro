@@ -556,10 +556,11 @@ export async function saveCoinConfig(params: {
   targetCycles?: number | null;
   targetPriceGoal?: number | null;
   slReopenEnabled?: boolean | null;
+  slReopenMode?: 'h4_reversal' | 'fvg_30m' | 'both' | null;
 }) {
   await ensureCompoundBotTables();
 
-  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled } = params;
+  const { symbol, notionalUsd, leverage, compoundPercent, stopLossPercent, autoStopHours, targetCycles, targetPriceGoal, slReopenEnabled, slReopenMode } = params;
   const cleanSymbol = symbol.toUpperCase().trim();
 
   // Validate
