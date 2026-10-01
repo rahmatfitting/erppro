@@ -6,6 +6,34 @@ Panduan dan dokumentasi riwayat implementasi fitur untuk AI Agent yang bekerja p
 
 ## 📅 Riwayat Perubahan & Fitur (Changelog)
 
+### [2026-10-01] - Fitur Urutkan & Tampilkan Berdasarkan Floating Terbesar / Terkecil pada Bot Compound Future
+
+#### 1. Deskripsi & Mekanisme Kerja
+- **Latar Belakang:** Pada strategi Multi-Coin Compound Future dengan banyak koin yang berjalan secara bersamaan (misal belasan atau puluhan koin), trader membutuhkan kemudahan untuk langsung melihat koin mana yang sedang floating profit paling tinggi (untuk dipantau jelang take profit) atau koin mana yang sedang mengalami floating minus/drawdown paling dalam (untuk dipantau atau dilakukan DCA).
+- **Mekanisme Pengurutan Dinamis:**
+  1. **Akurasi Data Floating:** Sistem secara real-time mengambil data posisi aktif Binance (`realPos.unRealizedProfit` dan `realPos.roePercent`) maupun kalkulasi live fallback (`livePrice - entry_price`).
+  2. **Prioritas Posisi Aktif:** Koin dengan posisi floating aktif otomatis diprioritaskan di baris teratas, sedangkan koin idle/STOPPED (tanpa posisi floating) diletakkan di bagian bawah agar tidak mengaburkan analisis floating trader.
+  3. **Opsi Pengurutan Fleksibel:**
+     - **Floating Terbesar (Profit $ Tertinggi ↗):** Mengurutkan koin dari nominal PnL floating tertinggi ke terendah (`b.pnl - a.pnl`).
+     - **Floating Terkecil (Minus $ Terbanyak ↘):** Mengurutkan koin dari nominal floating terendah/minus paling dalam ke tertinggi (`a.pnl - b.pnl`).
+     - **Floating ROE Terbesar (% ROE ↗):** Mengurutkan berdasarkan persentase Return on Equity (ROE) tertinggi.
+     - **Floating ROE Terkecil (% ROE ↘):** Mengurutkan berdasarkan persentase ROE terendah / drawdown terdalam.
+     - **Urutan Default:** Mengembalikan urutan asli koin.
+
+#### 2. Antarmuka UI/UX (`/crypto/compound-bot`)
+- **Quick 1-Click Action Chips:**
+  - Ditambahkan sepasang tombol chip instan: **Floating Terbesar** (aksen emerald/hijau) dan **Floating Terkecil** (aksen rose/merah).
+  - Sekali klik langsung mengurutkan kartu koin. Klik kembali untuk mereset ke Default.
+- **Mode Urutan Dropdown & Indikator Status:**
+  - Dropdown `Urutkan:` dengan ikon `ArrowUpDown` untuk memilih detail parameter pengurutan (PnL USD vs ROE %).
+  - Badge visual aktif yang memberi tahu mode urutan yang sedang diterapkan beserta tombol reset cepat `(X)`.
+- **Badge Peringkat (#1, #2, ...) pada Kartu Koin:**
+  - Saat mode urutan floating aktif, setiap kartu koin menampilkan label peringkat urutan (`#1`, `#2`, dst.) di sebelah simbol koin, dengan highlight khusus amber emas untuk juara #1.
+- **Filter Tampilan Terpadu:**
+  - Dropdown filter tampilan diperluas dengan opsi filter cepat `Hanya RUNNING` dan `Hanya STOPPED` di samping filter per koin.
+
+---
+
 ### [2026-09-29] - Fitur Target Price (Auto-Stop & Close Posisi saat Mencapai Target Harga) per Koin pada Bot Compound Future
 
 #### 1. Deskripsi & Mekanisme Kerja Target Price yang Dituju

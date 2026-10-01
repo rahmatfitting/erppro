@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Repeat,
   Play,
@@ -30,7 +30,8 @@ import {
   StopCircle,
   AlarmClockOff,
   Target,
-  Crosshair
+  Crosshair,
+  ArrowUpDown
 } from "lucide-react";
 
 interface RealPosition {
@@ -153,6 +154,9 @@ export default function CompoundBotPage() {
   const [livePrices, setLivePrices] = useState<Record<string, number>>({});
   const [hasApiKeys, setHasApiKeys] = useState(true);
   const [filterCoin, setFilterCoin] = useState<string>("ALL");
+  const [sortByFloating, setSortByFloating] = useState<
+    "DEFAULT" | "FLOAT_DESC" | "FLOAT_ASC" | "ROE_DESC" | "ROE_ASC"
+  >("DEFAULT");
 
   // Modal: Add / Edit Coin
   const [showAddModal, setShowAddModal] = useState(false);
@@ -694,12 +698,91 @@ export default function CompoundBotPage() {
     }
   };
 
+  // Helper to extract floating PnL and active state for sorting & card rendering
+  const getCoinFloatingData = useCallback(
+    (coin: CompoundConfig) => {
+      const activeCycle = activeCyclesMap[coin.symbol];
+      const realPos = coin.real_position || activeCycle?.real_position;
+      const livePrice = realPos?.markPrice || livePrices[coin.symbol] || coin.entry_price || 0;
+
+      let currentPnlUsd = 0;
+      let currentPnlRoe = 0;
+      let progressPct = 0;
+      const hasPosition = Boolean(
+        (realPos && realPos.positionAmt !== 0) ||
+        (coin.is_active && activeCycle && livePrice && activeCycle.entry_price)
+      );
+
+      if (realPos && realPos.positionAmt !== 0) {
+        currentPnlUsd = realPos.unRealizedProfit || 0;
+        currentPnlRoe = realPos.roePercent || 0;
+        const effEntry = realPos.entryPrice > 0 ? realPos.entryPrice : (activeCycle?.entry_price || coin.entry_price || 0);
+        const effCurrent = realPos.markPrice > 0 ? realPos.markPrice : livePrice;
+        const priceGainPct = effEntry > 0 ? ((effCurrent - effEntry) / effEntry) * 100 : 0;
+        progressPct = Math.min(100, Math.max(0, (priceGainPct / (coin.compound_percent || 1)) * 100));
+      } else if (coin.is_active && activeCycle && livePrice && activeCycle.entry_price) {
+        currentPnlUsd = (livePrice - activeCycle.entry_price) * activeCycle.quantity;
+        const marginUsed = activeCycle.notional_in / (activeCycle.leverage || 1);
+        currentPnlRoe = marginUsed > 0 ? (currentPnlUsd / marginUsed) * 100 : 0;
+        const priceGainPct = ((livePrice - activeCycle.entry_price) / activeCycle.entry_price) * 100;
+        progressPct = Math.min(100, Math.max(0, (priceGainPct / (coin.compound_percent || 1)) * 100));
+      }
+
+      return {
+        currentPnlUsd,
+        currentPnlRoe,
+        progressPct,
+        hasPosition,
+        realPos,
+        activeCycle,
+        livePrice,
+      };
+    },
+    [activeCyclesMap, livePrices]
+  );
+
+  // Filtered and sorted coins
+  const displayCoins = useMemo(() => {
+    let list = coins.filter((c) => {
+      if (filterCoin === "ALL") return true;
+      if (filterCoin === "RUNNING") return c.is_active;
+      if (filterCoin === "STOPPED") return !c.is_active;
+      return c.symbol === filterCoin;
+    });
+
+    if (sortByFloating === "DEFAULT") return list;
+
+    return [...list].sort((a, b) => {
+      const dataA = getCoinFloatingData(a);
+      const dataB = getCoinFloatingData(b);
+
+      // Prioritize active positions over idle/stopped coins
+      if (dataA.hasPosition && !dataB.hasPosition) return -1;
+      if (!dataA.hasPosition && dataB.hasPosition) return 1;
+      if (!dataA.hasPosition && !dataB.hasPosition) return 0;
+
+      if (sortByFloating === "FLOAT_DESC") {
+        return dataB.currentPnlUsd - dataA.currentPnlUsd;
+      }
+      if (sortByFloating === "FLOAT_ASC") {
+        return dataA.currentPnlUsd - dataB.currentPnlUsd;
+      }
+      if (sortByFloating === "ROE_DESC") {
+        return dataB.currentPnlRoe - dataA.currentPnlRoe;
+      }
+      if (sortByFloating === "ROE_ASC") {
+        return dataA.currentPnlRoe - dataB.currentPnlRoe;
+      }
+      return 0;
+    });
+  }, [coins, filterCoin, sortByFloating, getCoinFloatingData]);
+
   // Filtered lists
-  const filteredHistory = filterCoin === "ALL"
+  const filteredHistory = filterCoin === "ALL" || filterCoin === "RUNNING" || filterCoin === "STOPPED"
     ? history
     : history.filter((h) => h.symbol === filterCoin);
 
-  const filteredLogs = filterCoin === "ALL"
+  const filteredLogs = filterCoin === "ALL" || filterCoin === "RUNNING" || filterCoin === "STOPPED"
     ? logs
     : logs.filter((l) => l.message.includes(filterCoin));
 
@@ -845,27 +928,108 @@ export default function CompoundBotPage() {
 
       {/* Multi-Coin Active Grid */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-            <Layers className="w-5 h-5 text-emerald-400" />
-            Daftar Bot Koin ({coins.length})
-          </h2>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+              <Layers className="w-5 h-5 text-emerald-400" />
+              Daftar Bot Koin ({coins.length})
+            </h2>
+            {sortByFloating !== "DEFAULT" && (
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 flex items-center gap-1.5 shadow-sm">
+                <span>
+                  Urutan: {sortByFloating === "FLOAT_DESC" && "Floating Terbesar (PnL $)"}
+                  {sortByFloating === "FLOAT_ASC" && "Floating Terkecil (Minus $)"}
+                  {sortByFloating === "ROE_DESC" && "Floating ROE Terbesar (% ROE)"}
+                  {sortByFloating === "ROE_ASC" && "Floating ROE Terkecil (% ROE)"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSortByFloating("DEFAULT")}
+                  className="p-0.5 rounded hover:bg-emerald-900/60 text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  title="Kembalikan urutan ke default"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
+          </div>
 
           {coins.length > 0 && (
-            <div className="flex items-center gap-1.5 text-xs text-slate-400">
-              <span>Filter Tampilan:</span>
-              <select
-                value={filterCoin}
-                onChange={(e) => setFilterCoin(e.target.value)}
-                className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 text-xs focus:outline-none focus:border-emerald-500"
-              >
-                <option value="ALL">Semua Koin ({coins.length})</option>
-                {coins.map((c) => (
-                  <option key={c.symbol} value={c.symbol}>
-                    {c.symbol} ({c.is_active ? "RUNNING" : "STOPPED"})
+            <div className="flex flex-wrap items-center gap-2.5 text-xs">
+              {/* Quick 1-Click Floating Sort Chips */}
+              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSortByFloating((prev) => (prev === "FLOAT_DESC" ? "DEFAULT" : "FLOAT_DESC"))
+                  }
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    sortByFloating === "FLOAT_DESC"
+                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-950"
+                      : "text-slate-400 hover:text-emerald-400 hover:bg-slate-800/60"
+                  }`}
+                  title="Tampilkan berdasarkan Floating Terbesar (Profit Tertinggi ke Terendah)"
+                >
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                  <span>Floating Terbesar</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSortByFloating((prev) => (prev === "FLOAT_ASC" ? "DEFAULT" : "FLOAT_ASC"))
+                  }
+                  className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    sortByFloating === "FLOAT_ASC"
+                      ? "bg-rose-600 text-white shadow-md shadow-rose-950"
+                      : "text-slate-400 hover:text-rose-400 hover:bg-slate-800/60"
+                  }`}
+                  title="Tampilkan berdasarkan Floating Terkecil (Minus Terbanyak ke Positif)"
+                >
+                  <ArrowDownRight className="w-3.5 h-3.5" />
+                  <span>Floating Terkecil</span>
+                </button>
+              </div>
+
+              {/* Mode Urutan Dropdown */}
+              <div className="flex items-center gap-1.5 text-slate-400">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  value={sortByFloating}
+                  onChange={(e) => setSortByFloating(e.target.value as any)}
+                  className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 text-xs focus:outline-none focus:border-emerald-500 cursor-pointer"
+                  title="Pilih mode pengurutan floating koin"
+                >
+                  <option value="DEFAULT">Urutan: Default</option>
+                  <option value="FLOAT_DESC">🟢 Floating Terbesar ($ PnL)</option>
+                  <option value="FLOAT_ASC">🔴 Floating Terkecil ($ PnL)</option>
+                  <option value="ROE_DESC">📈 Floating ROE Terbesar (% ROE)</option>
+                  <option value="ROE_ASC">📉 Floating ROE Terkecil (% ROE)</option>
+                </select>
+              </div>
+
+              {/* Filter Tampilan Dropdown */}
+              <div className="flex items-center gap-1.5 text-slate-400">
+                <span>Filter:</span>
+                <select
+                  value={filterCoin}
+                  onChange={(e) => setFilterCoin(e.target.value)}
+                  className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 text-xs focus:outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="ALL">Semua Koin ({coins.length})</option>
+                  <option value="RUNNING">
+                    🟢 RUNNING ({coins.filter((c) => c.is_active).length})
                   </option>
-                ))}
-              </select>
+                  <option value="STOPPED">
+                    ⚪ STOPPED ({coins.filter((c) => !c.is_active).length})
+                  </option>
+                  {coins.map((c) => (
+                    <option key={c.symbol} value={c.symbol}>
+                      {c.symbol} ({c.is_active ? "RUNNING" : "STOPPED"})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
         </div>
@@ -904,46 +1068,29 @@ export default function CompoundBotPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {coins
-              .filter((c) => filterCoin === "ALL" || c.symbol === filterCoin)
-              .map((coin) => {
-                const activeCycle = activeCyclesMap[coin.symbol];
-                const realPos = coin.real_position || activeCycle?.real_position;
-                const livePrice = realPos?.markPrice || livePrices[coin.symbol] || coin.entry_price || 0;
-                const isLoading = actionLoading[coin.symbol] || false;
+            {displayCoins.map((coin, index) => {
+              const {
+                currentPnlUsd,
+                currentPnlRoe,
+                progressPct,
+                realPos,
+                livePrice,
+                activeCycle,
+              } = getCoinFloatingData(coin);
+              const isLoading = actionLoading[coin.symbol] || false;
 
-                // Live calculation: Prioritize real Binance live position and PnL
-                let currentPnlUsd = 0;
-                let currentPnlRoe = 0;
-                let progressPct = 0;
-
-                if (realPos && realPos.positionAmt !== 0) {
-                  currentPnlUsd = realPos.unRealizedProfit;
-                  currentPnlRoe = realPos.roePercent;
-                  const effEntry = realPos.entryPrice > 0 ? realPos.entryPrice : (activeCycle?.entry_price || coin.entry_price || 0);
-                  const effCurrent = realPos.markPrice > 0 ? realPos.markPrice : livePrice;
-                  const priceGainPct = effEntry > 0 ? ((effCurrent - effEntry) / effEntry) * 100 : 0;
-                  progressPct = Math.min(100, Math.max(0, (priceGainPct / coin.compound_percent) * 100));
-                } else if (coin.is_active && activeCycle && livePrice && activeCycle.entry_price) {
-                  currentPnlUsd = (livePrice - activeCycle.entry_price) * activeCycle.quantity;
-                  const marginUsed = activeCycle.notional_in / (activeCycle.leverage || 1);
-                  currentPnlRoe = (currentPnlUsd / (marginUsed || 1)) * 100;
-                  const priceGainPct = ((livePrice - activeCycle.entry_price) / activeCycle.entry_price) * 100;
-                  progressPct = Math.min(100, Math.max(0, (priceGainPct / coin.compound_percent) * 100));
-                }
-
-                const effectiveEntry = (realPos && realPos.entryPrice > 0)
-                  ? realPos.entryPrice
-                  : (activeCycle?.entry_price || coin.entry_price || 0);
-                const effectiveTarget = effectiveEntry > 0
-                  ? effectiveEntry * (1 + coin.compound_percent / 100)
-                  : (activeCycle?.target_price || coin.target_price || 0);
-                const effectiveNotional = (realPos && realPos.notional > 0)
-                  ? realPos.notional
-                  : (coin.is_active ? coin.current_notional : coin.notional_usd);
-                const effectiveMargin = (realPos && realPos.marginUsd > 0)
-                  ? realPos.marginUsd
-                  : (effectiveNotional / (coin.leverage || 1));
+              const effectiveEntry = (realPos && realPos.entryPrice > 0)
+                ? realPos.entryPrice
+                : (activeCycle?.entry_price || coin.entry_price || 0);
+              const effectiveTarget = effectiveEntry > 0
+                ? effectiveEntry * (1 + coin.compound_percent / 100)
+                : (activeCycle?.target_price || coin.target_price || 0);
+              const effectiveNotional = (realPos && realPos.notional > 0)
+                ? realPos.notional
+                : (coin.is_active ? coin.current_notional : coin.notional_usd);
+              const effectiveMargin = (realPos && realPos.marginUsd > 0)
+                ? realPos.marginUsd
+                : (effectiveNotional / (coin.leverage || 1));
 
                 return (
                   <div
@@ -964,7 +1111,27 @@ export default function CompoundBotPage() {
                             }`}
                           />
                           <div>
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {sortByFloating !== "DEFAULT" && (
+                                <span
+                                  className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold border ${
+                                    index === 0
+                                      ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm"
+                                      : "bg-slate-800 text-slate-400 border-slate-700"
+                                  }`}
+                                  title={`Peringkat #${index + 1} berdasarkan ${
+                                    sortByFloating.includes("FLOAT_DESC")
+                                      ? "Floating Terbesar"
+                                      : sortByFloating.includes("FLOAT_ASC")
+                                      ? "Floating Terkecil"
+                                      : sortByFloating.includes("ROE_DESC")
+                                      ? "ROE Terbesar"
+                                      : "ROE Terkecil"
+                                  }`}
+                                >
+                                  #{index + 1}
+                                </span>
+                              )}
                               <h3 className="font-bold text-base text-slate-100">{coin.symbol}</h3>
                               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300">
                                 {realPos?.leverage || coin.leverage}x
